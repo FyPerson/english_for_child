@@ -546,6 +546,11 @@ td .en{font-size:17px; font-weight:700}
   0%{transform:translateY(0) rotate(0deg); opacity:1}
   100%{transform:translateY(100vh) rotate(400deg); opacity:.15}
 }
+
+/* ================= G4 点单游戏（v3 新增） ================= */
+.g4__slots{display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; min-height:64px}
+.g4__rack{display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; margin-top:14px; padding-top:14px; border-top:1px dashed var(--line-2)}
+.tile--empty{background:var(--sunk); border-style:dashed; color:var(--ink-3)}
 </style>
 
 
@@ -1296,6 +1301,13 @@ const ANSWER_WINDOW_MS = 4000;
 const G3_PAIRS = [['sat','sit']];
 
 /* ==================================================================
+   G4 点单游戏 —— 题库常量（规格 v1.3 §4.4，与 build_audio.py 提取器
+   g4_words 源对齐）：孩子自由选词卡（"订单"）或随机来一单，听音后用
+   satipn 积木架摆出来。均为 A 组已学词，字母全在 satipn 范围内。
+   ================================================================== */
+const G4_WORDS = ['at','it','an','in','sat','pin','nap'];
+
+/* ==================================================================
    WEEK — 七天课程
    ================================================================== */
 const DAYS = [
@@ -1530,9 +1542,10 @@ const DAYS = [
     {t:'游戏三：读给别人听', min:10, blocks:[
       {b:'lead', html:'把《Nat Naps》读给爷爷奶奶、读给玩具熊、读给镜子里的自己。<b>换一个听众，孩子会重新认真一遍</b>。'}
     ]},
-    {t:'游戏四：听音摆积木', min:10, blocks:[
-      {b:'lead', html:'用游戏二剪好的字母卡，反过来玩：<b>你说词，孩子听音找卡片摆出来</b>。从两个音的开始（<span class="say">at · it · an · in</span>），再试三个音的（<span class="say">sat · pin · nap</span>）。摆好后让他自己指读一遍核对。'},
-      {b:'note', tone:'bulb', html:'读词是「看字拼音」，摆词是「听音找字」——同一套积木的反向玩法，也是以后<b>自己写单词</b>的地基。第一周能摆对两三个就很好；卡住就把词拆慢念给他听：s…a…t。'}
+    {t:'游戏四：点单游戏', min:10, blocks:[
+      {b:'lead', html:'孩子自己选一张"订单"（或点「随机来一单」），听电脑读词，再从积木架上把这个词拼出来。<b>拼对了长按确认——是他自己指读出来的吗？</b>'},
+      {b:'g4'},
+      {b:'note', tone:'bulb', html:'摆词是「听音找字」——同一套积木的反向玩法，也是以后<b>自己写单词</b>的地基。摆错也没关系，积木会晃一下让他重摆；同一个词错两次，屏幕会提示第一个字母帮他起个头。第一周能摆对两三个就很好，不用求快求多。'}
     ]},
     {t:'周检 · 5 分钟', min:5, blocks:[
       {b:'exam'},
@@ -1865,6 +1878,15 @@ function blockHTML(b, ctx){
     </div>`;
   }
 
+  case 'g4':{
+    const id = 'g4' + (ctx.uid++);
+    return `<div class="blender" id="${id}" data-g4>
+      <div class="blender__ctl" data-g4-orders></div>
+      <div class="blender__ctl"><button class="btn btn--ghost" data-act="random">${ART.spk} 随机来一单</button></div>
+      <div data-g4-body></div>
+    </div>`;
+  }
+
   case 'flash':{
     // G6：recKey 从 block 数据读（规格 §4.6 点1），不从 uid/DOM 顺序推；
     // 非 timed 组或无 recKey 的 timed 组一律不出纪录行。
@@ -2189,7 +2211,7 @@ function renderDay(n){
   </div>`;
 
   renderDots(n);
-  initG2(); initG3(); initFlash(); initBook(); initG1();
+  initG2(); initG3(); initG4(); initFlash(); initBook(); initG1();
   updateFinish(n);
   // 展开第一个未完成的步骤
   const firstOpen = document.querySelector('.step');
@@ -2203,21 +2225,23 @@ function toggleStep(i, force){
   const body = el.querySelector('.step__body');
   const open = force != null ? force : body.hidden;
   if(!open){
-    // S3 预筛 M2 + 合并审 C1 + T1 预筛 D8 + U1：折叠时清理该 step 子树内
-    // G1/G2/G3 卡的挂起计时器/陈旧回调，否则计时器会在隐藏节点上继续跑，
-    // 重新展开时弹出一个"过期"的反馈。子树里只要含这三种卡任一种，就
+    // S3 预筛 M2 + 合并审 C1 + T1 预筛 D8 + U1/U2：折叠时清理该 step 子树内
+    // G1/G2/G3/G4 卡的挂起计时器/陈旧回调，否则计时器会在隐藏节点上继续跑，
+    // 重新展开时弹出一个"过期"的反馈。子树里只要含这四种卡任一种，就
     // AudioBus.stopAll()（停音频+清顶部失败提示条的 continuation）；
-    // _g1Reset()/_g3Reset() 是各自的 UI 复位钩子（"组件级 reset 钩子"默认
-    // 模式第三例延续到 G3）；_g2Cancel()（E2）是 bindLongPress 返回的取消
-    // 函数。不含这三种卡的普通 step 折叠不掐别处正在播的音频。
+    // _g1Reset()/_g3Reset()/_g4Reset() 是各自的 UI 复位钩子（"组件级 reset
+    // 钩子"默认模式延续到 G3/G4）；_g2Cancel()（E2）是 bindLongPress 返回的
+    // 取消函数。不含这四种卡的普通 step 折叠不掐别处正在播的音频。
     const g1s = body.querySelectorAll('[data-g1-round]');
     const g2s = body.querySelectorAll('[data-g2]');
     const g3s = body.querySelectorAll('[data-g3-pair]');
-    if(g1s.length || g2s.length || g3s.length){
+    const g4s = body.querySelectorAll('[data-g4]');
+    if(g1s.length || g2s.length || g3s.length || g4s.length){
       AudioBus.stopAll();
       g1s.forEach(g1=>{ if(g1._g1Reset) g1._g1Reset(); });
       g2s.forEach(g2=>{ if(g2._g2Cancel) g2._g2Cancel(); });
       g3s.forEach(g3=>{ if(g3._g3Reset) g3._g3Reset(); });
+      g4s.forEach(g4=>{ if(g4._g4Reset) g4._g4Reset(); });
     }
     // E1（合并审 high）：G6 闪卡计时器不经过 AudioBus（不放音频，纯本地
     // setInterval/setTimeout），独立清理，不复用上面那条"仅当有G1/G2才停
@@ -2616,6 +2640,176 @@ function initG3(){
       const kind = act.dataset.g3Act;
       if(kind === 'start' || kind === 'restart'){ startRound(); return; }
       if(kind === 'resume'){ playQuestion(); return; }
+    });
+  });
+}
+
+/* ==================================================================
+   G4 点单游戏（Day7 听音摆积木替换，v1.3 §4.4 + §2.3 失败表）：孩子选订单
+   或随机来一单→播词→点字母积木入槽（槽数=词长）→点槽内积木撤回→摆满自动
+   校验。对=积木亮+长按确认 confirms.g4；错=晃动可重摆，同词第2次错给首字母
+   提示（换词/换单重置错误计数）。无分母无通关，摆对3个只出软提示不锁。
+   ================================================================== */
+function initG4(){
+  document.querySelectorAll('[data-g4]').forEach(root=>{
+    const orders = root.querySelector('[data-g4-orders]');
+    const body = root.querySelector('[data-g4-body]');
+    const RACK_LETTERS = 'satipn'.split('').flatMap(c=>[c,c]);   // 12 块，每字母 2 块
+    let word = null, slots = [], usedTileIdx = [], errorCount = 0;
+    let uiState = 'idle';   // idle|playing|placing|feedback|audioFailed|interrupted
+    let roundToken = 0;
+    const correctWords = new Set();   // 摆对过的词（session 内），达 3 只出软提示不锁
+
+    function renderOrders(){
+      const rows = G4_WORDS.map(w=>{
+        const confirmed = !!(state.games.confirms[w] && state.games.confirms[w].g4);
+        const active = w === word;
+        return `<button class="btn ${active?'':'btn--ghost'}" style="padding:8px 16px;font-size:14px" data-g4-order="${w}">${confirmed?ART.tick+' ':''}${colorWord(w)}</button>`;
+      }).join('');
+      orders.innerHTML = rows + (correctWords.size >= 3
+        ? `<p class="g1__progress" style="width:100%;color:var(--ok)">今天的建议量完成啦，还想玩可以继续</p>`
+        : '');
+    }
+
+    function rackHTML(){
+      return RACK_LETTERS.map((c,i)=>{
+        const used = usedTileIdx.includes(i);
+        const cls = vowels.includes(c) ? 'tile--v' : 'tile--c';
+        // 积木同时带 data-sayph（走既有全局委托听音素，G2 同款惯例）与本游戏
+        // 自己的 data-g4-tile/data-g4-letter（入槽逻辑），互不冲突。
+        return `<button class="tile ${cls}" data-sayph="${c}" data-g4-tile="${i}" data-g4-letter="${c}" ${used?'disabled':''} aria-label="听 ${SOUNDS[c].ipa} 的发音">${c}</button>`;
+      }).join('');
+    }
+    function slotsHTML(cls){
+      return slots.map((c,i)=>`<button class="tile tile--lg ${c?'':'tile--empty'} ${cls||''}" data-g4-slot="${i}">${c||''}</button>`).join('');
+    }
+
+    function renderIdle(){
+      uiState = 'idle';
+      body.innerHTML = `<p class="g1__hint">选一张订单，或点上面「随机来一单」</p>`;
+    }
+    function renderPlacing(){
+      uiState = 'placing';
+      body.innerHTML = `
+        <div class="g4__slots">${slotsHTML()}</div>
+        <div class="g4__rack">${rackHTML()}</div>
+        <p class="g1__hint">听到的词是 ${word.length} 个字母，摆一摆</p>
+        ${errorCount >= 2 ? `<p class="g1__hint">提示：第一个字母是 <b class="en">${word[0]}</b></p>` : ''}
+      `;
+    }
+    function renderAudioFailed(){
+      uiState = 'audioFailed';
+      body.innerHTML = `
+        <p class="g1__hint">声音没放出来</p>
+        <div class="g1__ctl"><button class="btn btn--ok" data-g4-act="resume">再试一次</button></div>
+      `;
+    }
+    function renderInterrupted(){
+      uiState = 'interrupted';
+      body.innerHTML = `
+        <p class="g1__hint">刚才被打断了</p>
+        <div class="g1__ctl"><button class="btn btn--ok" data-g4-act="resume">继续</button></div>
+      `;
+    }
+
+    function playQuestion(){
+      const myToken = ++roundToken;
+      uiState = 'playing';
+      body.innerHTML = `<p class="g1__hint">听……</p>`;
+      WordAudio.play(word).then(r=>{
+        if(myToken !== roundToken) return;
+        if(r.status === 'ended') renderPlacing();
+        else if(r.status === 'failed'){
+          renderAudioFailed();
+          showAudioFailure({ retry(){ playQuestion(); } });
+        }
+        else if(r.status === 'cancelled'){
+          if(uiState === 'playing') renderInterrupted();   // 同 G1：外部请求打断，非本卡主动收场
+        }
+      });
+    }
+    function pickWord(w){
+      word = w;
+      slots = new Array(w.length).fill(null);
+      usedTileIdx = [];
+      errorCount = 0;
+      renderOrders();
+      playQuestion();
+    }
+
+    function placeLetter(tileIdx, letter){
+      if(uiState !== 'placing') return;
+      const emptyIdx = slots.indexOf(null);
+      if(emptyIdx === -1) return;
+      slots[emptyIdx] = letter;
+      usedTileIdx.push(tileIdx);
+      if(slots.every(c=>c!==null)) validate(); else renderPlacing();
+    }
+    function retractSlot(slotIdx){
+      if(uiState !== 'placing') return;
+      const letter = slots[slotIdx];
+      if(!letter) return;
+      slots[slotIdx] = null;
+      for(let i=usedTileIdx.length-1;i>=0;i--){
+        if(RACK_LETTERS[usedTileIdx[i]] === letter){ usedTileIdx.splice(i,1); break; }
+      }
+      renderPlacing();
+    }
+    function validate(){
+      const spelled = slots.join('');
+      const isRight = spelled === word;
+      uiState = 'feedback';
+      if(isRight){
+        errorCount = 0;
+        correctWords.add(word);
+        renderOrders();   // 摆对3个的软提示要当场出现，不等换词/长按确认才刷新
+        const myWord = word;
+        body.innerHTML = `
+          ${`<div class="g4__slots">${slotsHTML('g1__target--pop')}</div>`}
+          <p class="g1__hint">拼对了！他自己指读了吗？</p>
+          <div class="blender__ctl">
+            <button class="btn btn--ok g4__confirm" data-g4-act="confirm">
+              <span class="g2__confirm-fill" data-longpress-fill></span>
+              <span class="g2__confirm-label">按住 1 秒确认</span>
+            </button>
+          </div>
+        `;
+        bindLongPress(body.querySelector('.g4__confirm'), ()=>{
+          if(word !== myWord) return;   // 长按期间已经换词/换单，不落到别的词上（同 G2 D2）
+          confirmWord(myWord, 'g4');
+          renderOrders();
+        }, 1000);
+      } else {
+        errorCount++;
+        body.innerHTML = `<div class="g4__slots">${slotsHTML('g1__target--shake')}</div><p class="g1__hint">摆错了，点错的字母撤回再试</p>`;
+        // 抖动后槽内内容不清空（"可重摆"字面）——回到 placing 让孩子自己撤回改摆
+        laterOnce(()=>{ renderPlacing(); }, 600);
+      }
+    }
+
+    function reset(){
+      // U2/P1 硬约定：折叠清理钩子——终止当前进行态回 idle，roundToken 作废
+      // 使陈旧的 playQuestion 回调彻底失效。
+      roundToken++;
+      word = null; slots = []; usedTileIdx = []; errorCount = 0;
+      renderOrders();
+      renderIdle();
+    }
+    root._g4Reset = reset;
+
+    renderOrders();
+    renderIdle();
+    root.addEventListener('click', e=>{
+      const order = e.target.closest('[data-g4-order]');
+      if(order){ pickWord(order.dataset.g4Order); return; }   // 换词=新逻辑请求，WordAudio 自然取消旧音频
+      const randomBtn = e.target.closest('[data-act="random"]');
+      if(randomBtn){ pickWord(G4_WORDS[Math.floor(Math.random()*G4_WORDS.length)]); return; }
+      const tile = e.target.closest('[data-g4-tile]');
+      if(tile && !tile.disabled){ placeLetter(+tile.dataset.g4Tile, tile.dataset.g4Letter); return; }
+      const slot = e.target.closest('[data-g4-slot]');
+      if(slot){ retractSlot(+slot.dataset.g4Slot); return; }
+      const act = e.target.closest('[data-g4-act]');
+      if(act && act.dataset.g4Act === 'resume'){ playQuestion(); return; }
     });
   });
 }

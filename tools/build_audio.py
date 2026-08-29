@@ -165,8 +165,8 @@ def check2_blacklist_manifest(manifest: dict) -> tuple[bool, str]:
 # 每个源：(名称, 正则/提取函数)；任一源提取结果为空 = 失败（防正则静默失效）
 # 现有源：SOUNDS[*].demo / DAYS words|sight|sentences 块 items / WALL_HINT /
 #   BOOK.pages[].line / G1_ROUNDS（S3：G1 声音抓抓乐两轮 pos/neg 题库）/
-#   G3_PAIRS（U1：G3 两扇门分流词对）。G4 题库、G5 白名单尚未在 v3 落地
-#   （P2 待落），留位。
+#   G3_PAIRS（U1：G3 两扇门分流词对）/ G4_WORDS（U2：G4 点单题库）。
+#   G5 白名单尚未在 v3 落地（P2 待落），留位。
 # ======================================================================
 DEMO_BLOCK_RE = re.compile(r"demo:\[(.*?)\]\}", re.S)
 WORDS_BLOCK_RE = re.compile(r"\{b:'words',\s*items:\[(.*?)\]\}", re.S)
@@ -182,6 +182,9 @@ G1_ROUND_ENTRY_RE = re.compile(r"(\w+):\s*\{\s*pos:\[([^\]]*)\],\s*neg:\[([^\]]*
 # 才有 '];'，不会被内层提前截断）。
 G3_PAIRS_BLOCK_RE = re.compile(r"const G3_PAIRS\s*=\s*\[(.*?)\];", re.S)
 G3_PAIR_RE = re.compile(r"\[\s*'([^']*)'\s*,\s*'([^']*)'\s*\]")
+# U2 新增：G4 点单游戏题库 const G4_WORDS = ['at','it',...]; ——扁平字符串数组，
+# 非贪婪到第一个 "];"（数组内没有更早的 "];" 子串，够用）。
+G4_WORDS_BLOCK_RE = re.compile(r"const G4_WORDS\s*=\s*\[(.*?)\];", re.S)
 
 PAIR_FIRST_RE = re.compile(r"\[\s*'([^']*)'\s*,")
 FLAT_STR_RE = re.compile(r"'([^']*)'")
@@ -314,6 +317,16 @@ def parse_g3_pairs(html: str) -> list[tuple[str, str]]:
     return G3_PAIR_RE.findall(m.group(1))
 
 
+def extract_g4_words(html: str) -> list[str]:
+    """G4 点单游戏题库（U2 新增）：拉平全词，供 check3/4 通用覆盖+黑名单检查。"""
+    keys = []
+    m = G4_WORDS_BLOCK_RE.search(html)
+    if not m:
+        return keys
+    keys.extend(FLAT_STR_RE.findall(m.group(1)))
+    return keys
+
+
 EXTRACTION_REGISTRY = {
     "sounds_demo": extract_sounds_demo,
     "days_words": extract_days_words,
@@ -323,6 +336,7 @@ EXTRACTION_REGISTRY = {
     "book_lines": extract_book_lines,
     "g1_rounds": extract_g1_rounds,
     "g3_pairs": extract_g3_pairs,
+    "g4_words": extract_g4_words,
 }
 
 
@@ -340,6 +354,7 @@ SOURCE_SPECS = {
     "book_lines":     {"anchor_re": BOOK_PAGES_BLOCK_RE, "anchors": 1, "keys": 6,  "unique": 6},
     "g1_rounds":      {"anchor_re": G1_ROUNDS_BLOCK_RE,  "anchors": 1, "keys": 16, "unique": 15},  # dog 两轮各出现一次
     "g3_pairs":       {"anchor_re": G3_PAIRS_BLOCK_RE,   "anchors": 1, "keys": 2,  "unique": 2},
+    "g4_words":       {"anchor_re": G4_WORDS_BLOCK_RE,   "anchors": 1, "keys": 7,  "unique": 7},
 }
 
 # ======================================================================
@@ -353,14 +368,14 @@ SOURCE_SPECS = {
 UNREFERENCED_KEYS = frozenset({"Nat", "naps"})
 
 # ======================================================================
-# M2（S2 预筛 medium，已裁定采纳）：tripwire——HTML 里出现 G4_/G5_ 前缀的
-# 题库常量声明，但提取注册表/自检⑤没有对应处理，说明落地新游戏时忘了同步
-# build_audio.py。G1（g1_rounds 源）/G3（g3_pairs 源）都已有提取源 + check5
-# 形状级断言，字符类收窄到 [45]，天然排除掉这两个已落地的、只继续盯 G4/G5
-# ——U1 落地 G3_PAIRS 时把 3 从字符类里摘掉，正是这条 tripwire 设计初衷要求
+# M2（S2 预筛 medium，已裁定采纳）：tripwire——HTML 里出现 G5_ 前缀的题库常量
+# 声明，但提取注册表/自检⑤没有对应处理，说明落地新游戏时忘了同步
+# build_audio.py。G1（g1_rounds）/G3（g3_pairs）/G4（g4_words）都已有提取源 +
+# check5 形状级断言，字符类收窄到 [5]，天然排除掉这三个已落地的、只继续盯
+# G5——U2 落地 G4_WORDS 时把 4 从字符类里摘掉，正是这条 tripwire 设计初衷要求
 # 的"同步更新"动作，不是绕过它。
 # ======================================================================
-GXX_CONST_RE = re.compile(r"\bconst\s+(G[45]_[A-Z][A-Z0-9_]*)\s*=")
+GXX_CONST_RE = re.compile(r"\bconst\s+(G5_[A-Z][A-Z0-9_]*)\s*=")
 
 
 def build_extraction_report(html: str) -> dict[str, list[str]]:
@@ -426,11 +441,11 @@ def check4_blacklist_rendering(manifest: dict, extraction: dict[str, list[str]])
 
 
 # ======================================================================
-# 自检⑤ 题库断言（v1.3 §10 自检⑤ + §4.1/§4.3）：
+# 自检⑤ 题库断言（v1.3 §10 自检⑤ + §4.1/§4.3/§4.4）：
 #   - G1 两轮（S3 新增）：pos/neg 各恰好4词、轮内不重复、⊆manifest、不含RESERVED
 #   - G3 两扇门（U1 新增）：至少1个词对、每对2个不同词、⊆manifest、不含RESERVED
+#   - G4 点单（U2 新增）：词表⊆manifest、不含RESERVED、内部不重复
 #   - G5 白名单：现阶段 G5 在 v3 中尚未落地（P2），仍是 manifest 侧预置占位校验
-#   - G4 题库源尚未在 v3 落地，留位
 # ======================================================================
 def check5_problem_bank(manifest: dict, html: str) -> tuple[bool, list[str]]:
     problems: list[str] = []
@@ -474,12 +489,25 @@ def check5_problem_bank(manifest: dict, html: str) -> tuple[bool, list[str]]:
             if w.lower() in reserved:
                 problems.append(f"G3_PAIRS 词 {w!r} 是保留词")
 
-    # M2 tripwire：出现 G4_/G5_ 题库常量声明，但提取注册表/本函数都还没有
+    # G4 点单题库断言（U2 新增）
+    g4_words = extract_g4_words(html)
+    if not g4_words:
+        problems.append("G4_WORDS 解析为空（正则可能已失效，或常量被重命名/移出顶层作用域）")
+    if len(set(g4_words)) != len(g4_words):
+        problems.append(f"G4_WORDS 内部有重复词：{g4_words}")
+    missing_g4 = sorted(set(g4_words) - manifest_keys)
+    if missing_g4:
+        problems.append(f"G4_WORDS 词不在 manifest 中（缺 mp3 引用）：{missing_g4}")
+    leaked_g4 = sorted(w for w in g4_words if w.lower() in reserved)
+    if leaked_g4:
+        problems.append(f"G4_WORDS 泄漏保留词：{leaked_g4}")
+
+    # M2 tripwire：出现 G5_ 题库常量声明，但提取注册表/本函数都还没有
     # 为它写对应处理——多半是落地新游戏时忘了同步 build_audio.py。
     gxx_found = sorted(set(GXX_CONST_RE.findall(html)))
     if gxx_found:
         problems.append(
-            f"发现 G4/G5 题库常量声明，但提取注册表/自检⑤尚无对应断言，"
+            f"发现 G5 题库常量声明，但提取注册表/自检⑤尚无对应断言，"
             f"需在落地该游戏时同步补齐 build_audio.py：{gxx_found}"
         )
 
@@ -738,7 +766,7 @@ def main() -> int:
         print(f"  - {p}")
     overall_ok &= ok4
 
-    hr("自检⑤ 题库断言（G1 两轮结构 + G3 两扇门词对 + G5 白名单占位）")
+    hr("自检⑤ 题库断言（G1 两轮结构 + G3 两扇门词对 + G4 点单词表 + G5 白名单占位）")
     ok5, problems5 = check5_problem_bank(manifest, html)
     print("PASS" if ok5 else "FAIL")
     for p in problems5:
