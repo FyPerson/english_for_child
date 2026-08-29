@@ -173,6 +173,7 @@ button.tile:active{transform:translateY(1px)}
 .daycard__sounds{display:flex; gap:6px; flex-wrap:wrap}
 .daycard--done{border-color:var(--ok-line)}
 .daycard--rest{border-style:dashed; background:var(--surface-2)}
+.daycard--today{border-color:var(--accent-line); box-shadow:0 0 0 3px var(--accent-soft)}
 .check{width:22px; height:22px; border-radius:50%; background:var(--ok); display:grid; place-items:center; flex:none; color:#fff}
 
 /* ================= notes ================= */
@@ -568,6 +569,17 @@ td .en{font-size:17px; font-weight:700}
 }
 .g5__yawn-ic{width:40px; height:40px; flex:none; color:var(--ink)}
 .g5__yawn span{font-size:12.5px; color:var(--ink-2); line-height:1.35}
+
+/* ================= 开课日期（规格 §5 末条新增） ================= */
+.linklike{
+  background:none; border:none; padding:0; margin:0; font:inherit; cursor:pointer;
+  color:var(--cons); text-decoration:underline;
+}
+.linklike:hover{color:var(--ink)}
+.startdate-input{
+  font-family:var(--dis); font-size:14px; padding:7px 10px; border-radius:10px;
+  border:1px solid var(--line-2); background:var(--surface); color:var(--ink);
+}
 </style>
 
 
@@ -1597,6 +1609,39 @@ if(!isPlainObject(state)) state = {days:{}};
 if(!isPlainObject(state.days)) state.days = {};
 
 /* ==================================================================
+   开课日期（规格 §5 末条，2026-08-29 晚新增，P2 收官后增补）：面向"文件分发
+   给多个家庭"场景，每个家庭在自己浏览器里设置 Day1 对应的日历日。
+   state.startDate/state.startDatePromptDismissed 跟 state.days 同级——是
+   state 顶层字段，不属于 state.games（不是某个游戏的成绩，是全局的一次性
+   设置），清洗紧跟在 state.days 清洗后面做，同一批"读取即清洗"逻辑。
+   仅做温和指路：不锁、不自动跳转、不催，计算日落在 [1,7] 外一律静默 null。
+   ================================================================== */
+function isValidDateStr(s){
+  if(typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y,m,d] = s.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  // 用回填法核对是不是真实日历日（比如 2026-02-30 会被 Date 自动进位成 3 月
+  // 2 号，进位后年/月/日跟原始输入对不上就说明原始输入根本不是合法日期）。
+  return dt.getFullYear() === y && dt.getMonth() === m-1 && dt.getDate() === d;
+}
+if(!isValidDateStr(state.startDate)) delete state.startDate;
+if(typeof state.startDatePromptDismissed !== 'boolean') state.startDatePromptDismissed = false;
+
+function todayDayN(){
+  if(!isValidDateStr(state.startDate)) return null;
+  const [y,m,d] = state.startDate.split('-').map(Number);
+  const start = new Date(y, m-1, d);           // 本地零点，不用 UTC 字符串差（时区坑）
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());   // 也取本地零点
+  const n = Math.round((today - start) / 86400000) + 1;
+  return (n >= 1 && n <= 7) ? n : null;   // 未开课/超一周一律 null，调用方据此静默
+}
+function formatDateZh(s){
+  const [, m, d] = s.split('-').map(Number);
+  return `${m}月${d}日`;
+}
+
+/* ==================================================================
    state.games —— schema 整体建立 + 读取清洗（规格 §6.1/§6.2，S3 落地）。
    容器类字段只接受非 null、非数组的普通对象，否则整体重建默认（不动 state.days）；
    字段级按范围清洗，数组/对象整体替换不深合并，不做 schemaVersion。
@@ -2063,8 +2108,20 @@ function clearPageTimers(){
 function renderHome(){
   clearPageTimers();
   const doneCount = DAYS.filter(d=>dayDone(d.n)).length;
+  const todayN = todayDayN();
   document.getElementById('app').innerHTML = `
   <div class="wrap">
+    ${(!state.startDate && !state.startDatePromptDismissed) ? `
+    <div class="pnote" style="margin-bottom:20px">
+      <span class="pnote__ico">${ART.bulb}</span>
+      <div class="pnote__b" style="flex:1">
+        设置开课日期后，每天打开会自动标出今天学哪一天（可跳过）。
+        <div data-startdate-ctl style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn--ok" data-startdate-act="reveal">设置</button>
+          <button class="btn btn--ghost" data-startdate-act="skip">不用了</button>
+        </div>
+      </div>
+    </div>` : ''}
     <section class="hero">
       <p class="hero__eyebrow">第 1 周 · 共 40 周</p>
       <h1>六个声音，<br>拼出第一本书</h1>
@@ -2085,9 +2142,10 @@ function renderHome(){
     <div class="daygrid">
       ${DAYS.map(d=>{
         const done = dayDone(d.n);
-        return `<button class="daycard ${done?'daycard--done':''} ${d.rest?'daycard--rest':''}" data-goto="${d.n}">
+        const isToday = todayN === d.n;   // §5 末条：仅温和指路，todayDayN() 落在[1,7]外时恒为null，不会命中任何日卡
+        return `<button class="daycard ${done?'daycard--done':''} ${d.rest?'daycard--rest':''} ${isToday?'daycard--today':''}" data-goto="${d.n}">
           <div class="daycard__top">
-            <span class="daycard__n">${d.wd}</span>
+            <span class="daycard__n">${d.wd}${isToday?` <span class="pill pill--a">今天</span>`:''}</span>
             ${done?`<span class="check">${ART.tick}</span>`:`<span class="pill ${d.rest?'':'pill--c'}">${d.rest?'休息':'30 分钟'}</span>`}
           </div>
           <div class="daycard__t">${d.title}</div>
@@ -2163,6 +2221,13 @@ function renderHome(){
       <p>按字母表顺序教，学完 a b c 三个音只能拼出 cab 一个词，孩子要熬很久才有第一次成功。而 s a t i p n 这六个音能组出 sat、sit、pin、pan、nap、tap、tip、snap、spin 二十多个真词——<b>孩子在第二天就能尝到「我自己读出来了」的滋味。</b></p>
       <p>这和你教中文识字时先教「人、口、手」而不是按笔画顺序，是同一个道理：<b>先给他能立刻用起来的东西。</b></p>
       <p class="foot__credits">音素示范音来自 Freesound 用户 margo_heston 的 <a href="https://freesound.org/people/margo_heston/packs/12249/" target="_blank" rel="noopener noreferrer">English Phonemes</a> 音包（<a href="https://creativecommons.org/licenses/by-nc/4.0/deed.zh" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>，已降噪并裁剪），本页仅供家庭与课堂免费使用，请勿用于商业用途。字体 Andika、Baloo 2 以 OFL 许可内嵌。</p>
+      <p class="foot__credits" style="margin-top:10px">
+        开课日期：${state.startDate ? `已设 ${formatDateZh(state.startDate)}` : '未设置'}
+        <span data-startdate-ctl style="display:inline-flex;gap:8px;align-items:center;margin-left:6px">
+          <button class="linklike" data-startdate-act="reveal">修改</button>
+          ${state.startDate ? `<button class="linklike" data-startdate-act="clear">清除</button>` : ''}
+        </span>
+      </p>
     </footer>
   </div>`;
   renderDots(0);
@@ -3603,6 +3668,29 @@ document.addEventListener('click', e=>{
       stepHasExam ? celebrateConfetti() : celebrateNat();
     }
     return;
+  }
+
+  // 开课日期（规格 §5 末条）：首页顶部提示条 + 页脚常设入口共用同一套委托，
+  // 两处都用 [data-startdate-ctl] 包一层容器，"设置/修改"把该容器 innerHTML
+  // 换成 input+确认；"确认"从同一个容器里找那个 input 读值。不锁不跳转，
+  // 全部落地为 renderHome() 整页重绘（跟 data-goto 的整页重绘同一惯例）。
+  const sdAct = e.target.closest('[data-startdate-act]');
+  if(sdAct){
+    const kind = sdAct.dataset.startdateAct;
+    if(kind === 'reveal'){
+      const ctl = sdAct.closest('[data-startdate-ctl]');
+      ctl.innerHTML = `<input type="date" class="startdate-input" value="${state.startDate||''}">
+        <button class="btn btn--ok" data-startdate-act="confirm">确认</button>`;
+      return;
+    }
+    if(kind === 'confirm'){
+      const ctl = sdAct.closest('[data-startdate-ctl]');
+      const val = ctl.querySelector('input[type="date"]').value;
+      if(isValidDateStr(val)){ state.startDate = val; save(); renderHome(); }
+      return;
+    }
+    if(kind === 'skip'){ state.startDatePromptDismissed = true; save(); renderHome(); return; }
+    if(kind === 'clear'){ delete state.startDate; save(); renderHome(); return; }
   }
 });
 
