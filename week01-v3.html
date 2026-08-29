@@ -807,6 +807,14 @@ const AudioBus = (() => {
       /* §2.3：切页或任何新逻辑请求都要使未消费的失败 continuation 失效、提示条消失 */
       hideAudioFailure();
     },
+    /* 音素键专用（预筛M4 裁定）：取消单词请求与 TTS，但不掐音素自身——
+       D3「音素教学行为不动」优先于 §2.2 字面：blend fast 模式 380ms 连发六音的
+       "挤在一起"教学效果正建立在音素间叠音上。单词↔音素互断语义保留。 */
+    stopForPhone(){
+      if(stopCurrent){ const fn = stopCurrent; stopCurrent = null; try{ fn(); }catch(e){} }
+      try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
+      hideAudioFailure();
+    },
     _registerStopper(fn){ stopCurrent = fn; },
     _clearStopper(fn){ if(stopCurrent === fn) stopCurrent = null; }
   };
@@ -834,7 +842,7 @@ function speakFallback(text, rate, onend, onerror){
   const u = new SpeechSynthesisUtterance(text);
   u.lang = (ttsVoice && ttsVoice.lang) || 'en-US';
   if(ttsVoice) u.voice = ttsVoice;
-  u.rate = rate || 0.9; u.pitch = 1.05;
+  u.rate = rate || 0.75; u.pitch = 1.05;   // 预筛M6：对齐 mp3 -20% 的教学语速基线
   if(onend) u.addEventListener('end', onend);
   if(onerror) u.addEventListener('error', onerror);
   try{ speechSynthesis.speak(u); }catch(e){ onerror && onerror(); }
@@ -906,9 +914,16 @@ const WordAudio = (() => {
       function finish(status){
         if(settled) return;
         settled = true;
+        seq++;   // 预筛H1：终结即在 token 层作废本请求，防迟到回调复活
         stopPhysical();
         AudioBus._clearStopper(stopper);
         resolve({status});
+      }
+
+      if(typeof key !== 'string' || !key){   // 预筛M5：空键=程序错误，静默不误导家长
+        console.warn('[WordAudio] empty key');
+        finish('cancelled');
+        return;
       }
 
       if(Guard.isReserved(key)){
@@ -918,14 +933,19 @@ const WordAudio = (() => {
       }
 
       function toFallback(){                // ④
-        if(!isCurrent()) return;
+        if(settled || !isCurrent()) return; // 预筛H1：已取消/已终结的请求不得复活成 TTS
         stopPhysical();                     // 阶段级失效：先停旧音源、清旧超时器
-        if(!ttsVoice){ finish('failed'); return; }
+        refreshTtsVoice();                  // 预筛M3：voiceschanged 异步，进兜底前现拉一次
+        if(!ttsVoice || window.__disableTtsFallback){ finish('failed'); return; }
         phase = 'fallback';
         timeoutId = setTimeout(() => { if(isCurrent() && phase === 'fallback') finish('failed'); }, 8000);
-        speakFallback(key, opts.rate,
-          () => { if(isCurrent() && phase === 'fallback') finish('ended'); },
-          () => { if(isCurrent() && phase === 'fallback') finish('failed'); });
+        /* Chrome/Edge：cancel() 后立刻 speak() 常被静默丢掉，错开一个短拍（v2 同款 workaround，预筛H2） */
+        setTimeout(() => {
+          if(settled || !isCurrent() || phase !== 'fallback') return;
+          speakFallback(key, opts.rate,
+            () => { if(isCurrent() && phase === 'fallback') finish('ended'); },
+            () => { if(isCurrent() && phase === 'fallback') finish('failed'); });
+        }, 60);
       }
 
       const src = WORD_AUDIO[key];
@@ -975,7 +995,7 @@ const Phone = (()=>{
   const cache = {};
   return { say(k){
     const src = PHONEME_AUDIO[k]; if(!src) return false;
-    AudioBus.stopAll();                     // R-9：作为新逻辑请求，先取消旧请求
+    AudioBus.stopForPhone();                // R-9 变体：断单词/TTS，音素间叠音保留（D3，预筛M4）
     let a = cache[k];
     if(!a){ a = new Audio(src); a.preload = 'auto'; cache[k] = a; }
     try{ a.currentTime = 0; a.play().catch(()=>{}); }catch(e){}
@@ -1552,7 +1572,7 @@ function blockHTML(b, ctx){
         <b>这是你要的那个「当场能验的尺子」。</b>下面五个词，孩子这一周<b>一个都没练过</b>——它们只由学过的六个音组成。能不能读出来，完全取决于他有没有真的掌握解码，而不是记住了什么。
       </div></div>
       <div class="wcards" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
-        ${['nit','sap','tan','pip','spit'].map(w=>`<div class="wcard">
+        ${RESERVED.map(w=>`<div class="wcard" style="pointer-events:none">
           <div class="wcard__w" style="font-size:28px;margin:10px 0 2px">${colorWord(w)}</div>
           <div class="wcard__zh">${W[w].zh}</div></div>`).join('')}
       </div>
@@ -1914,9 +1934,10 @@ function initPairs(){
       const act = e.target.closest('[data-act]');
       if(act && act.dataset.act === 'play'){
         target = pairs[cur][Math.floor(Math.random()*2)];
-        /* mp3 已按 -20% 语速生成，常速播放即教学语速；不再乘 playbackRate */
-        runAudioStage(() => WordAudio.play(target), () => {
-          runAudioStage(() => WordAudio.play(target), null);
+        /* mp3 已按 -20% 语速生成，常速即教学语速；仅答错纠正重播轻放慢（0.8）强调 */
+        const t = target;   // 预筛M5：target 是可变外层量，第二遍异步触发时可能已被置空
+        runAudioStage(() => WordAudio.play(t), () => {
+          runAudioStage(() => WordAudio.play(t), null);
         });
         msg.textContent = '听到的是哪一个？';
         opts.querySelectorAll('.pairbtn').forEach(b=>b.className='pairbtn');
@@ -2055,7 +2076,8 @@ document.addEventListener('click', e=>{
     const phrase = say.dataset.phrase;
     runAudioStage(() => WordAudio.play(word), () => {
       if(!phrase) return;
-      runAudioStage(() => WordAudio.play(phrase), null);
+      /* 词→词组之间留一口气（v2 为 380ms）；laterOnce 挂页面定时器，切页自动清（预筛L12） */
+      laterOnce(() => runAudioStage(() => WordAudio.play(phrase), null), 300);
     });
   }
 
