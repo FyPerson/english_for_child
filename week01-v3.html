@@ -1663,7 +1663,8 @@ function confirmWord(w, src){
   save();
 }
 function unconfirmWord(w, src){
-  if(!isPlainObject(state.games.confirms[w])) state.games.confirms[w] = {};
+  if(Guard.isReserved(w)){ console.warn('[confirms] blocked reserved word:', w); return; }
+  if(!isPlainObject(state.games.confirms[w])) return;   // 没有既有条目就不创建垃圾条目
   state.games.confirms[w][src] = false;
   save();
 }
@@ -2159,13 +2160,16 @@ function toggleStep(i, force){
   const body = el.querySelector('.step__body');
   const open = force != null ? force : body.hidden;
   if(!open){
-    // S3 预筛 M2 + 合并审 C1：折叠时清理该 step 子树内所有 G1 卡的挂起计时器/
-    // 陈旧回调，否则作答窗计时器会在隐藏节点上继续跑，重新展开时弹出一个"过期"
-    // 的反馈。仅当子树里真的有 G1 卡时才 AudioBus.stopAll()（停音频+清顶部失败
-    // 提示条的 continuation）——先停一次音频，再逐卡 _g1Reset() 复位 UI；不含
-    // G1 卡的普通 step 折叠不掐别处正在播的音频（比如别的 step 在放示范词）。
+    // S3 预筛 M2 + 合并审 C1 + T1 预筛 D8：折叠时清理该 step 子树内 G1/G2 卡的
+    // 挂起计时器/陈旧回调，否则计时器会在隐藏节点上继续跑，重新展开时弹出一个
+    // "过期"的反馈（G2 的长按计时器已用 laterOnce 纳入 pageTimers 会被同步清
+    // 掉，这里额外确保 AudioBus 也停）。子树里只要有 G1 卡或 G2 卡任一种，就
+    // AudioBus.stopAll()（停音频+清顶部失败提示条的 continuation）；_g1Reset()
+    // 只是 G1 卡自己的 UI 复位钩子，G2 没有同名机制，不调用。不含这两种卡的
+    // 普通 step 折叠不掐别处正在播的音频（比如别的 step 在放示范词）。
     const g1s = body.querySelectorAll('[data-g1-round]');
-    if(g1s.length){
+    const g2s = body.querySelectorAll('[data-g2]');
+    if(g1s.length || g2s.length){
       AudioBus.stopAll();
       g1s.forEach(g1=>{ if(g1._g1Reset) g1._g1Reset(); });
     }
@@ -2221,7 +2225,9 @@ function bindLongPress(el, fn, ms){
     if(timer) return;   // 已经在计时，重复 down（如触屏又派生 mousedown）不重开
     fill.style.transition = `transform ${ms}ms linear`;
     fill.style.transform = 'scaleX(1)';
-    timer = setTimeout(()=>{ timer = null; arm(); fn(); }, ms);
+    // D3：用 laterOnce 纳入 pageTimers——切页/切天时 clearPageTimers() 会把这个
+    // 计时器一并清掉，避免长按到一半离开、回调却在别的天/别的词上迟到触发。
+    timer = laterOnce(()=>{ timer = null; arm(); fn(); }, ms);
   }
   function cancel(){
     if(!timer) return;
@@ -2265,12 +2271,14 @@ function initG2(){
         <div class="g2__word"><span class="en" style="font-size:26px;font-weight:700">${colorWord(w)}</span>　<b>${d.zh}</b></div>
       </div>`;
     }
-    function playMergeSequence(onEnded){
+    // D6：参数化 w，调用处显式传"当前要播哪个词"，不再隐式读闭包里的 words[cur]——
+    // 合体后台播放期间用户可能已经翻页，音频不该跟着 cur 的新值跑偏。
+    function playMergeSequence(w, onEnded){
       // §2.3 阶段失败表 G2 行：慢速失败 retry=重播全序列；常速失败 retry=只重播常速。
       // runAudioStage 的失败 retry 语义天然满足——外层 retry 重新走整段（慢→常），
       // 内层 retry 只重放内层 playFn（常速）。
-      runAudioStage(() => WordAudio.play(words[cur], {rate:0.8}), () => {
-        runAudioStage(() => WordAudio.play(words[cur]), onEnded);
+      runAudioStage(() => WordAudio.play(w, {rate:0.8}), () => {
+        runAudioStage(() => WordAudio.play(w), onEnded);
       });
     }
 
@@ -2281,18 +2289,11 @@ function initG2(){
         <div class="blender__ctl"><button class="btn" data-act="merge">合体 ${ART.spk}</button></div>
       `;
     }
-    function renderMerging(){
-      const w = words[cur];
-      body.innerHTML = `
-        ${stageHTML(w, true)}
-        ${revealHTML(w)}
-        <p class="g2__ask">听……</p>
-        <div class="blender__ctl"><button class="btn btn--ghost" data-act="remerge">${ART.spk} 再放一遍</button></div>
-      `;
-      /* 音频被外部打断（点音素砖/词卡）时 cancelled 静默，onEnded 不触发——
-         「再放一遍」是本态的卡内恢复口（G1 interrupted 同款模式的轻量版） */
-      playMergeSequence(() => renderConfirm());
-    }
+    // D1（预筛 high，§2.3 字面"确认语义不依赖音频成功"）：点「合体」直接进确认
+    // 态——合体动画+插画+确认条一次性显示，不等音频。playMergeSequence 在后台
+    // 独立播，ended/failed/cancelled 结果如何都不影响这里已经可以长按确认；
+    // 删掉了原来的"听……"中间态与「再放一遍」按钮——重听已被下面的「再听一次」
+    // 覆盖（确认态/已确认态都有）。
     function renderConfirm(){
       const w = words[cur];
       body.innerHTML = `
@@ -2308,9 +2309,12 @@ function initG2(){
           <button class="btn btn--ghost" data-act="retry">再试一次</button>
         </div>
       `;
+      playMergeSequence(w, null);   // 后台播，ended 不需要任何 UI 变化（D1）
+      const myIdx = cur;   // D2：长按回调按索引守卫，不靠字符串比较闭包里的 w
       bindLongPress(body.querySelector('.g2__confirm'), ()=>{
+        if(cur !== myIdx) return;   // 长按期间已经翻页/切天，不落到别的词上
         confirmWord(w, 'g2');
-        if(words[cur] === w) renderConfirmed();   // 长按满 1 秒期间没翻页才落到当前词
+        renderConfirmed();
       }, 1000);
     }
     function renderConfirmed(){
@@ -2319,7 +2323,10 @@ function initG2(){
         ${stageHTML(w, true)}
         ${revealHTML(w)}
         <p class="g2__ask g2__ask--ok">${ART.tick} 已确认</p>
-        <div class="blender__ctl"><button class="btn btn--ghost" data-act="unconfirm">撤销</button></div>
+        <div class="blender__ctl">
+          <button class="btn btn--ghost" data-act="replay">${ART.spk} 再听一次</button>
+          <button class="btn btn--ghost" data-act="unconfirm">撤销</button>
+        </div>
       `;
     }
     function draw(){
@@ -2339,9 +2346,8 @@ function initG2(){
       }
       const act = e.target.closest('[data-act]');
       if(!act) return;
-      if(act.dataset.act === 'merge'){ renderMerging(); return; }
-      if(act.dataset.act === 'remerge'){ renderMerging(); return; }   // 打断后卡内恢复：重放全序列
-      if(act.dataset.act === 'replay'){ playMergeSequence(null); return; }
+      if(act.dataset.act === 'merge'){ renderConfirm(); return; }
+      if(act.dataset.act === 'replay'){ playMergeSequence(words[cur], null); return; }
       if(act.dataset.act === 'retry'){ renderBlocks(); return; }
       if(act.dataset.act === 'unconfirm'){ unconfirmWord(words[cur], 'g2'); renderConfirm(); return; }
     });
