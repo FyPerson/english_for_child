@@ -2304,6 +2304,12 @@ function toggleStep(i, force){
     // 也是纯本地 setTimeout，跟 G6 闪卡同理独立清理，不进上面的 AudioBus 分支。
     // _g5Reset() 清计时+收起可能已出现的打哈欠角标，不结算不动 confirms。
     body.querySelectorAll('[data-g5]').forEach(g5=>{ if(g5._g5Reset) g5._g5Reset(); });
+  } else {
+    // F3（P2 末审）：展开是 G5"从这一刻起 12 分钟"计时的唯一起点——折叠
+    // 期间、以及页面刚渲染出来但还没被点开过，都不算数。_g5Resume() 会先
+    // 按 examRecorded 重渲染一次（锁状态可能在折叠期间已经变了），确认
+    // 解锁才补计时；其余游戏没有这类"进入计时"语义，不需要对称的展开钩子。
+    body.querySelectorAll('[data-g5]').forEach(g5=>{ if(g5._g5Resume) g5._g5Resume(); });
   }
   body.hidden = !open;
   el.classList.toggle('step--open', open);
@@ -2538,6 +2544,10 @@ function initG3(){
     let uiState = 'idle';   // idle|playing|waiting|feedback|audioFailed|interrupted|done
     let answered = false, pendingTimer = null;
     let roundToken = 0;
+    // F6（P2 末审）：沿用 v2 的 dupArt 判断——词对两词共用同一张插画时（本周
+    // sat/sit 都是 art:'natSit'），开门展示这张图不提供任何区分信息，反而
+    // 让"开门有图"这件事显得随意；两词若插画不同才在答对开门时展示。
+    const dupArt = !!(W[pair[0]] && W[pair[1]] && W[pair[0]].art && W[pair[0]].art === W[pair[1]].art);
 
     function clearPending(){ if(pendingTimer){ clearTimeout(pendingTimer); pendingTimer = null; } }
     function buildQueue(){
@@ -2545,17 +2555,21 @@ function initG3(){
       for(let i=0;i<10;i++) q.push(pair[Math.floor(Math.random()*2)]);
       return q;
     }
-    function doorHTML(w, cls, disabled){
+    // F6：showArt 只在"答对、开门显示"那一刻由调用方明确传入要亮哪扇门，
+    // 其余状态（播放中/等待作答/答错/失败/打断）一律不传，即不渲染插画——
+    // 等待态不该提前用图片剧透答案，这也是本条修法的字面要求。
+    function doorHTML(w, cls, disabled, showArt){
       const d = W[w] || {zh:'', art:null};
+      const art = (showArt && d.art) ? illHTML(d.art, 56) : '';
       return `<button class="pairbtn ${cls||''}" data-g3-door="${w}" ${disabled?'disabled':''}>
-        ${d.art?illHTML(d.art,56):''}
+        ${art}
         <span class="pairbtn__w">${colorWord(w)}</span>
         <span class="wcard__zh">${d.zh}</span>
       </button>`;
     }
-    function stageHTML(disabled, clsByWord){
+    function stageHTML(disabled, clsByWord, artWord){
       clsByWord = clsByWord || {};
-      return `<div class="pair">${pair.map(w=>doorHTML(w, clsByWord[w], disabled)).join('')}</div>`;
+      return `<div class="pair">${pair.map(w=>doorHTML(w, clsByWord[w], disabled, w === artWord)).join('')}</div>`;
     }
     function progressLine(){ return `<p class="g1__progress">第 ${qi+1} / ${queue.length} 题　对 ${correct}</p>`; }
     function restartBtn(){ return `<button class="btn btn--ghost" data-g3-act="restart">重新开始这一轮</button>`; }
@@ -2590,18 +2604,26 @@ function initG3(){
     function renderFeedback(isRight, picked, target){
       uiState = 'feedback';
       const cls = {}; cls[picked] = isRight ? 'pairbtn--right' : 'pairbtn--wrong';
+      // F6：只有答对才"开门显示插画"，且要绕开 dupArt（两词同图时不显示）。
+      const artWord = (isRight && !dupArt) ? target : null;
       body.innerHTML = `
-        ${stageHTML(true, cls)}
+        ${stageHTML(true, cls, artWord)}
         <p class="g1__hint">${isRight ? '对啦！' : '再听听看'}</p>
         <div class="g1__ctl">${restartBtn()}</div>
         ${progressLine()}
       `;
       if(!isRight){
         // §2.3 G3 答错纠正重播行：失败不阻塞（该题已判错计分），只出提示条，
-        // 不影响下面的 advance() 照常推进下一题。
-        WordAudio.play(target).then(r=>{
-          if(r.status === 'failed') showAudioFailure({ retry(){ WordAudio.play(target); } });
-        });
+        // 不影响下面的 advance() 照常推进下一题。F4（P2 末审）：改走
+        // runAudioStage 包装——同一条失败提示条点"重试"仍会再挂一次失败处理
+        // （T-2 可重武装，不是一次性）；playFn 内部先比对 roundToken，用户点
+        // 重试时如果题已经翻篇（advance 早于点击发生），就不再真放这条纠正音、
+        // 也不再弹新的失败条，避免旧题的提示污染新题。
+        const myToken = roundToken;
+        runAudioStage(
+          () => (myToken === roundToken ? WordAudio.play(target) : Promise.resolve({status:'cancelled'})),
+          () => {}
+        );
       }
       clearPending();
       pendingTimer = laterOnce(()=>advance(), 900);
@@ -2714,7 +2736,10 @@ function initG4(){
     let word = null, slots = [], usedTileIdx = [], errorCount = 0;
     let uiState = 'idle';   // idle|playing|placing|feedback|audioFailed|interrupted
     let roundToken = 0;
+    let feedbackTimer = null;   // F1（P2 末审）：600ms 摆错回退计时器句柄，供换词/重置时主动清掉
     const correctWords = new Set();   // 摆对过的词（session 内），达 3 只出软提示不锁
+
+    function clearFeedbackTimer(){ if(feedbackTimer){ clearTimeout(feedbackTimer); feedbackTimer = null; } }
 
     function renderOrders(){
       const rows = G4_WORDS.map(w=>{
@@ -2769,6 +2794,7 @@ function initG4(){
     }
 
     function playQuestion(){
+      clearFeedbackTimer();   // F1：换题/重播前先清掉可能还没触发的600ms摆错回退计时器
       const myToken = ++roundToken;
       uiState = 'playing';
       body.innerHTML = `<p class="g1__hint">听……</p>`;
@@ -2785,6 +2811,7 @@ function initG4(){
       });
     }
     function pickWord(w){
+      clearFeedbackTimer();   // F1：换词时若上一词还挂着摆错回退计时器，直接作废
       word = w;
       slots = new Array(w.length).fill(null);
       usedTileIdx = [];
@@ -2811,6 +2838,38 @@ function initG4(){
       }
       renderPlacing();
     }
+    // F2（P2 末审）：拼对反馈按 confirms[word].g4 分支绘制——未确认=长按钮，
+    // 已确认=「✓ 已确认」+「撤销」。换词/长按确认/点撤销都会重新走这里，
+    // 单一出口，不会有"明明已确认却还看到长按钮"这类分叉遗漏。
+    function renderConfirmFeedback(){
+      const myWord = word;
+      const confirmed = !!(state.games.confirms[myWord] && state.games.confirms[myWord].g4);
+      if(confirmed){
+        body.innerHTML = `
+          <div class="g4__slots">${slotsHTML('g1__target--pop')}</div>
+          <p class="g1__hint" style="color:var(--ok)">${ART.tick} 已确认</p>
+          <div class="blender__ctl"><button class="btn btn--ghost" data-g4-act="unconfirm">撤销</button></div>
+        `;
+        return;
+      }
+      body.innerHTML = `
+        <div class="g4__slots">${slotsHTML('g1__target--pop')}</div>
+        <p class="g1__hint">拼对了！他自己指读了吗？</p>
+        <div class="blender__ctl">
+          <button class="btn btn--ok g4__confirm" data-g4-act="confirm">
+            <span class="g2__confirm-fill" data-longpress-fill></span>
+            <span class="g2__confirm-label">按住 1 秒确认</span>
+          </button>
+        </div>
+      `;
+      bindLongPress(body.querySelector('.g4__confirm'), ()=>{
+        if(word !== myWord) return;   // 长按期间已经换词/换单，不落到别的词上（同 G2 D2）
+        confirmWord(myWord, 'g4');
+        renderOrders();
+        renderConfirmFeedback();   // 切到"已确认+撤销"视图，不是简单文案替换
+      }, 1000);
+    }
+
     function validate(){
       const spelled = slots.join('');
       const isRight = spelled === word;
@@ -2819,34 +2878,31 @@ function initG4(){
         errorCount = 0;
         correctWords.add(word);
         renderOrders();   // 摆对3个的软提示要当场出现，不等换词/长按确认才刷新
-        const myWord = word;
-        body.innerHTML = `
-          ${`<div class="g4__slots">${slotsHTML('g1__target--pop')}</div>`}
-          <p class="g1__hint">拼对了！他自己指读了吗？</p>
-          <div class="blender__ctl">
-            <button class="btn btn--ok g4__confirm" data-g4-act="confirm">
-              <span class="g2__confirm-fill" data-longpress-fill></span>
-              <span class="g2__confirm-label">按住 1 秒确认</span>
-            </button>
-          </div>
-        `;
-        bindLongPress(body.querySelector('.g4__confirm'), ()=>{
-          if(word !== myWord) return;   // 长按期间已经换词/换单，不落到别的词上（同 G2 D2）
-          confirmWord(myWord, 'g4');
-          renderOrders();
-        }, 1000);
+        renderConfirmFeedback();
       } else {
         errorCount++;
+        // F1（P2 末审）：捕获当前令牌，600ms 回调执行前复校"令牌一致+word非空+
+        // 仍处feedback态"三要素——任何一条不满足都说明这期间换词/换单/被重置/
+        // 又摆错重新判过了，回退渲染只会覆盖新状态甚至在 word=null 时直接炸掉
+        // （renderPlacing 里 word.length 会抛异常），所以只信这次判断，别的都不做。
+        const myToken = roundToken;
         body.innerHTML = `<div class="g4__slots">${slotsHTML('g1__target--shake')}</div><p class="g1__hint">摆错了，点错的字母撤回再试</p>`;
         // 抖动后槽内内容不清空（"可重摆"字面）——回到 placing 让孩子自己撤回改摆
-        laterOnce(()=>{ renderPlacing(); }, 600);
+        clearFeedbackTimer();
+        feedbackTimer = laterOnce(()=>{
+          feedbackTimer = null;
+          if(myToken !== roundToken || !word || uiState !== 'feedback') return;
+          renderPlacing();
+        }, 600);
       }
     }
 
     function reset(){
       // U2/P1 硬约定：折叠清理钩子——终止当前进行态回 idle，roundToken 作废
-      // 使陈旧的 playQuestion 回调彻底失效。
+      // 使陈旧的 playQuestion 回调彻底失效。F1：连带清掉可能还没触发的
+      // 600ms 摆错回退计时器，避免它在折叠后的隐藏节点上迟到触发。
       roundToken++;
+      clearFeedbackTimer();
       word = null; slots = []; usedTileIdx = []; errorCount = 0;
       renderOrders();
       renderIdle();
@@ -2866,6 +2922,16 @@ function initG4(){
       if(slot){ retractSlot(+slot.dataset.g4Slot); return; }
       const act = e.target.closest('[data-g4-act]');
       if(act && act.dataset.g4Act === 'resume'){ playQuestion(); return; }
+      if(act && act.dataset.g4Act === 'unconfirm'){
+        // F2：撤销只在当前仍处 feedback 态、且撤销的是眼前这个词时才有意义——
+        // 按钮本身只会在这个状态下渲染出来，点击是同步的没有异步延迟，这里的
+        // uiState 检查是防御性的，不是实际会被触发的分支。
+        if(uiState !== 'feedback' || !word) return;
+        unconfirmWord(word, 'g4');
+        renderOrders();
+        renderConfirmFeedback();
+        return;
+      }
     });
   });
 }
@@ -2882,10 +2948,13 @@ function initG4(){
    Guard.isReserved 前置——先查保留词才查白名单，双保险（白名单本身也不含
    保留词，build 自检⑤已断言）。全程不放任何词音频（真词也不放，§4.5 明确
    要求，避免"真词播/保留词不播"这种反过来的差异信号）；积木点击仍可通过
-   全局 data-sayph 委托听音素。12 分钟计时到点/未清空前出 Nat 打哈欠角标
-   （非覆盖层，卡片右下角，点击消失），_g5Reset 清计时+收角标，不结算不动
-   confirms。程序锁的另一半在 checks 点击委托里（见该处 U3 注释）：勾选/
-   取消勾选周检第一项后主动广播 _g5Refresh()，不然锁定态要等切页才刷新。
+   全局 data-sayph 委托听音素。12 分钟计时从"这一步真正展开可见"那一刻起算
+   （F3，P2 末审）：resume() 是唯一起表口，toggleStep 展开含 G5 的 step 时
+   调用；折叠期间/尚未展开过的初始挂载都不计时。到点/未提前清空前出 Nat
+   打哈欠角标（非覆盖层，卡片右下角，点击消失），_g5Reset 清计时+收角标，
+   不结算不动 confirms。程序锁的另一半在 checks 点击委托里（见该处 U3 注释）：
+   勾选/取消勾选周检第一项后广播 _g5Refresh()，它会看一眼这一步当前是否
+   展开，可见才顺带重新起表，不可见只重画不计时。
    ================================================================== */
 function initG5(){
   document.querySelectorAll('[data-g5]').forEach(root=>{
@@ -2963,7 +3032,9 @@ function initG5(){
         return;
       }
       root.classList.remove('g5--locked');
-      if(!idleTimerId) armIdleTimer();   // 解锁后只要还没计时就补上一个，覆盖"折叠清理后重新触发渲染"这条路径
+      // F3（P2 末审）：12 分钟计时的"起表"职责从这里挪到 resume()——render()
+      // 只管纯渲染，不管这一刻卡片是不是真的对孩子可见（step 可能还折叠着）。
+      // 计时该不该起，交给唯一知道"是否刚展开"这件事的调用方去决定。
       const full = slots.every(c=>c!==null);
       let spelled = null, isRealWord = false;
       if(full){
@@ -3030,7 +3101,24 @@ function initG5(){
       // 交互）都会用 examRecorded() 重新判定一次，语义上是等价的。
     }
     root._g5Reset = reset;
-    root._g5Refresh = render;
+
+    // F3（P2 末审）：resume() 是"这一刻起 12 分钟"的唯一起点——先按最新锁
+    // 状态重画（examRecorded 可能在这期间勾选/取消勾选变了），确认解锁后
+    // 才补计时。toggleStep 展开含 G5 的 step 时直接调用（那一刻必定可见，
+    // 不需要再判断）；_g5Refresh 是 checks 委托那边的广播口，可见性未知，
+    // 自己看一眼 step__body.hidden 再决定是 resume() 还是只 render()——
+    // 初始挂载/折叠期间的卡片永远不会被这条路径起表，天然满足"隐藏态不计时"。
+    function resume(){
+      render();
+      if(!examRecorded(day)) return;   // 锁定：render() 已经清过计时+锁定视图
+      if(!idleTimerId) armIdleTimer();
+    }
+    root._g5Resume = resume;
+    root._g5Refresh = function(){
+      const stepBody = root.closest('.step__body');
+      const visible = !!stepBody && !stepBody.hidden;
+      if(visible) resume(); else render();
+    };
 
     render();
     root.addEventListener('click', e=>{
