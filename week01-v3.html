@@ -365,6 +365,9 @@ details.fold>summary:hover{background:var(--surface-2)}
 .flash{display:flex; flex-direction:column; align-items:center; gap:18px; padding:26px 16px; border:1px solid var(--line); border-radius:var(--r-l); background:var(--surface-2)}
 .flash__face{font-family:var(--en); font-size:clamp(50px,12vw,82px); font-weight:700; line-height:1; min-height:94px; display:grid; place-items:center}
 .flash__meta{font-size:13px; color:var(--ink-3); font-variant-numeric:tabular-nums}
+.flash__metarow{display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap}
+.flash__record{font-size:13px; color:var(--ink-3); font-variant-numeric:tabular-nums}
+.flash__record--new{color:var(--ok); font-weight:700}
 
 /* ================= checklist ================= */
 .checks{display:flex; flex-direction:column; gap:10px}
@@ -1424,7 +1427,7 @@ const DAYS = [
   steps:[
     {t:'全部六个音，计时快闪', min:4, blocks:[
       {b:'lead', html:'今天的快闪要<b>计时</b>。六个音过一遍，看多少秒。记下来，明年再看这个数字会很有意思。'},
-      {b:'flash', items:[{k:'s'},{k:'a'},{k:'t'},{k:'i'},{k:'p'},{k:'n'}], timed:true}
+      {b:'flash', items:[{k:'s'},{k:'a'},{k:'t'},{k:'i'},{k:'p'},{k:'n'}], timed:true, recKey:'flash_sounds'}
     ]},
     {t:'词卡闪读', min:6, blocks:[
       {b:'lead', html:'30 秒挑战：能读出几个？读错不停，跳过继续。'},
@@ -1433,7 +1436,7 @@ const DAYS = [
         {k:'w',v:'pan'},{k:'w',v:'nap'},{k:'w',v:'tap'},{k:'w',v:'tip'},{k:'w',v:'sip'},
         {k:'w',v:'tin'},{k:'w',v:'an'},{k:'w',v:'at'},{k:'w',v:'it'},{k:'w',v:'in'},
         {k:'w',v:'snap'},{k:'w',v:'spin'},{k:'w',v:'nip'}
-      ], timed:true}
+      ], timed:true, recKey:'flash_words'}
     ]},
     {t:'读《Nat Naps》', min:15, blocks:[
       {b:'lead', html:'<strong>三遍法，一遍都不能少：</strong>'},
@@ -1574,6 +1577,13 @@ function dayDone(n){
   const got = Object.values(st.checks).filter(Boolean).length;
   return got >= total;
 }
+
+/* ==================================================================
+   G6 计时闪卡纪录（规格 §4.6）：isBetter 统一比较 helper；onNewRecord 是
+   T2 留的空钩子，T3 落地 Nat 庆祝时在这里加动画，本批不改调用方签名。
+   ================================================================== */
+function isBetter(metric, a, b){ return metric === 'elapsed' ? a < b : a > b; }
+function onNewRecord(recKey){ /* T3 填充：Nat 庆祝动画 */ }
 
 /* ==================================================================
    confirms 写入层（规格 §6.1，T1/G2 落地；G4/G5 后续复用同一套）。
@@ -1746,10 +1756,15 @@ function blockHTML(b, ctx){
   }
 
   case 'flash':{
+    // G6：recKey 从 block 数据读（规格 §4.6 点1），不从 uid/DOM 顺序推；
+    // 非 timed 组或无 recKey 的 timed 组一律不出纪录行。
     const id = 'fl' + (ctx.uid++);
-    return `<div class="flash" id="${id}" data-items='${JSON.stringify(b.items)}' data-timed="${b.timed?1:0}">
+    return `<div class="flash" id="${id}" data-items='${JSON.stringify(b.items)}' data-timed="${b.timed?1:0}" data-reckey="${b.recKey||''}">
       <div class="flash__face" data-face></div>
-      <div class="flash__meta" data-meta></div>
+      <div class="flash__metarow">
+        <div class="flash__meta" data-meta></div>
+        ${b.recKey?`<div class="flash__record" data-record></div>`:''}
+      </div>
       <div class="blender__ctl">
         <button class="btn btn--ghost" data-act="prev">${ART.arrowL}</button>
         <button class="btn" data-act="next">下一张 ${ART.arrowR}</button>
@@ -2511,12 +2526,17 @@ function initG1(){
 function initFlash(){
   document.querySelectorAll('[data-items]').forEach(root=>{
     const items = JSON.parse(root.dataset.items);
-    const timed = root.dataset.timed === '1';
+    const recKey = root.dataset.reckey || '';   // 'flash_sounds' | 'flash_words' | ''（无纪录）
     let i = 0, t0 = null, timer = null;
+    let timing = false, count = 0, autoStopTimer = null;   // 仅 flash_words 用
     const face = root.querySelector('[data-face]');
     const meta = root.querySelector('[data-meta]');
     const tip = root.querySelector('[data-tip]');
-    function draw(){
+    const record = root.querySelector('[data-record]');
+
+    function fmtValue(metric, v){ return metric === 'elapsed' ? v.toFixed(1) + ' 秒' : v + ' 张'; }
+
+    function drawCard(){
       const it = items[i];
       if(it.k === 'w'){
         face.innerHTML = `<span class="en">${colorWord(it.v)}</span>`;
@@ -2528,18 +2548,91 @@ function initFlash(){
       }
       meta.textContent = `${i+1} / ${items.length}`;
     }
+    function renderRecord(){
+      if(!record) return;
+      record.classList.remove('flash__record--new');
+      if(!recKey){ record.textContent = ''; return; }
+      const rec = state.games.flash[recKey];
+      record.textContent = rec ? `最好 ${fmtValue(rec.metric, rec.value)}` : '';
+    }
+    function draw(){ drawCard(); renderRecord(); }
+
+    // 规格 §4.6：isBetter(metric,a,b) 统一比较；破纪录写入+调 onNewRecord 空钩子
+    // （T3 落地 Nat 庆祝）；未破显示"本次/最好"两行。
+    function lockRecord(value){
+      if(!recKey) return;
+      const metric = FLASH_METRIC_BY_KEY[recKey];
+      const rec = state.games.flash[recKey];
+      const better = !rec || isBetter(metric, value, rec.value);
+      if(better){
+        state.games.flash[recKey] = {metric, value};
+        save();
+        onNewRecord(recKey);
+        if(record){ record.textContent = `新纪录！${fmtValue(metric, value)}`; record.classList.add('flash__record--new'); }
+      } else if(record){
+        record.textContent = `本次 ${fmtValue(metric, value)}　最好 ${fmtValue(rec.metric, rec.value)}`;
+        record.classList.remove('flash__record--new');
+      }
+    }
+
+    function stopTimerDisplay(){ if(timer){ clearInterval(timer); timer = null; } }
+    function clearAutoStop(){ if(autoStopTimer){ clearTimeout(autoStopTimer); autoStopTimer = null; } }
+    function resetTimerBtn(btn){ if(btn){ btn.textContent = '开始计时'; btn.classList.add('btn--ok'); } }
+
+    // flash_sounds：v2 秒表 toggle 语义不变——停表即完成，锁定 elapsed（>0 才有效）
+    function stopSounds(btn){
+      stopTimerDisplay();
+      resetTimerBtn(btn);
+      const elapsed = t0 ? (Date.now() - t0) / 1000 : 0;
+      t0 = null;
+      if(elapsed > 0) lockRecord(elapsed);
+    }
+
+    // flash_words：30 秒自动停 或 翻完第 18 张立即停（成绩=前进张数，上限 18）；
+    // 手动停＝中途退出，不记录（规格 §4.6 边界）。
+    function finishWords(shouldRecord, btn){
+      if(!timing) return;   // 防重复触发（18 张边界与 30 秒定时器可能先后都想收尾）
+      timing = false;
+      clearAutoStop();
+      stopTimerDisplay();
+      resetTimerBtn(btn);
+      if(shouldRecord) lockRecord(count);
+      else if(record){ record.textContent = '中途退出，本次不计入成绩'; record.classList.remove('flash__record--new'); }
+    }
+
     root.addEventListener('click', e=>{
       const act = e.target.closest('[data-act]');
       if(!act) return;
-      if(act.dataset.act === 'next'){ i = (i+1)%items.length; draw(); }
-      if(act.dataset.act === 'prev'){ i = (i-1+items.length)%items.length; draw(); }
+
+      if(act.dataset.act === 'next'){
+        if(recKey === 'flash_words' && timing){
+          count++;
+          if(count >= items.length){ drawCard(); finishWords(true, root.querySelector('[data-act="timer"]')); return; }
+          i++; drawCard();
+          return;
+        }
+        i = (i+1) % items.length; draw();
+        return;
+      }
+      if(act.dataset.act === 'prev'){
+        if(recKey === 'flash_words' && timing) return;   // 计时中不倒退，保持"前进张数"计数干净
+        i = (i-1+items.length) % items.length; draw();
+        return;
+      }
       if(act.dataset.act === 'timer'){
-        if(timer){ clearInterval(timer); timer = null; act.textContent = '开始计时'; act.classList.add('btn--ok'); return; }
+        if(recKey === 'flash_words'){
+          if(timing){ finishWords(false, act); return; }   // 手动停=中途退出，不记录
+          timing = true; t0 = Date.now(); i = 0; count = 0; draw();
+          act.classList.remove('btn--ok');
+          timer = everyTick(()=>{ act.textContent = ((Date.now()-t0)/1000).toFixed(1) + ' 秒　停'; }, 100);
+          autoStopTimer = laterOnce(()=> finishWords(true, act), 30000);
+          return;
+        }
+        // flash_sounds（或任何无 recKey 的 timed 组）：沿用 v2 秒表 toggle
+        if(timer){ stopSounds(act); return; }
         t0 = Date.now(); i = 0; draw();
         act.classList.remove('btn--ok');
-        timer = everyTick(()=>{
-          act.textContent = ((Date.now()-t0)/1000).toFixed(1) + ' 秒　停';
-        }, 100);
+        timer = everyTick(()=>{ act.textContent = ((Date.now()-t0)/1000).toFixed(1) + ' 秒　停'; }, 100);
       }
     });
     draw();
