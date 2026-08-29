@@ -473,8 +473,8 @@ def main() -> int:
     hr("自检⑦ 体积报告")
     delta = after_size - before_size
     print(f"注入前 {before_size/1024:.1f}KB → 注入后 {after_size/1024:.1f}KB（增量 {delta/1024:.1f}KB）")
-    if after_size > 1.2 * 1024 * 1024:
-        print(f"警告：HTML 总体积 {after_size/1024/1024:.2f}MB 超过 1.2MB 目标（不阻断，人工判断）")
+    if delta > 1.2 * 1024 * 1024:  # 规格 §1：预算对象是注入产生的“增量”，不是 HTML 总体积
+        print(f"警告：注入增量 {delta/1024/1024:.2f}MB 超过 1.2MB 预算（不阻断，人工判断）")
 
     hr("总结")
     print("PASS：七项自检全绿，已原子写出 week01-v3.html")
