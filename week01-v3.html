@@ -1288,6 +1288,14 @@ const G1_THEME = {
 const ANSWER_WINDOW_MS = 4000;
 
 /* ==================================================================
+   G3 两扇门 —— 分流常量（规格 v1.3 §3.2 静态判定结果冻结，与 build_audio.py
+   提取器 g3_pairs 源对齐）：词对两词全部字母 ⊆ 该天（含）之前已教音素集，
+   才进 G3；第一周静态判定只有 sat/sit 这一组（pat/pit、tap/tip 含未学字母
+   p，走 pair 块里的静态家长块）。不从 DAYS 推导，写死冻结。
+   ================================================================== */
+const G3_PAIRS = [['sat','sit']];
+
+/* ==================================================================
    WEEK — 七天课程
    ================================================================== */
 const DAYS = [
@@ -1826,14 +1834,33 @@ function blockHTML(b, ctx){
     </div>`;
 
   case 'pair':{
-    const id = 'pr' + (ctx.uid++);
-    return `<div id="${id}" data-pairs="${b.pairs.map(p=>p.join('|')).join(',')}">
-      <div class="pair" data-opts></div>
-      <div class="quizbar" style="margin-top:16px">
-        <button class="btn" data-act="play">${ART.spk} 听一个</button>
-        <button class="btn btn--ghost" data-act="next">换一组</button>
-      </div>
-      <p class="quizbar__msg" data-msg style="margin-top:10px"></p>
+    // G3 分流（v1.3 §3.2）：逐词对查 G3_PAIRS——命中→G3 两扇门游戏卡；未命中
+    // （字母超出已学范围）→静态家长块，无任何音频入口/判定交互，纯文字+插画
+    // 提示"只听不读"。pair 块原始数据（b.pairs/b.note）不动，只是渲染分流。
+    const cards = b.pairs.map(p=>{
+      const inG3 = G3_PAIRS.some(gp => gp[0]===p[0] && gp[1]===p[1]);
+      if(inG3){
+        const id = 'g3' + (ctx.uid++);
+        return `<div class="blender" id="${id}" data-g3-pair="${p.join(',')}">
+          <div data-g3-body></div>
+        </div>`;
+      }
+      return `<div class="blender">
+        <div class="pair">
+          ${p.map(w=>{
+            const d = W[w] || {zh:'', art:null};
+            return `<div class="pairbtn" style="pointer-events:none">
+              ${d.art?illHTML(d.art,56):''}
+              <span class="pairbtn__w">${colorWord(w)}</span>
+              <span class="wcard__zh">${d.zh}</span>
+            </div>`;
+          }).join('')}
+        </div>
+        <p class="lead" style="text-align:center;font-size:13px;margin-top:8px">只听不读——家长口播，孩子指认</p>
+      </div>`;
+    }).join('');
+    return `<div style="display:flex;flex-direction:column;gap:14px">
+      ${cards}
       ${b.note?`<p class="lead" style="text-align:center;font-size:13.5px;margin-top:4px">${b.note}</p>`:''}
     </div>`;
   }
@@ -2162,7 +2189,7 @@ function renderDay(n){
   </div>`;
 
   renderDots(n);
-  initG2(); initPairs(); initFlash(); initBook(); initG1();
+  initG2(); initG3(); initFlash(); initBook(); initG1();
   updateFinish(n);
   // 展开第一个未完成的步骤
   const firstOpen = document.querySelector('.step');
@@ -2176,19 +2203,21 @@ function toggleStep(i, force){
   const body = el.querySelector('.step__body');
   const open = force != null ? force : body.hidden;
   if(!open){
-    // S3 预筛 M2 + 合并审 C1 + T1 预筛 D8：折叠时清理该 step 子树内 G1/G2 卡的
-    // 挂起计时器/陈旧回调，否则计时器会在隐藏节点上继续跑，重新展开时弹出一个
-    // "过期"的反馈。子树里只要有 G1 卡或 G2 卡任一种，就 AudioBus.stopAll()
-    // （停音频+清顶部失败提示条的 continuation）；_g1Reset() 是 G1 卡自己的
-    // UI 复位钩子；_g2Cancel()（E2）是 bindLongPress 返回的取消函数，收掉长按
-    // 中的确认计时。不含这两种卡的普通 step 折叠不掐别处正在播的音频（比如
-    // 别的 step 在放示范词）。
+    // S3 预筛 M2 + 合并审 C1 + T1 预筛 D8 + U1：折叠时清理该 step 子树内
+    // G1/G2/G3 卡的挂起计时器/陈旧回调，否则计时器会在隐藏节点上继续跑，
+    // 重新展开时弹出一个"过期"的反馈。子树里只要含这三种卡任一种，就
+    // AudioBus.stopAll()（停音频+清顶部失败提示条的 continuation）；
+    // _g1Reset()/_g3Reset() 是各自的 UI 复位钩子（"组件级 reset 钩子"默认
+    // 模式第三例延续到 G3）；_g2Cancel()（E2）是 bindLongPress 返回的取消
+    // 函数。不含这三种卡的普通 step 折叠不掐别处正在播的音频。
     const g1s = body.querySelectorAll('[data-g1-round]');
     const g2s = body.querySelectorAll('[data-g2]');
-    if(g1s.length || g2s.length){
+    const g3s = body.querySelectorAll('[data-g3-pair]');
+    if(g1s.length || g2s.length || g3s.length){
       AudioBus.stopAll();
       g1s.forEach(g1=>{ if(g1._g1Reset) g1._g1Reset(); });
       g2s.forEach(g2=>{ if(g2._g2Cancel) g2._g2Cancel(); });
+      g3s.forEach(g3=>{ if(g3._g3Reset) g3._g3Reset(); });
     }
     // E1（合并审 high）：G6 闪卡计时器不经过 AudioBus（不放音频，纯本地
     // setInterval/setTimeout），独立清理，不复用上面那条"仅当有G1/G2才停
@@ -2414,56 +2443,180 @@ function initG2(){
   });
 }
 
-function initPairs(){
-  document.querySelectorAll('[data-pairs]').forEach(root=>{
-    const pairs = root.dataset.pairs.split(',').map(p=>p.split('|'));
-    let cur = 0, target = null, score = 0, tries = 0;
-    const opts = root.querySelector('[data-opts]');
-    const msg = root.querySelector('[data-msg]');
-    function draw(){
-      // 同图词对（如 sat / sit 都用坐下图）不显示插图：图片区分不了两个词，反而添乱
-      const arts = pairs[cur].map(w=>(W[w]||{}).art);
-      const dupArt = !!arts[0] && arts[0] === arts[1];
-      opts.innerHTML = pairs[cur].map(w=>{
-        const d = W[w] || {zh:'',art:null};
-        return `<button class="pairbtn" data-w="${w}">
-          ${(d.art && !dupArt)?illHTML(d.art,56):''}
-          <span class="pairbtn__w">${colorWord(w)}</span>
-          <span class="wcard__zh">${d.zh}</span>
-        </button>`;
-      }).join('');
-      target = null;
-      msg.textContent = '先点「听一个」，再让孩子选他听到的那个';
+/* ==================================================================
+   G3 两扇门（pair 替换，v1.3 §4.3 + §2.3 失败表 G3 行）：10 题，每题从词对
+   随机播一个词→点两扇写词的门之一；对=开门+插画+计对，错=门晃动+自动重播
+   一次该词（该题已计错，重播不阻塞）。doors.best 只增不减。状态机形态参照
+   initG1（roundToken 陈旧回调防护/audioFailed/interrupted 同款），第一周
+   只有一张卡，不需要跨卡互斥，但 reset 钩子照挂（P1 硬约定①）。
+   ================================================================== */
+function initG3(){
+  document.querySelectorAll('[data-g3-pair]').forEach(root=>{
+    const pair = root.dataset.g3Pair.split(',');
+    const body = root.querySelector('[data-g3-body]');
+    let queue = [], qi = 0, correct = 0;
+    let uiState = 'idle';   // idle|playing|waiting|feedback|audioFailed|interrupted|done
+    let answered = false, pendingTimer = null;
+    let roundToken = 0;
+
+    function clearPending(){ if(pendingTimer){ clearTimeout(pendingTimer); pendingTimer = null; } }
+    function buildQueue(){
+      const q = [];
+      for(let i=0;i<10;i++) q.push(pair[Math.floor(Math.random()*2)]);
+      return q;
     }
-    root.addEventListener('click', e=>{
-      const act = e.target.closest('[data-act]');
-      if(act && act.dataset.act === 'play'){
-        target = pairs[cur][Math.floor(Math.random()*2)];
-        /* mp3 已按 -20% 语速生成，常速即教学语速；仅答错纠正重播轻放慢（0.8）强调 */
-        const t = target;   // 预筛M5：target 是可变外层量，第二遍异步触发时可能已被置空
-        runAudioStage(() => WordAudio.play(t), () => {
-          runAudioStage(() => WordAudio.play(t), null);
+    function doorHTML(w, cls, disabled){
+      const d = W[w] || {zh:'', art:null};
+      return `<button class="pairbtn ${cls||''}" data-g3-door="${w}" ${disabled?'disabled':''}>
+        ${d.art?illHTML(d.art,56):''}
+        <span class="pairbtn__w">${colorWord(w)}</span>
+        <span class="wcard__zh">${d.zh}</span>
+      </button>`;
+    }
+    function stageHTML(disabled, clsByWord){
+      clsByWord = clsByWord || {};
+      return `<div class="pair">${pair.map(w=>doorHTML(w, clsByWord[w], disabled)).join('')}</div>`;
+    }
+    function progressLine(){ return `<p class="g1__progress">第 ${qi+1} / ${queue.length} 题　对 ${correct}</p>`; }
+    function restartBtn(){ return `<button class="btn btn--ghost" data-g3-act="restart">重新开始这一轮</button>`; }
+
+    function renderIdle(){
+      uiState = 'idle';
+      body.innerHTML = `
+        <p class="g1__cmd">听发音，点对应的门</p>
+        <button class="btn btn--ok" data-g3-act="start">开始这一轮</button>
+      `;
+    }
+    function renderPlaying(){
+      uiState = 'playing';
+      body.innerHTML = `
+        ${stageHTML(true)}
+        <p class="g1__hint">听……</p>
+        <div class="g1__ctl">${restartBtn()}</div>
+        ${progressLine()}
+      `;
+    }
+    // §4.3 明确"无作答时限"（与 G1 不同）：ended 后只解锁两扇门，不起计时器。
+    function renderWaiting(){
+      uiState = 'waiting';
+      answered = false;
+      body.innerHTML = `
+        ${stageHTML(false)}
+        <p class="g1__hint">点你听到的那扇门</p>
+        <div class="g1__ctl">${restartBtn()}</div>
+        ${progressLine()}
+      `;
+    }
+    function renderFeedback(isRight, picked, target){
+      uiState = 'feedback';
+      const cls = {}; cls[picked] = isRight ? 'pairbtn--right' : 'pairbtn--wrong';
+      body.innerHTML = `
+        ${stageHTML(true, cls)}
+        <p class="g1__hint">${isRight ? '对啦！' : '再听听看'}</p>
+        <div class="g1__ctl">${restartBtn()}</div>
+        ${progressLine()}
+      `;
+      if(!isRight){
+        // §2.3 G3 答错纠正重播行：失败不阻塞（该题已判错计分），只出提示条，
+        // 不影响下面的 advance() 照常推进下一题。
+        WordAudio.play(target).then(r=>{
+          if(r.status === 'failed') showAudioFailure({ retry(){ WordAudio.play(target); } });
         });
-        msg.textContent = '听到的是哪一个？';
-        opts.querySelectorAll('.pairbtn').forEach(b=>b.className='pairbtn');
-        return;
       }
-      if(act && act.dataset.act === 'next'){ cur = (cur+1)%pairs.length; draw(); return; }
-      const pick = e.target.closest('[data-w]');
-      if(pick){
-        if(!target){ runAudioStage(() => WordAudio.play(pick.dataset.w), null); return; }
-        tries++;
-        const right = pick.dataset.w === target;
-        if(right) score++;
-        pick.className = 'pairbtn ' + (right ? 'pairbtn--right' : 'pairbtn--wrong');
-        msg.innerHTML = right
-          ? `<span style="color:var(--ok)">对了，是 <b class="en">${target}</b></span>　·　${score} / ${tries}`
-          : `<span style="color:var(--vowel)">是 <b class="en">${target}</b>，再听一次</span>　·　${score} / ${tries}`;
-        if(!right){ const missed = target; runAudioStage(() => WordAudio.play(missed, {rate:0.8}), null); }
-        target = null;
-      }
+      clearPending();
+      pendingTimer = laterOnce(()=>advance(), 900);
+    }
+    function renderAudioFailed(){
+      uiState = 'audioFailed';
+      body.innerHTML = `
+        ${stageHTML(true)}
+        <p class="g1__hint">声音没放出来</p>
+        <div class="g1__ctl">
+          <button class="btn btn--ok" data-g3-act="resume">再试一次</button>
+          ${restartBtn()}
+        </div>
+        ${progressLine()}
+      `;
+    }
+    function renderInterrupted(){
+      uiState = 'interrupted';
+      body.innerHTML = `
+        ${stageHTML(true)}
+        <p class="g1__hint">刚才被打断了</p>
+        <div class="g1__ctl">
+          <button class="btn btn--ok" data-g3-act="resume">继续这一题</button>
+          ${restartBtn()}
+        </div>
+        ${progressLine()}
+      `;
+    }
+    function renderResult(){
+      uiState = 'done';
+      const passed = correct >= 7;
+      const gs = state.games.doors;
+      gs.best = Math.max(gs.best || 0, correct);
+      save();
+      body.innerHTML = `
+        <div class="g1__result"><b>${correct} / ${queue.length}</b>　${passed?'通关啦':'再来一轮就能通关（对 7 题过）'}<br>历史最好：${gs.best} / ${queue.length}</div>
+        <div class="g1__ctl"><button class="btn btn--ok" data-g3-act="restart">再玩一轮</button></div>
+      `;
+      if(passed) celebrateNat();
+    }
+
+    function playQuestion(){
+      const myToken = ++roundToken;   // 陈旧回调防护，同 G1
+      renderPlaying();
+      const target = queue[qi];
+      WordAudio.play(target).then(r=>{
+        if(myToken !== roundToken) return;
+        if(r.status === 'ended') renderWaiting();
+        else if(r.status === 'failed'){
+          renderAudioFailed();
+          showAudioFailure({ retry(){ playQuestion(); } });
+        }
+        else if(r.status === 'cancelled'){
+          if(uiState === 'playing') renderInterrupted();   // 同 G1：外部请求打断，非本卡主动收场
+        }
+      });
+    }
+    function pickDoor(w){
+      if(uiState !== 'waiting' || answered) return;   // 播放期/反馈期锁答边界
+      answered = true;
+      clearPending();
+      const target = queue[qi];
+      const isRight = w === target;
+      if(isRight) correct++;
+      renderFeedback(isRight, w, target);
+    }
+    function advance(){
+      clearPending();
+      if(qi + 1 < queue.length){ qi++; playQuestion(); }
+      else renderResult();
+    }
+    function reset(){
+      roundToken++;
+      clearPending();
+      renderIdle();
+    }
+    root._g3Reset = reset;   // P1 硬约定①：折叠清理钩子
+
+    function startRound(){
+      clearPending();
+      queue = buildQueue();
+      qi = 0; correct = 0; answered = false;
+      playQuestion();
+    }
+
+    renderIdle();
+    root.addEventListener('click', e=>{
+      const door = e.target.closest('[data-g3-door]');
+      if(door && !door.disabled){ pickDoor(door.dataset.g3Door); return; }
+      const act = e.target.closest('[data-g3-act]');
+      if(!act) return;
+      const kind = act.dataset.g3Act;
+      if(kind === 'start' || kind === 'restart'){ startRound(); return; }
+      if(kind === 'resume'){ playQuestion(); return; }
     });
-    draw();
   });
 }
 
