@@ -525,7 +525,9 @@ td .en{font-size:17px; font-weight:700}
 
 /* ================= Nat 庆祝 + 彩带覆盖层（v3 新增，规格 §5） ================= */
 .celebrate-overlay{
-  position:fixed; inset:0; z-index:400; cursor:pointer; overflow:hidden;
+  /* E3：非模态——pointer-events:none 让点击穿透到底层（比如 G1 气球），
+     "点击跳过"改走 document 捕获阶段的一次性监听，不靠这层自己接点击 */
+  position:fixed; inset:0; z-index:400; pointer-events:none; overflow:hidden;
   display:flex; align-items:center; justify-content:center;
   background:rgba(35,43,40,.08);
   animation:celebrate-fade .18s ease;
@@ -1634,7 +1636,15 @@ function confettiHTML(){
   }).join('');
 }
 let activeCelebration = null;
+let activeCelebrationDismissClick = null;
 function dismissCelebration(){
+  // E3：覆盖层非模态，"点击跳过"走 document 捕获阶段的一次性监听（见
+  // showCelebration）——这里统一负责把那个监听也摘掉，不管是被它自己触发
+  // 摘掉、还是被 2 秒定时器/切页(clearPageTimers)提前调用摘掉，都不留残留。
+  if(activeCelebrationDismissClick){
+    document.removeEventListener('click', activeCelebrationDismissClick, {capture:true});
+    activeCelebrationDismissClick = null;
+  }
   if(activeCelebration){ activeCelebration.remove(); activeCelebration = null; }
 }
 function showCelebration(bodyHTML){
@@ -1642,9 +1652,13 @@ function showCelebration(bodyHTML){
   const el = document.createElement('div');
   el.className = 'celebrate-overlay';
   el.innerHTML = bodyHTML;
-  el.addEventListener('click', dismissCelebration);   // 一律可点击跳过
   activeCelebration = el;
   document.body.appendChild(el);
+  // E3：非模态——覆盖层本身 pointer-events:none 不拦截点击，"点击跳过"改用
+  // document 捕获阶段一次性监听：点击先被这里看到（收层），再继续往下传播
+  // 到真正的目标元素（比如 G1 气球），穿透和收层两不误。
+  activeCelebrationDismissClick = () => dismissCelebration();
+  document.addEventListener('click', activeCelebrationDismissClick, {capture:true, once:true});
   setTimeout(()=>{ if(activeCelebration === el) dismissCelebration(); }, 2000);
 }
 function celebrateNat(){ showCelebration(confettiHTML() + `<div class="celebrate-nat">${nat('cheer')}</div>`); }
@@ -1657,12 +1671,15 @@ function onNewRecord(recKey){ celebrateNat(); }
    五入口守卫之一：confirmWord 入口拒绝保留词（§2.5 入口 5）。
    ================================================================== */
 function confirmWord(w, src){
+  // E7：src 必须是已知来源之一，防止未来新代码手滑传错字符串键名污染 schema
+  if(!CONFIRM_SOURCES.includes(src)){ console.warn('[confirms] unknown src:', src); return; }
   if(Guard.isReserved(w)){ console.warn('[confirms] blocked reserved word:', w); return; }
   if(!isPlainObject(state.games.confirms[w])) state.games.confirms[w] = {};
   state.games.confirms[w][src] = true;
   save();
 }
 function unconfirmWord(w, src){
+  if(!CONFIRM_SOURCES.includes(src)){ console.warn('[confirms] unknown src:', src); return; }
   if(Guard.isReserved(w)){ console.warn('[confirms] blocked reserved word:', w); return; }
   if(!isPlainObject(state.games.confirms[w])) return;   // 没有既有条目就不创建垃圾条目
   state.games.confirms[w][src] = false;
@@ -1769,12 +1786,10 @@ function blockHTML(b, ctx){
     // G2 积木合体（v1.3 §4.2）：v2 的 one/fast/merge 三按钮结构不保留——逐个点
     // 字母积木听音素承接①的教学功能，合体后的慢速整词音承接②，词表数据不动。
     const id = 'g2' + (ctx.uid++);
+    // E5：导航条改由 initG2 每次 draw() 动态生成（首词禁 prev、末词换"完成"），
+    // 这里只留一个挂载点。
     return `<div class="blender" id="${id}" data-g2="${b.words.join(',')}">
-      <div class="g2__nav">
-        <button class="iconbtn" data-act="prev" aria-label="上一个词">${ART.arrowL}</button>
-        <span class="g2__pg" data-pg></span>
-        <button class="iconbtn" data-act="next" aria-label="下一个词">${ART.arrowR}</button>
-      </div>
+      <div class="g2__nav" data-nav></div>
       <div data-body></div>
     </div>`;
   }
@@ -2066,10 +2081,11 @@ function taughtWords(){
 
 function renderWall(){
   clearPageTimers();
-  const words = taughtWords();
-  // T4 战利品墙：derivedTrophies() 派生点亮态，不另存；保留词从不出现在这里——
-  // taughtWords() 只并集 DAYS 里 b.b==='words' 块的 items，grep 复核过 RESERVED
-  // 五词从未出现在任何 words 块字面量里，不需要额外过滤。
+  // E6（§2.5 入口4 运行层守卫补齐）：taughtWords() 目前不含保留词（grep 已复
+  // 核过），但作为渲染入口本身应该有一道运行层过滤兜底，不完全依赖"数据源
+  // 现状恰好干净"这个前提——万一以后 DAYS 的 words 块混进保留词，这里能挡住。
+  const words = taughtWords().filter(w => !Guard.isReserved(w));
+  // T4 战利品墙：derivedTrophies() 派生点亮态，不另存。
   const trophies = new Set(derivedTrophies());
   const litCount = words.filter(w => trophies.has(w)).length;
   document.getElementById('app').innerHTML = `
@@ -2162,17 +2178,23 @@ function toggleStep(i, force){
   if(!open){
     // S3 预筛 M2 + 合并审 C1 + T1 预筛 D8：折叠时清理该 step 子树内 G1/G2 卡的
     // 挂起计时器/陈旧回调，否则计时器会在隐藏节点上继续跑，重新展开时弹出一个
-    // "过期"的反馈（G2 的长按计时器已用 laterOnce 纳入 pageTimers 会被同步清
-    // 掉，这里额外确保 AudioBus 也停）。子树里只要有 G1 卡或 G2 卡任一种，就
-    // AudioBus.stopAll()（停音频+清顶部失败提示条的 continuation）；_g1Reset()
-    // 只是 G1 卡自己的 UI 复位钩子，G2 没有同名机制，不调用。不含这两种卡的
-    // 普通 step 折叠不掐别处正在播的音频（比如别的 step 在放示范词）。
+    // "过期"的反馈。子树里只要有 G1 卡或 G2 卡任一种，就 AudioBus.stopAll()
+    // （停音频+清顶部失败提示条的 continuation）；_g1Reset() 是 G1 卡自己的
+    // UI 复位钩子；_g2Cancel()（E2）是 bindLongPress 返回的取消函数，收掉长按
+    // 中的确认计时。不含这两种卡的普通 step 折叠不掐别处正在播的音频（比如
+    // 别的 step 在放示范词）。
     const g1s = body.querySelectorAll('[data-g1-round]');
     const g2s = body.querySelectorAll('[data-g2]');
     if(g1s.length || g2s.length){
       AudioBus.stopAll();
       g1s.forEach(g1=>{ if(g1._g1Reset) g1._g1Reset(); });
+      g2s.forEach(g2=>{ if(g2._g2Cancel) g2._g2Cancel(); });
     }
+    // E1（合并审 high）：G6 闪卡计时器不经过 AudioBus（不放音频，纯本地
+    // setInterval/setTimeout），独立清理，不复用上面那条"仅当有G1/G2才停
+    // 音频"的分支（会误停同页其它正在播的音频组件）。_flashReset() 只终止
+    // 计时、不结算不写成绩。
+    body.querySelectorAll('[data-reckey]').forEach(fl=>{ if(fl._flashReset) fl._flashReset(); });
   }
   body.hidden = !open;
   el.classList.toggle('step--open', open);
@@ -2241,6 +2263,7 @@ function bindLongPress(el, fn, ms){
   el.addEventListener('touchstart', start, {passive:false});
   el.addEventListener('touchend', cancel);
   el.addEventListener('touchcancel', cancel);
+  return cancel;   // E2：调用方可拿到 cancel 自己在需要的时机（如折叠清理）主动收掉长按
 }
 
 /* ==================================================================
@@ -2252,8 +2275,9 @@ function initG2(){
   document.querySelectorAll('[data-g2]').forEach(root=>{
     const words = root.dataset.g2.split(',');
     let cur = 0;
-    const pg = root.querySelector('[data-pg]');
+    const nav = root.querySelector('[data-nav]');
     const body = root.querySelector('[data-body]');
+    root._g2Cancel = null;   // E2：bindLongPress 返回的 cancel，供折叠清理调用
 
     function meaningArt(w, size){
       const d = W[w] || {zh:'', art:null};
@@ -2284,6 +2308,7 @@ function initG2(){
 
     function renderBlocks(){
       const w = words[cur];
+      root._g2Cancel = null;
       body.innerHTML = `
         ${stageHTML(w, false)}
         <div class="blender__ctl"><button class="btn" data-act="merge">合体 ${ART.spk}</button></div>
@@ -2311,14 +2336,17 @@ function initG2(){
       `;
       playMergeSequence(w, null);   // 后台播，ended 不需要任何 UI 变化（D1）
       const myIdx = cur;   // D2：长按回调按索引守卫，不靠字符串比较闭包里的 w
-      bindLongPress(body.querySelector('.g2__confirm'), ()=>{
+      // E2：存下 cancel，供折叠清理（toggleStep）在长按进行中主动收掉
+      root._g2Cancel = bindLongPress(body.querySelector('.g2__confirm'), ()=>{
         if(cur !== myIdx) return;   // 长按期间已经翻页/切天，不落到别的词上
         confirmWord(w, 'g2');
+        root._g2Cancel = null;
         renderConfirmed();
       }, 1000);
     }
     function renderConfirmed(){
       const w = words[cur];
+      root._g2Cancel = null;
       body.innerHTML = `
         ${stageHTML(w, true)}
         ${revealHTML(w)}
@@ -2329,26 +2357,50 @@ function initG2(){
         </div>
       `;
     }
+    // E5（合并审 med，§4.2"过完即结束"字面）：线性导航，不取模循环——首词禁用
+    // 「上一词」，末词把「下一词」换成「完成」进完成视图；「再来一遍」回第一词。
+    function renderNav(){
+      const isLast = cur === words.length - 1;
+      nav.innerHTML = `
+        <button class="iconbtn" data-act="prev" aria-label="上一个词" ${cur===0?'disabled':''}>${ART.arrowL}</button>
+        <span class="g2__pg">${cur+1} / ${words.length}</span>
+        ${isLast
+          ? `<button class="btn btn--ok" data-act="finish">完成</button>`
+          : `<button class="iconbtn" data-act="next" aria-label="下一个词">${ART.arrowR}</button>`}
+      `;
+    }
+    function renderDone(){
+      root._g2Cancel = null;
+      nav.innerHTML = '';
+      body.innerHTML = `
+        <div class="g2__reveal"><p class="g2__ask g2__ask--ok">${ART.tick} 今天的积木都拼完啦</p></div>
+        <div class="blender__ctl"><button class="btn btn--ok" data-act="restart">再来一遍</button></div>
+      `;
+    }
     function draw(){
-      pg.textContent = `${cur+1} / ${words.length}`;
+      renderNav();
       const w = words[cur];
       const confirmed = !!(state.games.confirms[w] && state.games.confirms[w].g2);
       confirmed ? renderConfirmed() : renderBlocks();
     }
 
     root.addEventListener('click', e=>{
-      const nav = e.target.closest('[data-act="prev"],[data-act="next"]');
-      if(nav){
-        AudioBus.stopAll();
-        cur = nav.dataset.act === 'next' ? (cur+1) % words.length : (cur-1+words.length) % words.length;
-        draw();
+      const navBtn = e.target.closest('[data-act="prev"],[data-act="next"],[data-act="finish"],[data-act="restart"]');
+      if(navBtn){
+        const a = navBtn.dataset.act;
+        if(a === 'prev'){ if(cur > 0){ AudioBus.stopAll(); cur--; draw(); } return; }
+        if(a === 'next'){ if(cur < words.length - 1){ AudioBus.stopAll(); cur++; draw(); } return; }
+        if(a === 'finish'){ AudioBus.stopAll(); renderDone(); return; }
+        if(a === 'restart'){ cur = 0; draw(); return; }
         return;
       }
       const act = e.target.closest('[data-act]');
       if(!act) return;
       if(act.dataset.act === 'merge'){ renderConfirm(); return; }
       if(act.dataset.act === 'replay'){ playMergeSequence(words[cur], null); return; }
-      if(act.dataset.act === 'retry'){ renderBlocks(); return; }
+      // E4：先停掉后台可能还在跑的慢→常序列（含清顶部失败条 continuation），
+      // 再回积木态——不让"再试一次"之后，上一轮的常速音频冷不丁冒出来。
+      if(act.dataset.act === 'retry'){ AudioBus.stopAll(); renderBlocks(); return; }
       if(act.dataset.act === 'unconfirm'){ unconfirmWord(words[cur], 'g2'); renderConfirm(); return; }
     });
 
@@ -2646,6 +2698,9 @@ function initFlash(){
     function lockRecord(value){
       if(!recKey) return;
       const metric = FLASH_METRIC_BY_KEY[recKey];
+      // E8：elapsed 在写入/比较前统一舍入到 0.1 秒，与 fmtValue 的 toFixed(1)
+      // 显示口径一致，避免"显示相同但比较结果不同"的边界不一致。
+      if(metric === 'elapsed') value = Math.round(value * 10) / 10;
       const rec = state.games.flash[recKey];
       const better = !rec || isBetter(metric, value, rec.value);
       if(better){
@@ -2662,6 +2717,19 @@ function initFlash(){
     function stopTimerDisplay(){ if(timer){ clearInterval(timer); timer = null; } }
     function clearAutoStop(){ if(autoStopTimer){ clearTimeout(autoStopTimer); autoStopTimer = null; } }
     function resetTimerBtn(btn){ if(btn){ btn.textContent = '开始计时'; btn.classList.add('btn--ok'); } }
+
+    // E1（合并审 high）：折叠清理专用钩子——终止任何正在进行的计时，不结算/
+    // 不写成绩（比 finishWords(false,...) 更彻底：连"中途退出"提示文案都不
+    // 留，因为折叠时看不到，没必要）。G1/_g1Reset、G2/_g2Cancel 之后，"组件
+    // 级 reset 钩子"是所有带计时器/进行态组件的默认模式，本函数是第三例。
+    root._flashReset = function(){
+      clearAutoStop();
+      stopTimerDisplay();
+      timing = false;
+      t0 = null;
+      count = 0;
+      resetTimerBtn(root.querySelector('[data-act="timer"]'));
+    };
 
     // flash_sounds：v2 秒表 toggle 语义不变——停表即完成，锁定 elapsed（>0 才有效）
     function stopSounds(btn){
