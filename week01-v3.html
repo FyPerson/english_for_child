@@ -140,6 +140,9 @@ button.tile:hover{transform:translateY(-3px); box-shadow:var(--shadow-2)}
 button.tile:active{transform:translateY(1px)}
 .tile--lit{animation:pop .42s cubic-bezier(.34,1.56,.64,1)}
 @keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.16) translateY(-6px)}100%{transform:scale(1)}}
+/* 积木点亮墙（v3 新增）：点亮=正常 v/c 配色 + 微光；未点亮=灰暗态，覆盖 v/c 配色 */
+.tile--wallon{box-shadow:0 0 0 3px var(--ok-soft), 0 0 14px -2px var(--ok)}
+.tile--walloff{color:var(--ink-3) !important; border-color:var(--line-2) !important; background:var(--sunk) !important}
 
 /* ================= generic ================= */
 .section-h{display:flex; align-items:center; gap:12px; margin:44px 0 18px}
@@ -1207,6 +1210,14 @@ const BOOK = {
 };
 
 /* ==================================================================
+   积木点亮墙 —— 首教日映射（规格 v1.3 §5 第一条，冻结常量）。
+   "首教日" = 该音第一次出现教学的最小 day 编号；Day6 是复习日，sounds 是
+   六音全集，不参与本映射（规格明确排除），所以这里写死不从 DAYS 推导。
+   点亮态不另存状态，每次渲染时现算 dayDone(FIRST_TEACH_DAY[c])。
+   ================================================================== */
+const FIRST_TEACH_DAY = { s:1, a:1, t:2, i:3, p:4, n:5 };
+
+/* ==================================================================
    G1 声音抓抓乐 —— 题库常量（规格 v1.3 §4.1，与 build_audio.py 提取器
    g1_rounds 源对齐，形状冻结：{ 轮:{ pos:[...4词], neg:[...4词] } }）
    ================================================================== */
@@ -1815,7 +1826,10 @@ function renderHome(){
       <h1>六个声音，<br>拼出第一本书</h1>
       <p class="hero__lede">这一周只教六个字母音：<b class="en">s a t i p n</b>。为什么是这六个——因为它们能组合出二十多个真单词。<b>第二天孩子就能读出人生第一个自己拼出来的英文词，第六天读完第一本书。</b></p>
       <div class="tiles-demo">
-        ${'satipn'.split('').map(c=>`<button class="tile ${vowels.includes(c)?'tile--v':'tile--c'}" data-sayph="${c}" aria-label="听 ${SOUNDS[c].ipa} 的发音">${c}</button>`).join('')}
+        ${'satipn'.split('').map(c=>{
+          const lit = dayDone(FIRST_TEACH_DAY[c]);   // 积木点亮墙：不存状态，现算首教日是否已完成
+          return `<button class="tile ${vowels.includes(c)?'tile--v':'tile--c'} ${lit?'tile--wallon':'tile--walloff'}" data-sayph="${c}" aria-label="听 ${SOUNDS[c].ipa} 的发音${lit?'（已点亮）':''}">${c}</button>`;
+        }).join('')}
         <span style="font-size:28px;color:var(--ink-3);margin:0 6px">→</span>
         <button class="tile tile--c" data-say="sat" style="width:auto;padding:0 22px;font-size:34px">sat</button>
       </div>
