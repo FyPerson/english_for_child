@@ -2278,6 +2278,12 @@ function initG2(){
     const nav = root.querySelector('[data-nav]');
     const body = root.querySelector('[data-body]');
     root._g2Cancel = null;   // E2：bindLongPress 返回的 cancel，供折叠清理调用
+    /* 复审 #1：视图切换先真正取消旧长按计时再置空——裸置 null 会让并发输入下
+       到期的旧回调照常触发（索引守卫是第二层，最后一词完成视图 cur 不变时守不住） */
+    function cancelG2LongPress(){
+      if(root._g2Cancel){ try{ root._g2Cancel(); }catch(e){} }
+      root._g2Cancel = null;
+    }
 
     function meaningArt(w, size){
       const d = W[w] || {zh:'', art:null};
@@ -2308,7 +2314,7 @@ function initG2(){
 
     function renderBlocks(){
       const w = words[cur];
-      root._g2Cancel = null;
+      cancelG2LongPress();
       body.innerHTML = `
         ${stageHTML(w, false)}
         <div class="blender__ctl"><button class="btn" data-act="merge">合体 ${ART.spk}</button></div>
@@ -2346,7 +2352,7 @@ function initG2(){
     }
     function renderConfirmed(){
       const w = words[cur];
-      root._g2Cancel = null;
+      cancelG2LongPress();
       body.innerHTML = `
         ${stageHTML(w, true)}
         ${revealHTML(w)}
@@ -2370,7 +2376,7 @@ function initG2(){
       `;
     }
     function renderDone(){
-      root._g2Cancel = null;
+      cancelG2LongPress();
       nav.innerHTML = '';
       body.innerHTML = `
         <div class="g2__reveal"><p class="g2__ask g2__ask--ok">${ART.tick} 今天的积木都拼完啦</p></div>
@@ -2700,7 +2706,7 @@ function initFlash(){
       const metric = FLASH_METRIC_BY_KEY[recKey];
       // E8：elapsed 在写入/比较前统一舍入到 0.1 秒，与 fmtValue 的 toFixed(1)
       // 显示口径一致，避免"显示相同但比较结果不同"的边界不一致。
-      if(metric === 'elapsed') value = Math.round(value * 10) / 10;
+      if(metric === 'elapsed') value = Math.max(0.1, Math.round(value * 10) / 10);   // 复审 #2：舍入后保底 0.1s，防 0 秒非法纪录（清洗要求 elapsed>0 且小优下 0 不可破）
       const rec = state.games.flash[recKey];
       const better = !rec || isBetter(metric, value, rec.value);
       if(better){
