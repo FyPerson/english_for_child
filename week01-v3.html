@@ -1630,10 +1630,10 @@ if(typeof state.startDatePromptDismissed !== 'boolean') state.startDatePromptDis
 function todayDayN(){
   if(!isValidDateStr(state.startDate)) return null;
   const [y,m,d] = state.startDate.split('-').map(Number);
-  const start = new Date(y, m-1, d);           // 本地零点，不用 UTC 字符串差（时区坑）
+  /* 审查 #1：本地年月日提取后用 Date.UTC 生成纯日历序号相减——不是把输入当 UTC 解析，
+     而是把"日历日"映射到无 DST/无午夜长度变化的数轴上，彻底消除时区切换边界的 ±1 天 */
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());   // 也取本地零点
-  const n = Math.round((today - start) / 86400000) + 1;
+  const n = Math.round((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(y, m-1, d)) / 86400000) + 1;
   return (n >= 1 && n <= 7) ? n : null;   // 未开课/超一周一律 null，调用方据此静默
 }
 function formatDateZh(s){
@@ -3679,14 +3679,21 @@ document.addEventListener('click', e=>{
     const kind = sdAct.dataset.startdateAct;
     if(kind === 'reveal'){
       const ctl = sdAct.closest('[data-startdate-ctl]');
-      ctl.innerHTML = `<input type="date" class="startdate-input" value="${state.startDate||''}">
-        <button class="btn btn--ok" data-startdate-act="confirm">确认</button>`;
+      ctl.innerHTML = `<input type="date" class="startdate-input" aria-label="Day1 开课日期" value="${state.startDate||''}">
+        <button class="btn btn--ok" data-startdate-act="confirm">确认</button>
+        <span class="startdate-hint" style="display:none;font-size:12px;color:var(--vowel)">先选个日期哦</span>`;
+      const inp = ctl.querySelector('input[type="date"]');
+      if(inp) inp.focus();   // 审查 #3：替换后转移焦点
       return;
     }
     if(kind === 'confirm'){
       const ctl = sdAct.closest('[data-startdate-ctl]');
       const val = ctl.querySelector('input[type="date"]').value;
       if(isValidDateStr(val)){ state.startDate = val; save(); renderHome(); }
+      else{   // 审查 #2：空值/无效不再静默——温和提示，不催
+        const hint = ctl.querySelector('.startdate-hint');
+        if(hint) hint.style.display = 'inline';
+      }
       return;
     }
     if(kind === 'skip'){ state.startDatePromptDismissed = true; save(); renderHome(); return; }
