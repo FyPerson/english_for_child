@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>声音积木六年计划</title>
+
+<style>
+:root{
+  --ground:#EEF1EE; --surface:#FFFFFF; --surface-2:#F6F9F5;
+  --ink:#232B28; --ink-2:#5C6B65; --ink-3:#8A968F;
+  --line:#DBE2DC; --line-2:#C6D0C8;
+  --vowel:#D8492F; --vowel-soft:#FBE7E2; --vowel-line:#F0BEB2;
+  --cons:#1C6675; --cons-soft:#E0EEF1; --cons-line:#A9CFD7;
+  --accent:#DE9420; --accent-soft:#FBF0DA; --accent-line:#EFCE92;
+  --ok:#48874E; --ok-soft:#E4EFE4; --ok-line:#AACBAC;
+  --shadow-1:0 1px 2px rgba(35,43,40,.07);
+  --shadow-2:0 2px 4px rgba(35,43,40,.06), 0 10px 28px -14px rgba(35,43,40,.28);
+  --r-m:14px; --r-l:22px;
+  --en:"Andika","Segoe UI",system-ui,sans-serif;
+  --dis:"Baloo 2","Noto Sans SC",system-ui,sans-serif;
+  --zh:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#151A18; --surface:#1E2523; --surface-2:#242C29;
+    --ink:#E9EEEB; --ink-2:#A2AEA8; --ink-3:#78847E;
+    --line:#313A36; --line-2:#414C47;
+    --vowel:#F0785E; --vowel-soft:#3A211B; --vowel-line:#6B392E;
+    --cons:#5FB7C8; --cons-soft:#12313A; --cons-line:#2A5C68;
+    --accent:#EDB055; --accent-soft:#372A13; --accent-line:#6A5124;
+    --ok:#72B978; --ok-soft:#1B2D1D; --ok-line:#3A5C3D;
+    --shadow-1:0 1px 2px rgba(0,0,0,.4);
+    --shadow-2:0 2px 4px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#151A18; --surface:#1E2523; --surface-2:#242C29;
+  --ink:#E9EEEB; --ink-2:#A2AEA8; --ink-3:#78847E;
+  --line:#313A36; --line-2:#414C47;
+  --vowel:#F0785E; --vowel-soft:#3A211B; --vowel-line:#6B392E;
+  --cons:#5FB7C8; --cons-soft:#12313A; --cons-line:#2A5C68;
+  --accent:#EDB055; --accent-soft:#372A13; --accent-line:#6A5124;
+  --ok:#72B978; --ok-soft:#1B2D1D; --ok-line:#3A5C3D;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4);
+  --shadow-2:0 2px 4px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--zh); font-size:16px; line-height:1.85; -webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--dis); line-height:1.3; text-wrap:balance; margin:0}
+p{margin:0}
+.en{font-family:var(--en); font-weight:700}
+.v{color:var(--vowel)}
+:focus-visible{outline:3px solid var(--accent); outline-offset:3px}
+@media (prefers-reduced-motion:reduce){*{transition:none !important; scroll-behavior:auto !important}}
+html{scroll-behavior:smooth}
+
+/* ---------- shell ---------- */
+.shell{max-width:1180px; margin:0 auto; padding:0 24px; display:grid;
+  grid-template-columns:210px minmax(0,1fr); gap:52px; align-items:start}
+.toc{position:sticky; top:26px; padding:26px 0; font-size:13.5px}
+.toc__t{font-family:var(--dis); font-weight:700; font-size:11px; letter-spacing:.14em;
+  color:var(--ink-3); text-transform:uppercase; margin-bottom:14px}
+.toc a{display:block; color:var(--ink-2); text-decoration:none; padding:5px 0 5px 13px;
+  border-left:2px solid var(--line); line-height:1.5; transition:all .15s}
+.toc a:hover{color:var(--cons); border-left-color:var(--cons); padding-left:17px}
+.toc a b{font-family:var(--dis); color:var(--ink-3); margin-right:7px; font-size:12px}
+main{padding:26px 0 90px; min-width:0}
+
+/* ---------- hero ---------- */
+.hero{padding:34px 0 10px; border-bottom:1px solid var(--line); margin-bottom:8px}
+.hero__eyebrow{font-size:12px; font-weight:700; letter-spacing:.14em; color:var(--cons);
+  text-transform:uppercase; margin-bottom:14px}
+.hero h1{font-size:clamp(32px,5vw,46px); letter-spacing:-.01em; margin-bottom:18px}
+.hero__lede{font-size:17.5px; color:var(--ink-2); max-width:62ch; line-height:1.8}
+.meta{display:flex; gap:10px; flex-wrap:wrap; margin:26px 0 30px}
+.meta span{font-size:12.5px; font-weight:600; padding:5px 13px; border-radius:99px;
+  border:1px solid var(--line-2); color:var(--ink-2); background:var(--surface)}
+
+/* ---------- sections ---------- */
+section{padding-top:52px; scroll-margin-top:20px}
+section>h2{font-size:27px; display:flex; align-items:baseline; gap:14px; margin-bottom:8px}
+section>h2 i{font-family:var(--dis); font-style:normal; font-size:14px; font-weight:700;
+  color:var(--cons); background:var(--cons-soft); border-radius:8px; padding:3px 10px; flex:none}
+.sub{color:var(--ink-3); font-size:14.5px; margin-bottom:24px; padding-left:2px}
+h3{font-size:19px; margin:32px 0 12px}
+h4{font-size:16px; margin:22px 0 8px; color:var(--ink-2)}
+p+p{margin-top:14px}
+main p{max-width:64ch}
+strong{font-weight:700}
+em{font-style:normal; color:var(--vowel); font-weight:700}
+
+ul,ol{max-width:64ch; padding-left:22px; margin:14px 0; display:flex;
+  flex-direction:column; gap:9px}
+li::marker{color:var(--ink-3)}
+
+/* ---------- callout ---------- */
+.call{border:1px solid var(--line); border-left:4px solid var(--cons); background:var(--surface);
+  border-radius:0 var(--r-m) var(--r-m) 0; padding:18px 22px; margin:24px 0; max-width:66ch;
+  box-shadow:var(--shadow-1)}
+.call__l{font-family:var(--dis); font-size:11.5px; font-weight:700; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--cons); margin-bottom:7px}
+.call p{max-width:none}
+.call--key{border-left-color:var(--vowel); background:var(--vowel-soft); border-color:var(--vowel-line)}
+.call--key .call__l{color:var(--vowel)}
+.call--warn{border-left-color:var(--accent); background:var(--accent-soft); border-color:var(--accent-line)}
+.call--warn .call__l{color:var(--accent)}
+.call--ok{border-left-color:var(--ok); background:var(--ok-soft); border-color:var(--ok-line)}
+.call--ok .call__l{color:var(--ok)}
+
+/* ---------- table ---------- */
+.tw{overflow-x:auto; margin:22px 0; border:1px solid var(--line); border-radius:var(--r-m);
+  background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:14.5px; min-width:480px}
+th,td{padding:12px 16px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top}
+th{background:var(--surface-2); font-weight:700; font-size:12.5px; color:var(--ink-2);
+  letter-spacing:.03em; white-space:nowrap}
+tr:last-child td{border-bottom:none}
+td b{font-weight:700}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- stage timeline ---------- */
+.stages{display:flex; flex-direction:column; gap:0; margin:26px 0}
+.stage{display:grid; grid-template-columns:88px minmax(0,1fr); gap:22px; padding:22px 0;
+  border-top:1px solid var(--line)}
+.stage:last-child{border-bottom:1px solid var(--line)}
+.stage__yr{font-family:var(--dis); font-weight:800; font-size:15px; color:var(--cons);
+  padding-top:2px; line-height:1.4}
+.stage__yr small{display:block; font-family:var(--zh); font-weight:600; font-size:11.5px;
+  color:var(--ink-3); letter-spacing:.05em; margin-top:2px}
+.stage__t{font-family:var(--dis); font-weight:700; font-size:19px; margin-bottom:6px}
+.stage__t span{font-size:13px; font-weight:600; color:var(--ink-3); font-family:var(--zh); margin-left:9px}
+.stage__b{font-size:15px; color:var(--ink-2); line-height:1.75; max-width:60ch}
+.stage__mark{margin-top:11px; display:inline-flex; align-items:baseline; gap:9px; padding:8px 14px;
+  border-radius:var(--r-m); background:var(--ok-soft); border:1px solid var(--ok-line); font-size:13.5px}
+.stage__mark b{color:var(--ok); font-size:11px; letter-spacing:.08em; flex:none; font-family:var(--dis)}
+
+/* ---------- principle cards ---------- */
+.grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(258px,1fr)); gap:14px; margin:22px 0}
+.pcard{border:1px solid var(--line); border-radius:var(--r-l); background:var(--surface);
+  padding:20px; box-shadow:var(--shadow-1)}
+.pcard__n{font-family:var(--dis); font-weight:800; font-size:12px; color:var(--vowel);
+  letter-spacing:.1em; margin-bottom:8px}
+.pcard h4{font-family:var(--dis); font-size:16.5px; margin:0 0 8px; color:var(--ink)}
+.pcard p{font-size:14px; color:var(--ink-2); line-height:1.72; max-width:none}
+
+/* ---------- tiles ---------- */
+.tiles{display:flex; gap:8px; flex-wrap:wrap; margin:20px 0; align-items:center}
+.tile{width:50px; height:56px; border-radius:11px; background:var(--surface);
+  border:2px solid var(--line-2); border-bottom-width:4px; font-family:var(--en);
+  font-size:29px; font-weight:700; display:grid; place-items:center; flex:none}
+.tile--v{color:var(--vowel); border-color:var(--vowel-line); background:var(--vowel-soft)}
+.tile--c{color:var(--cons); border-color:var(--cons-line); background:var(--cons-soft)}
+.tiles__ar{font-size:22px; color:var(--ink-3); margin:0 5px}
+.tiles__out{font-family:var(--en); font-size:27px; font-weight:700; padding:0 18px; height:56px;
+  display:grid; place-items:center; border-radius:11px; border:2px solid var(--ok-line);
+  border-bottom-width:4px; background:var(--ok-soft); color:var(--ok)}
+
+/* ---------- footer ---------- */
+.foot{margin-top:70px; padding-top:26px; border-top:1px solid var(--line);
+  color:var(--ink-3); font-size:13.5px; line-height:1.8}
+.foot p{max-width:66ch}
+
+.themebtn{position:fixed; right:20px; bottom:20px; width:42px; height:42px; border-radius:50%;
+  border:1px solid var(--line-2); background:var(--surface); color:var(--ink-2); cursor:pointer;
+  display:grid; place-items:center; box-shadow:var(--shadow-2); z-index:80}
+.themebtn:hover{color:var(--ink)}
+
+@media(max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr); gap:0; padding:0 18px}
+  .toc{position:static; padding:18px 0 0; display:flex; flex-wrap:wrap; gap:6px; border-bottom:1px solid var(--line)}
+  .toc__t{width:100%; margin-bottom:8px}
+  .toc a{border-left:none; border:1px solid var(--line); border-radius:99px; padding:5px 12px; font-size:12.5px}
+  .toc a:hover{padding-left:12px}
+  .stage{grid-template-columns:minmax(0,1fr); gap:8px}
+  section{padding-top:40px}
+}
+</style>
+
+
+<div class="shell">
+
+<nav class="toc">
+  <div class="toc__t">目录</div>
+  <a href="#bg"><b>01</b>背景与现状</a>
+  <a href="#diag"><b>02</b>诊断</a>
+  <a href="#goal"><b>03</b>目标校准</a>
+  <a href="#path"><b>04</b>六年路径</a>
+  <a href="#daily"><b>05</b>每天 30 分钟</a>
+  <a href="#week1"><b>06</b>第一周设计</a>
+  <a href="#verify"><b>07</b>验证体系</a>
+  <a href="#product"><b>08</b>产品形态决策</a>
+  <a href="#tech"><b>09</b>技术实现</a>
+  <a href="#risk"><b>10</b>代价与风险</a>
+  <a href="#next"><b>11</b>后续</a>
+</nav>
+
+<main>
+
+<header class="hero">
+  <p class="hero__eyebrow">设计文档 · v1.2</p>
+  <h1>声音积木</h1>
+  <p class="hero__lede">一个 7 岁中文母语儿童的英语学习方案。核心判断是：这个孩子已经在中文上跑通过一次「从认符号到自主阅读」的完整路径，英语只需要把同一台引擎换一套符号再跑一遍——所以方案的形状必须和他熟悉的那条路同构。</p>
+  <div class="meta">
+    <span>每天 30 分钟</span>
+    <span>家长陪伴</span>
+    <span>六年周期</span>
+    <span>目标：掌握工具</span>
+  </div>
+</header>
+
+<!-- ============ 01 ============ -->
+<section id="bg">
+  <h2><i>01</i>背景与现状</h2>
+  <p class="sub">方案的所有判断都建立在这些事实上，事实变了方案就要重估。</p>
+
+  <h3>孩子</h3>
+  <ul>
+    <li>7 周岁，小学一年级刚入学，母语中文</li>
+    <li><strong>中文已经跑通「识字 → 自主阅读简单绘本」</strong>：5 岁起家长每天带着识字，逐步过渡到能自己读绘本</li>
+    <li><strong>数学已经跑通「数概念 → 运算」</strong>：目前能做 100 以内加减法</li>
+    <li>英语接触约一年：每周一次线下课 + 每天约 20 分钟外教<strong>录播</strong>视频</li>
+  </ul>
+
+  <h3>家长</h3>
+  <ul>
+    <li>英语发音有自信，<strong>可以自己领读</strong>——这是方案里最关键的一项资源</li>
+    <li>有每天陪伴的意愿和已被验证的执行力（中文识字那一年是真做下来的）</li>
+    <li>已有硬件：点读笔、复读机、若干教材</li>
+  </ul>
+
+  <h3>痛点（家长自述）</h3>
+  <ul>
+    <li><em>孩子不开口</em></li>
+    <li><em>无法验证学习成果</em>——不知道这一年到底学到了什么</li>
+    <li>孩子对视频的兴趣在下降，但<strong>还没到抵触的程度</strong></li>
+  </ul>
+
+  <h3>目标</h3>
+  <p>家长的原话是：<strong>让孩子掌握英语这个工具，而不是为了应试</strong>；长期看小学毕业能达到中国英语高考水平。家长自己的判断是「如果能掌握工具，应试反倒变得容易些」。</p>
+
+  <div class="call call--ok">
+    <div class="call__l">这个判断成立吗</div>
+    <p>方向上完全正确，机制上需要精确——见 <a href="#goal" style="color:inherit">03 目标校准</a>。</p>
+  </div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section id="diag">
+  <h2><i>02</i>诊断</h2>
+  <p class="sub">在设计方案之前，先判断现状的问题出在哪。</p>
+
+  <div class="call call--key">
+    <div class="call__l">核心判断</div>
+    <p>问题不是「学得少」，而是三个东西同时缺失：<strong>没有解码能力、没有输出闭环、没有验证标尺</strong>。三者互为因果，只补其中一个都不会起效。</p>
+  </div>
+
+  <h3>缺失一：没有解码能力</h3>
+  <p>孩子没有系统学过 Phonics（自然拼读），所以每一个英文单词对他来说都是一张<strong>无法拆解的图形</strong>，只能整体记忆。记忆容量有天花板，通常在 500–800 词撞墙——这就是很多孩子「小学学过很多、初中突然跟不上」的机制。</p>
+  <p>中文之所以能靠「认字」走通，是因为汉字总量有限：认得 2500 个常用字就能读书。英文如果照搬这条路，是死路——高考要求的 3500 词全靠认，孩子会被熬垮。<strong>英文必须先给钥匙，再让他自己开门。</strong></p>
+
+  <h3>缺失二：没有输出闭环</h3>
+  <p>孩子不开口，不是性格问题，是<strong>肚子里没有可自动调用的语块</strong>，加上从来没有人在一个他有把握的场景里要求他开口。录播视频是纯单向输入，天然没有输出环节。</p>
+
+  <h3>缺失三：没有验证标尺</h3>
+  <p>这是家长最痛的一点，也是整个方案的设计支点。</p>
+
+  <div class="call call--key">
+    <div class="call__l">关键洞察</div>
+    <p>家长感受到的<strong>「无法验证」</strong>，和孩子感受到的<strong>「没意思」</strong>，是同一件事的两面——<strong>缺少可见的进步反馈。</strong></p>
+    <p>孩子为什么愿意做 100 以内加减法？因为做对了就是做对了，即时、确定、可积累。为什么愿意识字？因为今天认了字，明天在路牌上就能读出来，世界对他打开了一点。</p>
+    <p>看录播视频没有对错、没有积累、没有「我变强了」的证据，所以兴趣必然衰减，这与孩子的品质无关。<strong>解决了验证问题，兴趣问题会一起被解决。</strong></p>
+  </div>
+
+  <h3>外教录播为什么没有效果</h3>
+  <p>二语习得有一个基本条件叫<strong>可理解输入（i+1）</strong>：输入必须刚好比学习者当前水平高一点点，才能被吸收。零基础孩子面对整句英语，输入是 i+10——那不是输入，是噪音。大脑对持续噪音的反应是自动关闭注意力。</p>
+  <p>「坐满 20 分钟」「不开口」「看不到成果」三个现象是同一个原因，不是老师的问题。而且录播比真人外教更弱——它缺了真人唯一不可替代的<strong>实时反馈和纠错</strong>，本质上是「英语版的动画片」。</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>投入</th><th>累计</th><th>如果换成拼读 + 分级阅读</th></tr></thead>
+    <tbody>
+      <tr><td>每天 20 分钟外教录播</td><td class="num"><b>约 120 小时 / 年</b></td><td>足以完成整套 Phonics 并进入自主阅读</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="call call--warn">
+    <div class="call__l">处置建议</div>
+    <p><strong>前三个月停掉录播视频。</strong>孩子「不太爱看了」是大脑在做正确的投入产出比判断——看了一年没有变强，所以不想看。在情感账户还是正数的时候撤，是止损；硬撑会从「没兴趣」滑向「抵触」，修复要花几倍力气。</p>
+    <p>三个月后孩子有了解码能力和基础词汇，这些视频可以重启，但用法要变：从「被动看」改成<strong>挑片段做精听和复述素材</strong>。那时候它才配得上占用时间。</p>
+  </div>
+</section>
+
+<!-- ============ 03 ============ -->
+<section id="goal">
+  <h2><i>03</i>目标校准</h2>
+  <p class="sub">「掌握工具，应试自然容易」——这个判断需要精确到可以指导六年规划。</p>
+
+  <h3>新高考的题型改革站在「工具派」这边</h3>
+  <p>现在全国卷 150 分里，听力 30、阅读 50、完形 30、写作 40（应用文 15 + 读后续写 25）。<strong>读后续写这 25 分几乎无法靠技巧获得</strong>——它要求读懂一个故事后自己续写出合理、地道的情节。刷题对它作用极其有限，有真实阅读量和表达能力的孩子直接碾压。这是应试体系亲手给工具派发的红利。</p>
+
+  <h3>但缺口是真实存在的</h3>
+  <div class="tw"><table>
+    <thead><tr><th>缺口</th><th>为什么自然习得补不上</th><th>什么时候补</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>语法显性化</b></td>
+        <td>自然习得让人「说对」，考试要求在没有语境的孤立句子里「判断对」并说出为什么。这两件事在大脑里不走同一条通路——母语者做中国的语法填空也会错。</td>
+        <td><b>初中</b>。抽象语法规则需要形式运算思维，12 岁前灌是低效且伤兴趣的。</td>
+      </tr>
+      <tr>
+        <td><b>应试技术</b></td>
+        <td>限时、题型套路、作文格式分，是纯技术活，和语言能力无关。</td>
+        <td><b>初三</b>，专项半年到一年。</td>
+      </tr>
+    </tbody>
+  </table></div>
+
+  <div class="call call--key">
+    <div class="call__l">精确表述</div>
+    <p>掌握工具 ≈ 高考所需能力盘的 <strong>80% 自动到位</strong>；剩下 20%（语法显性化 + 应试技术）变成一个<strong>小的、可控的、初中花半年就能专项解决的技术问题</strong>。</p>
+    <p>反过来说，只走应试路线的孩子，那 80% 是六年也补不上的——它只能靠时间累积。</p>
+    <p><strong>这个区分的实际意义</strong>：不要以为工具到位就万事大吉，规划里要给初三预留语法体系化的窗口。知道它存在，就不会慌。</p>
+  </div>
+
+  <h3>「掌握工具」拆成四个可观测能力</h3>
+  <div class="tw"><table>
+    <thead><tr><th>#</th><th>能力</th><th>含义</th><th>本方案的处理</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td><b>解码</b></td><td>见到陌生词能读出来</td><td><b>第 1 年全力攻克</b>——这是钥匙</td></tr>
+      <tr><td class="num">2</td><td><b>理解</b></td><td>读进去能懂</td><td>靠阅读量自然生长（第 2–4 年）</td></tr>
+      <tr><td class="num">3</td><td><b>产出</b></td><td>说得出、写得出</td><td>每天固定输出环节，从第 1 天开始</td></tr>
+      <tr><td class="num">4</td><td><b>自动化</b></td><td>不经中文中转，直接在英语里想</td><td>靠长期阅读量泡出来（第 4–6 年）</td></tr>
+    </tbody>
+  </table></div>
+  <p>中国孩子普遍卡在 <strong>1</strong> 和 <strong>4</strong>。卡在 1 是因为没学拼读或学了不用；卡在 4 是因为所有输入都经过中文中转。</p>
+</section>
+
+<!-- ============ 04 ============ -->
+<section id="path">
+  <h2><i>04</i>六年路径</h2>
+  <p class="sub">三个阶段，每个阶段都对应孩子在中文上已经体验过的一个环节。</p>
+
+  <div class="call">
+    <div class="call__l">设计原则</div>
+    <p>路径的形状刻意与孩子的中文经验同构。这不是省事——是因为他已经<strong>内化了「符号 → 声音 → 意义」的映射逻辑</strong>，也<strong>体验过「从不会读到能自己读」的完整曲线</strong>，知道这件事是可能的、值得熬的。这层元认知铺垫是最难的部分，而它已经完成了。</p>
+  </div>
+
+  <div class="stages">
+    <div class="stage">
+      <div class="stage__yr">第 1 年<small>7–8 岁</small></div>
+      <div>
+        <div class="stage__t">给钥匙<span>对应中文的「识字」</span></div>
+        <p class="stage__b">Phonics 解码能力 + 高频认读词。全年 40 周，从 6 个字母音起步，到能拼读双音节词。同步进行分级阅读，从只有 20 个词的小书爬到牛津树 L3。</p>
+        <div class="stage__mark"><b>终点标志</b><span>给一个从没见过的词（<span class="en">mud</span>、<span class="en">hop</span>、<span class="en">shell</span>），他能自己拼出来读；能独立读完 100 词以内的分级读物</span></div>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage__yr">第 2–3 年<small>8–10 岁</small></div>
+      <div>
+        <div class="stage__t">点火<span>对应中文的「自主阅读绘本」</span></div>
+        <p class="stage__b">阅读量爬坡 + 句型积木 + 听力精进。拼读进阶到长元音与字母组合，语法以「感觉对」的方式启蒙（be 动词、一般现在时、复数），不做规则讲解。</p>
+        <div class="stage__mark"><b>终点标志</b><span>能自己读章节书（如 Magic Tree House），<b>不需要家长陪</b></span></div>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage__yr">第 4–6 年<small>10–13 岁</small></div>
+      <div>
+        <div class="stage__t">滚雪球<span>对应中文的「自己看小说」</span></div>
+        <p class="stage__b">阅读量 + 真实输出。词汇量靠阅读自然滚动，不靠背——一个词在不同语境里遇到七八次就自然掌握，且掌握的是活用法。开始写作。</p>
+        <div class="stage__mark"><b>终点标志</b><span>能用英语获取自己感兴趣的信息：原版科普、游戏攻略、YouTube 教程</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="call call--ok">
+    <div class="call__l">最关键的拐点</div>
+    <p>在<strong>第 2–3 年之间</strong>（约 1000 词 + 能读章节书）。过了它，后面接近自动驾驶，家长开始逐步退出——就是家长在中文上已经体验过的那个「孩子能自己看书之后我就解放了」的时刻。</p>
+    <p>到第 6 年，英语才真正成为「工具」。而这个状态下的孩子，高考那 80% 的能力盘早就满了。</p>
+  </div>
+</section>
+
+<!-- ============ 05 ============ -->
+<section id="daily">
+  <h2><i>05</i>每天 30 分钟</h2>
+  <p class="sub">时间怎么切，比总时长更重要。</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>环节</th><th>时长</th><th>做什么</th><th>为什么在这个位置</th></tr></thead>
+    <tbody>
+      <tr><td><b>开场 / 快闪</b></td><td class="num">3′</td><td>固定仪式 + 昨日内容闪卡</td><td>切换语言频道，且不需要每天重新下决心</td></tr>
+      <tr><td><b>新知</b></td><td class="num">7–9′</td><td>今日新音，口型 + 动作 + 字形</td><td>最费脑，放在精力最好的时候</td></tr>
+      <tr><td><b>拼读</b></td><td class="num">8–12′</td><td>音素合成、单词卡、听辨</td><td>把新知立刻变成可用能力</td></tr>
+      <tr><td><b>阅读</b></td><td class="num">5–15′</td><td>句子或小书，三遍法</td><td>应用，也是成就感来源</td></tr>
+      <tr><td><b>输出 + 打卡</b></td><td class="num">3–5′</td><td>说出来 + 勾清单</td><td>闭环。当天的「我做到了」在这里落地</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>四条设计原则</h3>
+  <div class="grid2">
+    <div class="pcard">
+      <div class="pcard__n">原则 01</div>
+      <h4>三段不平均分</h4>
+      <p>硬功夫段放在第二位，孩子精力最好的时候。开场和收尾都短，中间重。平均分配是最坏的切法。</p>
+    </div>
+    <div class="pcard">
+      <div class="pcard__n">原则 02</div>
+      <h4>每天必须有孩子出声的部分</h4>
+      <p>不开口的根因是从来没有人在一个他有把握的场景里要求他开口。给他「有准备的开口」——读一本已经读熟三遍的书，那不叫考验，叫表演。</p>
+    </div>
+    <div class="pcard">
+      <div class="pcard__n">原则 03</div>
+      <h4>每天有一个可打勾的硬指标</h4>
+      <p>不是「今天学了什么」，是「今天我能拼出 3 个新词 / 我独立读完了一本书」。这是验证和兴趣的双重引擎。</p>
+    </div>
+    <div class="pcard">
+      <div class="pcard__n">原则 04</div>
+      <h4>新旧比例 2 : 8</h4>
+      <p>八成时间花在他已经会的东西上。大部分家长反着做，结果孩子永远吃力、兴趣被磨光。语言学习里流利度比新知重要——把读过三遍的书读得又快又顺，那种「我很厉害」的体感，才是他明天还愿意坐下的燃料。</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ 06 ============ -->
+<section id="week1">
+  <h2><i>06</i>第一周设计</h2>
+  <p class="sub">第一周决定这件事能不能持续下去，所以它的设计目标不是「教会六个音」，而是「让孩子在第二天就尝到甜头」。</p>
+
+  <h3>为什么是 s a t i p n，而不是 A B C</h3>
+  <p>按字母表顺序教，学完 <span class="en">a b c</span> 三个音只能拼出 <span class="en">cab</span> 一个词，孩子要熬很久才有第一次成功。而这六个音能组合出二十多个真词：</p>
+
+  <div class="tiles">
+    <span class="tile tile--c">s</span>
+    <span class="tile tile--v">a</span>
+    <span class="tile tile--c">t</span>
+    <span class="tile tile--v">i</span>
+    <span class="tile tile--c">p</span>
+    <span class="tile tile--c">n</span>
+    <span class="tiles__ar">→</span>
+    <span class="tiles__out">sat · sit · pin · pan · nap · tap · snap · spin …</span>
+  </div>
+
+  <div class="call call--key">
+    <div class="call__l">和中文识字同一个道理</div>
+    <p>教中文时先教「人、口、手」而不是按笔画顺序，是因为<strong>要先给他能立刻用起来的东西</strong>。英语拼读的起手式完全一样。</p>
+  </div>
+
+  <h3>七天节奏</h3>
+  <div class="tw"><table>
+    <thead><tr><th>天</th><th>新音</th><th>当天的「我做到了」</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td><span class="en">/s/ /æ/</span></td><td>能单独说出两个音，并在纸上写出字母</td></tr>
+      <tr><td class="num">2</td><td><span class="en">/t/</span></td><td><b>读出人生第一个自己拼出来的单词 <span class="en">sat</span></b></td></tr>
+      <tr><td class="num">3</td><td><span class="en">/ɪ/</span></td><td>能听出并读准 <span class="en">sat</span> 和 <span class="en">sit</span> 的区别</td></tr>
+      <tr><td class="num">4</td><td><span class="en">/p/</span></td><td>一次拼出 5 个以上新词</td></tr>
+      <tr><td class="num">5</td><td><span class="en">/n/</span></td><td>拼出 <span class="en">snap</span> 或 <span class="en">spin</span>（双辅音开头）</td></tr>
+      <tr><td class="num">6</td><td>全部复习</td><td><b>独立读完人生第一本英文书</b></td></tr>
+      <tr><td class="num">7</td><td>休息</td><td>三个游戏任选 + 一次 5 分钟周检</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>两个刻意设计的节点</h3>
+
+  <h4>第二天的「魔法时刻」</h4>
+  <p>孩子第一次拼词时通常卡在「s…a…t…」念三遍还是三个音。这时候家长把三个音念得越来越快，他会突然「啊」一声——<strong>那个瞬间就是解码能力诞生的时刻</strong>。设计上把它放在第二天，是为了让「我能读英文了」这个自我认知尽早建立。</p>
+
+  <h4>第六天的第一本书</h4>
+  <p>一本 6 页的小书《<span class="en">Nat Naps</span>》，全书<strong>每一个能拼的词都只用这六个音</strong>，加上三个整体认读词（<span class="en">I / see / a</span>）。孩子读完会意识到：<em>这本书是我自己读下来的，没有一个字是猜的。</em></p>
+  <p>这一天要办成一件大事——打印出来签名、录像、读给爷爷奶奶听。仪式感在这个年龄非常管用。</p>
+</section>
+
+<!-- ============ 07 ============ -->
+<section id="verify">
+  <h2><i>07</i>验证体系</h2>
+  <p class="sub">这是整个方案里家长最缺、也最该被做实的部分。</p>
+
+  <div class="call call--key">
+    <div class="call__l">设计目标</div>
+    <p>把「英语学得怎么样」做成<strong>像 100 以内加减法一样能当场检验</strong>的东西。能拼就是能拼，不能就是不能，没有模糊地带。</p>
+  </div>
+
+  <div class="tw"><table>
+    <thead><tr><th>层级</th><th>频率</th><th>怎么测</th><th>判据</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>日</b></td><td>每天 3′</td>
+        <td>当天打卡清单，2–3 项具体行为</td>
+        <td>做不到就不勾。这张表是给家长看的尺子，勾满了才有意义</td>
+      </tr>
+      <tr>
+        <td><b>周</b></td><td>第 7 天 5′</td>
+        <td><b>给 5 个这一周完全没练过的词</b>（如 <span class="en">nit / sap / tan / pip / spit</span>），只由学过的音组成</td>
+        <td>4–5 个进新课 · 2–3 个先复习两天 · 0–1 个整周重做</td>
+      </tr>
+      <tr>
+        <td><b>月</b></td><td>每月一次</td>
+        <td>读一本没读过的同级读物，录音</td>
+        <td>能否独立读完；错词率</td>
+      </tr>
+      <tr>
+        <td><b>年</b></td><td>每年一次</td>
+        <td>标准化考试（第 1 年末可考剑桥 Pre-A1 Starters）</td>
+        <td>外部锚点，防止自我评估漂移</td>
+      </tr>
+    </tbody>
+  </table></div>
+
+  <h3>周检为什么用「没练过的词」</h3>
+  <p>这是整个验证体系的核心机关。用练过的词测，测的是<strong>记忆</strong>；用没练过但由已学音素组成的词测，测的是<strong>解码能力本身</strong>。后者才是这一年真正要建立的东西，也是唯一能预测长期发展的指标。</p>
+
+  <div class="call call--warn">
+    <div class="call__l">唯一不能妥协的一条</div>
+    <p><strong>拼读没通，绝不往下走。</strong>重做一周不丢人，而且第二遍通常三天就过了。这一步塌了，后面全是空中楼阁。</p>
+  </div>
+</section>
+
+<!-- ============ 08 ============ -->
+<section id="product">
+  <h2><i>08</i>产品形态决策</h2>
+  <p class="sub">为什么是一个可交互的网页，而不是一份 PDF 手册。</p>
+
+  <h3>决策一：交互页面，不是文档</h3>
+  <p>文档需要家长自己翻译成行动——读完还要想「那我现在该干什么」。而每天 30 分钟的陪学场景要的是<strong>跟着走就行</strong>：打开当天，五个环节从上往下，每个标了分钟数。降低执行摩擦比信息完整更重要。</p>
+
+  <h3>决策二：发音的分工</h3>
+  <div class="tw"><table>
+    <thead><tr><th>内容</th><th>谁来发音</th><th>原因</th></tr></thead>
+    <tbody>
+      <tr><td><b>单词、句子</b></td><td>页面（浏览器语音合成）</td><td>合成语音读整词整句非常准，且无需联网下载音频</td></tr>
+      <tr><td><b>单个音素 <span class="en">/s/ /t/ /p/</span></b></td><td><b>内嵌真人录音 + 家长</b></td><td>合成语音<b>读不准音素</b>——会读成字母名或自动加元音。v2.1 起内嵌 Freesound「English Phonemes」音包的教学式孤立发音（CC BY-NC 4.0，已降噪裁剪；曾试用 Wikimedia 语音学录音，因元音拖长、辅音贴元音示范不适教学而弃用），点字母积木即听；家长示范仍是主角，录音用于校准</td></tr>
+    </tbody>
+  </table></div>
+  <p>页面为每个音素提供<strong>真人录音示范 + 孩子能直接执行的动作口令和发音小实验</strong>；舌位、发音要领和常见错误收进家长折叠区。录音以 base64 内嵌（六段共约 24KB），保持单文件离线自洽。</p>
+  <p>v2.2 起移除了 Oxford Owl / UFLI 的外链校准入口——内置真人录音已覆盖家长校准需求，页面除页脚授权署名外不含任何外部跳转，离线完全自洽。</p>
+
+  <div class="call call--warn">
+    <div class="call__l">第一年唯一可能让方案失效的技术点</div>
+    <p>中文母语家长最常见的错误是<strong>给辅音加元音尾巴</strong>：把 <span class="en">/t/</span> 念成「特」、<span class="en">/p/</span> 念成「泼」、<span class="en">/s/</span> 念成「斯」。</p>
+    <p>后果不是「口音不好听」，而是<strong>孩子永远拼不出词</strong>——他会把 <span class="en">cat</span> 念成「科-啊-特」然后合不起来。而且这个错误要几个月后才会暴露。</p>
+    <p>三个自检动作：① 念 <span class="en">/t/ /p/ /k/</span> 时手按喉咙<strong>不应有震动</strong>；② 念 <span class="en">/p/</span> 时嘴前 3 厘米的纸片<strong>应被吹动</strong>；③ 这三个音<strong>根本拖不长</strong>。</p>
+  </div>
+
+  <h3>决策三：插画的两套视觉语言</h3>
+  <p>页面里有三类图，按学习任务刻意使用不同画法：</p>
+  <div class="tw"><table>
+    <thead><tr><th>场景</th><th>画法</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>小书阅读页</b></td>
+        <td>绘本级插图<br><span style="color:var(--ink-3);font-size:13px">AI 生成，透明底 WebP</span></td>
+        <td>显示尺寸大（220px+），是孩子阅读时真正在看的东西，绘本质感直接影响他愿不愿意读</td>
+      </tr>
+      <tr>
+        <td><b>音素助记图</b></td>
+        <td>统一风格的儿童插画<br><span style="color:var(--ink-3);font-size:13px">AI 生成，192px 透明底 PNG，base64 内联</span></td>
+        <td>承担动作记忆和情绪联想；轮廓简洁、色板统一，缩小后仍能一眼识别</td>
+      </tr>
+      <tr>
+        <td><b>单词卡 · 听辨</b></td>
+        <td>儿童插画，与助记图同一套画法<br><span style="color:var(--ink-3);font-size:13px">能复用助记 / 绘本图的直接复用，其余补 192px 透明 PNG</span></td>
+        <td>同一物体只出现一种画法；卡片仍是小图，注意力落在单词上</td>
+      </tr>
+      <tr>
+        <td><b>发音实验 · 操作图标</b></td>
+        <td>简笔线条图 + 动作文字<br><span style="color:var(--ink-3);font-size:13px">孩子端做实验，家长端看说明</span></td>
+        <td>发音学习的重点不是看懂解剖结构，而是能模仿并当场自检；这些场景优先保证动作清楚、反馈明确</td>
+      </tr>
+    </tbody>
+  </table></div>
+  <p>视觉语言按任务分工：<strong>音素助记和单词卡是记忆钩子，发音实验是动作，绘本是故事，操作图标是控件</strong>。同一物体（蛇、Nat、爆米花）只保留一套画法；越接近教学操作，表达越直接、越可验证。</p>
+
+  <div class="call">
+    <div class="call__l">顺带一提</div>
+    <p>儿童识字材料用极简线条画是教学惯例而非妥协：Bob Books、牛津阅读树早期分级读物都是如此。图越简单，孩子的注意力越容易落在文字上。</p>
+  </div>
+</section>
+
+<!-- ============ 09 ============ -->
+<section id="tech">
+  <h2><i>09</i>技术实现</h2>
+  <p class="sub">约束条件决定了实现方式。</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>项</th><th>方案</th><th>约束来源</th></tr></thead>
+    <tbody>
+      <tr><td><b>形态</b></td><td>单个 HTML 文件，无外部依赖</td><td>要能离线打开、能随手复制、不依赖任何服务</td></tr>
+      <tr><td><b>发音</b></td><td>浏览器内置 <span class="en">SpeechSynthesis</span></td><td>零音频文件、可读任意词；建议用 Chrome / Edge</td></tr>
+      <tr><td><b>操作图标 / 发音实验</b></td><td>内联 SVG + 数据驱动的动作口令、自检标准和家长折叠说明</td><td>孩子不需要理解口腔剖面；页面必须把发音要求翻译成能立即执行和验证的动作</td></tr>
+      <tr><td><b>单词卡 / 听辨图</b></td><td>192px 透明底 PNG，base64 内联；能复用助记图或绘本图的不另画</td><td>小尺寸下仍能认出，且与助记图、绘本里的同一物体保持同一套画法</td></tr>
+      <tr><td><b>音素助记图</b></td><td>192px 透明底 PNG，base64 内联</td><td>提供更强的动作记忆和亲和力，同时保留单文件离线能力</td></tr>
+      <tr><td><b>绘本图</b></td><td>512px 透明底 WebP，base64 内联</td><td>整套 6 张约 210KB；扁平色图 WebP 压缩率极高</td></tr>
+      <tr><td><b>进度</b></td><td><span class="en">localStorage</span></td><td>打卡状态次日仍在；无需账号</td></tr>
+      <tr><td><b>主题</b></td><td>token 化，三态适配（跟随系统 / 强制浅 / 强制深）</td><td>晚上陪学的实际场景</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>内容层的一条纪律</h3>
+  <p>音标只有<strong>一个来源</strong>。步骤标题里的音标从音素数据自动生成，不手写——因为手写过一次就出过错（标题写成 <span class="en">/a/</span>，而 <span class="en">a</span> 在 <span class="en">cat</span> 里的音其实是 <span class="en">/æ/</span>）。这类「同一事实写两遍」的不一致，在教学材料里会直接变成错误示范。</p>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="risk">
+  <h2><i>10</i>代价与风险</h2>
+  <p class="sub">这些必须提前知道，否则会在错误的时间点放弃。</p>
+
+  <div class="grid2">
+    <div class="pcard" style="border-color:var(--vowel-line)">
+      <div class="pcard__n">最大风险</div>
+      <h4>前 6–12 个月的「低级感」</h4>
+      <p>孩子不会说漂亮句子，只会拼 <span class="en">cat</span>、<span class="en">sit</span>，读只有 20 个词的小书，看上去比外教课「低级」得多。<strong>这是最容易放弃的阶段。</strong>但这和认了 100 个字的孩子看起来还是不会读书，是同一回事。</p>
+    </div>
+    <div class="pcard">
+      <div class="pcard__n">投入约束</div>
+      <h4>头两年家长不可替代</h4>
+      <p>这段不能外包给任何机构或 APP。家长是发音源、是纠错者、也是那个每天说「你今天自己拼出了 5 个词」的人。</p>
+    </div>
+    <div class="pcard">
+      <div class="pcard__n">节奏约束</div>
+      <h4>六年不能断</h4>
+      <p>语言逆水行舟，断三个月要花半年补。<strong>宁可缩短，不要中断</strong>——实在没时间的那天做 10 分钟快闪也算完成。</p>
+    </div>
+    <div class="pcard" style="border-color:var(--accent-line)">
+      <div class="pcard__n">技术风险</div>
+      <h4>家长发音校准</h4>
+      <p>见 <a href="#product" style="color:var(--accent)">08 决策二</a>。开课前半小时的自我校准，价值抵得上后面三个月。</p>
+    </div>
+  </div>
+
+  <h3>收益曲线</h3>
+  <p>一旦点着（约 1000 词 + 能读章节书），后面基本是自动驾驶。词汇量从那时起靠阅读自然滚——六年下来阅读量到百万词级别，<strong>3500 词是副产品，根本不用背</strong>。</p>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="next">
+  <h2><i>11</i>后续</h2>
+
+  <h3>第二周怎么定</h3>
+  <p><strong>先把第一周跑完再设计第二周。</strong>进度该多快、要不要加复习日，应该看孩子这七天的实际速度和卡点来定，现在设计等于拍脑袋。跑完之后需要的信息是：周检读对几个、孩子卡在哪个环节、30 分钟实际是不够还是有余。</p>
+
+  <h3>第一年 40 周的框架</h3>
+  <div class="tw"><table>
+    <thead><tr><th>周次</th><th>内容</th><th>同步阅读</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1–10</td><td>Jolly Phonics 前四组共 24 个音 + CVC 拼读</td><td>纯 CVC 小书（Bob Books Set 1 类）</td></tr>
+      <tr><td class="num">11–20</td><td>后三组 18 个音 + <span class="en">Magic e</span> 长元音</td><td>牛津树 L1–2</td></tr>
+      <tr><td class="num">21–30</td><td>辅音连缀（<span class="en">bl- cr- st-</span>）+ 双音节词入门</td><td>牛津树 L2–3 / RAZ aa–A</td></tr>
+      <tr><td class="num">31–40</td><td>拼读转复习，重心移到自主阅读 + 年度测评</td><td>牛津树 L3 / RAZ B–C</td></tr>
+    </tbody>
+  </table></div>
+  <p>高频认读词每周 5 个，全年约 200 个，覆盖 Dolch 220 的核心部分。</p>
+
+  <h3>已有资源的处置</h3>
+  <ul>
+    <li><strong>外教录播</strong>：前三个月停，三个月后改造成精听素材重启</li>
+    <li><strong>点读笔</strong>：保留，配对应的点读版分级读物——它的价值是让孩子能「自己学」，逐步摆脱对家长的依赖，正是中文路径里「自主阅读」的对应物</li>
+    <li><strong>复读机</strong>：用于跟读录音和自我回听，是输出训练的好工具</li>
+    <li><strong>每周一次线下课</strong>：如果是口语交流课，同外教录播处理；如果是系统教材课，可保留作补充</li>
+  </ul>
+</section>
+
+<footer class="foot">
+  <p><strong>文档状态</strong> · v1.4，覆盖到第一周发音实验版、内嵌音素真人录音、字体子集内嵌与外链校准入口移除（v2.2）实现完成。第二周设计、月度测评表、40 周详细进度待第一周实测数据后补充。</p>
+  <p><strong>配套产物</strong> · <span class="en">week01-v2.html</span>（每天一节，含发音小实验、家长提示、拼读机、听辨训练、小书阅读器和打卡）。</p>
+</footer>
+
+</main>
+</div>
+
+<button class="themebtn" id="themebtn" title="切换深浅色" aria-label="切换深浅色">
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+</button>
+
+<script>
+const tb = document.getElementById('themebtn');
+try{ const s = localStorage.getItem('soundblocks-theme');
+     if(s) document.documentElement.setAttribute('data-theme', s); }catch(e){}
+tb.addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const isDark = cur === 'dark' || (!cur && window.matchMedia('(prefers-color-scheme:dark)').matches);
+  const next = isDark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try{ localStorage.setItem('soundblocks-theme', next); }catch(e){}
+});
+</script>
