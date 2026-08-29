@@ -1498,6 +1498,7 @@ function cleanGamesState(){
     const v = g.grab[k].best;
     g.grab[k].best = (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 8) ? v : 0;
   });
+  Object.keys(g.grab).forEach(k=>{ if(k !== 's' && k !== 'a') delete g.grab[k]; });   // S3 预筛 L1：未知键删除
 
   if(!isPlainObject(g.doors)) g.doors = {};
   { const v = g.doors.best; g.doors.best = (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 10) ? v : 0; }
@@ -2009,6 +2010,11 @@ function toggleStep(i, force){
   if(!el) return;
   const body = el.querySelector('.step__body');
   const open = force != null ? force : body.hidden;
+  if(!open){
+    // S3 预筛 M2：折叠时清理该 step 子树内所有 G1 卡的挂起计时器/陈旧回调，
+    // 否则作答窗计时器会在隐藏节点上继续跑，重新展开时弹出一个"过期"的反馈。
+    body.querySelectorAll('[data-g1-round]').forEach(g1=>{ if(g1._g1Reset) g1._g1Reset(); });
+  }
   body.hidden = !open;
   el.classList.toggle('step--open', open);
 }
@@ -2161,8 +2167,9 @@ function initG1(){
     const theme = G1_THEME[roundKey];
     const body = root.querySelector('[data-g1-body]');
     let queue = [], qi = 0, correct = 0;
-    let uiState = 'idle';                               // idle|playing|window|feedback|audioFailed|done
+    let uiState = 'idle';                 // idle|playing|window|feedback|audioFailed|interrupted|done
     let repeatUsed = false, answered = false, pendingTimer = null;
+    let roundToken = 0;                   // S3 预筛 H1②：陈旧回调防护，playQuestion 每次分发都自增+捕获
 
     function clearPending(){ if(pendingTimer){ clearTimeout(pendingTimer); pendingTimer = null; } }
 
@@ -2218,8 +2225,10 @@ function initG1(){
     function renderFeedback(isRight, wasTap){
       uiState = 'feedback';
       const q = queue[qi];
-      const cls = isRight ? 'g1__target--pop' : (wasTap ? 'g1__target--shake' : '');
-      const hint = isRight ? '对啦！' : (wasTap ? '再听听看' : '刚才漏掉啦');
+      // S3 预筛 L2：负例正确=没拍，不该当成"拍对"一样爆气球——只有真的拍中目标音才 pop；
+      // 错拍（负例被拍/正例拍错时机不会发生，此处特指负例误拍）才 shake；漏拍（正例没拍中）不加动画。
+      const cls = (isRight && wasTap) ? 'g1__target--pop' : (!isRight && wasTap) ? 'g1__target--shake' : '';
+      const hint = isRight ? (wasTap ? '对啦！' : '没拍，对啦！') : (wasTap ? '再听听看' : '刚才漏掉啦');
       body.innerHTML = `
         <div class="g1__stage"><button class="g1__target ${cls}" disabled>${targetInner()}</button></div>
         <p class="g1__hint">${hint}</p>
@@ -2234,8 +2243,23 @@ function initG1(){
       uiState = 'audioFailed';
       body.innerHTML = `
         <div class="g1__stage"><button class="g1__target" disabled>${targetInner()}</button></div>
-        <p class="g1__hint">声音没放出来，点页面顶部提示条重试</p>
-        <div class="g1__ctl">${restartBtn()}</div>
+        <p class="g1__hint">声音没放出来</p>
+        <div class="g1__ctl">
+          <button class="btn btn--ok" data-g1-act="resume">再试一次</button>
+          ${restartBtn()}
+        </div>
+        ${progressLine()}
+      `;
+    }
+    function renderInterrupted(){
+      uiState = 'interrupted';
+      body.innerHTML = `
+        <div class="g1__stage"><button class="g1__target" disabled>${targetInner()}</button></div>
+        <p class="g1__hint">刚才被打断了</p>
+        <div class="g1__ctl">
+          <button class="btn btn--ok" data-g1-act="resume">继续这一题</button>
+          ${restartBtn()}
+        </div>
         ${progressLine()}
       `;
     }
@@ -2252,15 +2276,23 @@ function initG1(){
     }
 
     function playQuestion(){
+      const myToken = ++roundToken;   // H1②：本次分发的令牌，回调里先比对，不一致=陈旧回调
       renderPlaying();
       const q = queue[qi];
       WordAudio.play(q.word).then(r=>{
+        if(myToken !== roundToken) return;   // 陈旧回调防护，ended/failed/cancelled 全部分支通吃
         if(r.status === 'ended') renderWindow();
         else if(r.status === 'failed'){
           renderAudioFailed();
-          showAudioFailure({ retry(){ playQuestion(); } });
+          showAudioFailure({ retry(){ playQuestion(); } });   // 顶部条保留为辅助（M1）
         }
-        // cancelled/blocked：静默（被更晚的请求或切页取消，§2.3）
+        else if(r.status === 'cancelled'){
+          // 令牌校验已通过（本卡没有自己重开新一题/被 reset），此时 uiState 仍是
+          // 'playing' 说明是外部请求（示范词卡/音素砖/另一轮 G1）抢走了 AudioBus，
+          // 不是本卡主动收场——弹"被打断"让孩子/家长知道发生了什么、可以继续。
+          if(uiState === 'playing') renderInterrupted();
+        }
+        // blocked：静默
       });
     }
     function resolveAnswer(tapped){
@@ -2277,7 +2309,24 @@ function initG1(){
       if(qi + 1 < queue.length){ qi++; repeatUsed = false; playQuestion(); }
       else renderResult();
     }
+    function reset(){
+      // S3 预筛 H1：供"外部"收场本卡用——另一轮开局互斥（①）、step 折叠清理（M2）。
+      // 不调用本身也不需要额外调用 AudioBus.stopAll()：真正抢麦克风的那次新请求
+      // （另一轮的 playQuestion / 折叠时若无后续动作则本来就没有新请求）会通过
+      // AudioBus 自己的仲裁让本卡在飞的 promise 收到 cancelled；这里只需要把本卡
+      // UI 立刻退回 idle，并顺手让 roundToken 失配，陈旧回调彻底失效不再处理任何分支。
+      roundToken++;
+      clearPending();
+      renderIdle();
+    }
+    root._g1Reset = reset;
+
     function startRound(){
+      // H1①：轮次互斥——开新一轮前，先把其余 G1 卡（包括另一轮）收回 idle，
+      // 避免两张卡同时占着"playing/window"却其实音频早被这次新请求抢走。
+      document.querySelectorAll('[data-g1-round]').forEach(other=>{
+        if(other !== root && other._g1Reset) other._g1Reset();
+      });
       clearPending();
       queue = buildQueue();
       qi = 0; correct = 0; repeatUsed = false; answered = false;
@@ -2291,6 +2340,7 @@ function initG1(){
       const kind = act.dataset.g1Act;
       if(kind === 'start' || kind === 'restart'){ startRound(); return; }
       if(kind === 'tap'){ resolveAnswer(true); return; }
+      if(kind === 'resume'){ playQuestion(); return; }   // audioFailed/interrupted 卡内按钮共用（M1/H1②）
       if(kind === 'again'){
         if(uiState !== 'window' || repeatUsed) return;   // 限 1 次/题
         repeatUsed = true;
