@@ -459,6 +459,44 @@ td .en{font-size:17px; font-weight:700}
 }
 .audio-fail-bar--show{display:block}
 .audio-fail-bar:hover{background:var(--vowel-line)}
+
+/* ================= G1 声音抓抓乐（v3 新增） ================= */
+.g1wrap{display:flex; gap:16px; flex-wrap:wrap}
+.g1card{
+  flex:1 1 260px; min-width:240px; border-radius:var(--r-l); background:var(--surface);
+  border:1px solid var(--line); box-shadow:var(--shadow-1); padding:16px; display:flex; flex-direction:column; gap:10px;
+}
+.g1card--s{border-color:var(--ok-line)}
+.g1card--a{border-color:var(--vowel-line)}
+.g1card__hd{display:flex; align-items:center; gap:8px}
+.g1card__ico{width:36px; height:36px; display:grid; place-items:center; flex:none}
+.g1card__ttl{font-family:var(--dis); font-weight:700; font-size:15px}
+.g1card__body{display:flex; flex-direction:column; align-items:center; gap:10px; min-height:184px; justify-content:center; text-align:center}
+.g1__cmd{font-size:14.5px; color:var(--ink-2); line-height:1.6}
+.g1__stage{display:flex; align-items:center; justify-content:center; min-height:96px}
+.g1__target{
+  width:88px; height:88px; border-radius:50%; position:relative;
+  border:3px solid var(--line-2); background:var(--surface-2);
+  display:grid; place-items:center; cursor:pointer; transition:transform .15s;
+}
+.g1card--s .g1__target{border-color:var(--ok-line); background:var(--ok-soft)}
+.g1card--s .g1__target::after{
+  content:''; position:absolute; bottom:-9px; left:50%; transform:translateX(-50%);
+  width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent;
+  border-top:8px solid var(--ok-line);
+}
+.g1card--a .g1__target{border-color:var(--vowel-line); background:var(--vowel-soft)}
+.g1__target:hover:not(:disabled){transform:scale(1.06)}
+.g1__target:disabled{cursor:default; opacity:.9}
+.g1__target--pop{animation:pop .42s cubic-bezier(.34,1.56,.64,1)}
+.g1__target--shake{animation:shake .34s}
+.g1__hint{font-size:14px; font-weight:600; min-height:20px}
+.g1__meaning{font-size:13.5px; color:var(--ink-2)}
+.g1__meaning b{color:var(--ink); font-family:var(--en)}
+.g1__ctl{display:flex; gap:10px; flex-wrap:wrap; justify-content:center}
+.g1__progress{font-size:12.5px; color:var(--ink-3)}
+.g1__result{font-size:14px; line-height:1.7}
+.g1__result b{color:var(--ok)}
 </style>
 
 
@@ -1138,7 +1176,13 @@ const W = {
   snake:{zh:'蛇',art:'snake'},      ant:{zh:'蚂蚁',art:'ant'},
   igloo:{zh:'冰屋',art:'igloo'},    pig:{zh:'猪',art:null},
   pen:{zh:'笔',art:null},           cat:{zh:'猫',art:null},
-  top:{zh:'陀螺',art:'spin'},       dog:{zh:'狗',art:'natStand'}
+  top:{zh:'陀螺',art:'spin'},       dog:{zh:'狗',art:'natStand'},
+  /* G1 声音抓抓乐题库补充词（无插画资产，退化为词+中文，规格 §4.1） */
+  bag:{zh:'包',art:null},           milk:{zh:'牛奶',art:null},
+  fish:{zh:'鱼',art:null},          hat:{zh:'帽子',art:null},
+  map:{zh:'地图',art:null},         bat:{zh:'蝙蝠',art:null},
+  cup:{zh:'杯子',art:null},         book:{zh:'书',art:null},
+  tree:{zh:'树',art:null}
 };
 
 const WALL_HINT = {
@@ -1161,6 +1205,20 @@ const BOOK = {
     {line:'Nap, Nat, nap!',  art:'natDream', zh:'睡吧，纳特，睡吧！'}
   ]
 };
+
+/* ==================================================================
+   G1 声音抓抓乐 —— 题库常量（规格 v1.3 §4.1，与 build_audio.py 提取器
+   g1_rounds 源对齐，形状冻结：{ 轮:{ pos:[...4词], neg:[...4词] } }）
+   ================================================================== */
+const G1_ROUNDS = {
+  s: { pos:['sun','sock','snake','sit'], neg:['dog','bag','milk','fish'] },
+  a: { pos:['cat','hat','map','bat'],   neg:['dog','cup','book','tree'] }
+};
+const G1_THEME = {
+  s: { title:'轮 A · 蛇和气球', icon:'snake', cmd:'开头听到 sss 就拍气球' },
+  a: { title:'轮 B · 蚂蚁和苹果', icon:'ant', cmd:'听到词的肚子里藏着 æ 就拍气球' }
+};
+const ANSWER_WINDOW_MS = 4000;
 
 /* ==================================================================
    WEEK — 七天课程
@@ -1189,12 +1247,9 @@ const DAYS = [
       {b:'note', tone:'bulb', html:'<b>红色和青色是有意义的。</b>元音积木是红色，辅音积木是青色。不用给孩子解释这两个词，看多了他自己会发现：<b>每个词里都得有一块红的</b>。这是英语拼读最底层的规律。'}
     ]},
     {t:'听音游戏', min:6, blocks:[
-      {b:'lead', html:'今天不拼词，只训练耳朵。你念词，孩子听到开头是 /s/ 就拍手。念慢一点，每个词之间停两秒。'},
-      {b:'table', head:['听到 /s/ 就拍手','听到 /æ/ 就跺脚'], rows:[
-        ['<span class="en">sun · dog · sock · bag</span>','<span class="en">cat · dog · hat · cup</span>'],
-        ['<span class="en">snake · milk · sit · fish</span>','<span class="en">map · book · bat · tree</span>']
-      ]},
-      {b:'note', tone:'warn', html:'孩子听错很正常，<b>不要说「错了」</b>。改成再念一次，把那个音拖长：ssssun。让他自己听出来。'}
+      {b:'lead', html:'今天不拼词，只训练耳朵。电脑会念词，孩子听到规则说的那个音就点气球。两轮主题不同，先跟孩子说清楚口令再开始。'},
+      {b:'g1'},
+      {b:'note', tone:'warn', html:'孩子拍错很正常，<b>不需要你评判对错</b>——气球晃一下就过去了，游戏自己会记分。你在旁边看着、陪着说说口令就好。'}
     ]},
     {t:'收尾打卡', min:3, blocks:[
       {b:'lead', html:'今天没有拼出单词，但要给孩子一个明确的预告——<b>明天你就能读出第一个英文单词了</b>。这个钩子很重要。'},
@@ -1422,6 +1477,59 @@ const KEY = 'soundblocks-w1-v1';
 let state = {days:{}};
 try{ const raw = localStorage.getItem(KEY); if(raw) state = JSON.parse(raw) || {days:{}}; }catch(e){}
 if(!state.days) state.days = {};
+
+/* ==================================================================
+   state.games —— schema 整体建立 + 读取清洗（规格 §6.1/§6.2，S3 落地）。
+   容器类字段只接受非 null、非数组的普通对象，否则整体重建默认（不动 state.days）；
+   字段级按范围清洗，数组/对象整体替换不深合并，不做 schemaVersion。
+   ================================================================== */
+const FLASH_RECKEYS = ['flash_sounds', 'flash_words'];
+const FLASH_METRIC_BY_KEY = { flash_sounds:'elapsed', flash_words:'count' };
+const FLASH_CAPACITY_BY_KEY = { flash_words:18 };   // 词卡 30 秒挑战成绩上限（v1.3 S-4）
+const CONFIRM_SOURCES = ['g2', 'g4', 'g5'];
+function isPlainObject(v){ return !!v && typeof v === 'object' && !Array.isArray(v); }
+function cleanGamesState(){
+  if(!isPlainObject(state.games)) state.games = {};
+  const g = state.games;
+
+  if(!isPlainObject(g.grab)) g.grab = {};
+  ['s','a'].forEach(k=>{
+    if(!isPlainObject(g.grab[k])) g.grab[k] = {};
+    const v = g.grab[k].best;
+    g.grab[k].best = (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 8) ? v : 0;
+  });
+
+  if(!isPlainObject(g.doors)) g.doors = {};
+  { const v = g.doors.best; g.doors.best = (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 10) ? v : 0; }
+
+  if(!isPlainObject(g.flash)) g.flash = {};
+  Object.keys(g.flash).forEach(k=>{
+    const rec = g.flash[k];
+    const metric = FLASH_METRIC_BY_KEY[k];
+    let bad = !FLASH_RECKEYS.includes(k) || !isPlainObject(rec) || rec.metric !== metric;
+    if(!bad){
+      if(metric === 'elapsed') bad = !(typeof rec.value === 'number' && rec.value > 0);
+      else{
+        const cap = FLASH_CAPACITY_BY_KEY[k] ?? Infinity;
+        bad = !(typeof rec.value === 'number' && Number.isInteger(rec.value) && rec.value >= 0 && rec.value <= cap);
+      }
+    }
+    if(bad) delete g.flash[k]; else g.flash[k] = {metric, value:rec.value};
+  });
+
+  if(!isPlainObject(g.confirms)) g.confirms = {};
+  Object.keys(g.confirms).forEach(w=>{
+    const rec = g.confirms[w];
+    if(Guard.isReserved(w) || !isPlainObject(rec)){ delete g.confirms[w]; return; }
+    const cleaned = {};
+    CONFIRM_SOURCES.forEach(src=>{ cleaned[src] = rec[src] === true; });
+    g.confirms[w] = cleaned;
+  });
+
+  return g;
+}
+cleanGamesState();
+
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
 function dayState(n){ if(!state.days[n]) state.days[n] = {checks:{}}; if(!state.days[n].checks) state.days[n].checks = {}; return state.days[n]; }
 function dayDone(n){
@@ -1617,6 +1725,22 @@ function blockHTML(b, ctx){
       <thead><tr>${b.head.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${b.rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>
     </table></div>`;
+
+  case 'g1':{
+    const id = 'g1' + (ctx.uid++);
+    return `<div class="g1wrap" id="${id}">
+      ${['s','a'].map(rk=>{
+        const theme = G1_THEME[rk];
+        return `<div class="g1card g1card--${rk}" data-g1-round="${rk}">
+          <div class="g1card__hd">
+            <span class="g1card__ico">${illHTML(theme.icon,40)}</span>
+            <span class="g1card__ttl">${theme.title}</span>
+          </div>
+          <div class="g1card__body" data-g1-body></div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
 
   case 'checks':
     return `<div class="checks">
@@ -1872,7 +1996,7 @@ function renderDay(n){
   </div>`;
 
   renderDots(n);
-  initBlenders(); initPairs(); initFlash(); initBook();
+  initBlenders(); initPairs(); initFlash(); initBook(); initG1();
   updateFinish(n);
   // 展开第一个未完成的步骤
   const firstOpen = document.querySelector('.step');
@@ -2023,6 +2147,157 @@ function initPairs(){
       }
     });
     draw();
+  });
+}
+
+/* ==================================================================
+   G1 声音抓抓乐 —— 回合状态机（规格 v1.3 §4.1 + §2.3 失败口径）
+   idle → playing → window → feedback → (next question | 结算)
+                        ↳ failed → audioFailed → (retry 回 window)
+   ================================================================== */
+function initG1(){
+  document.querySelectorAll('[data-g1-round]').forEach(root=>{
+    const roundKey = root.dataset.g1Round;             // 's' | 'a'
+    const theme = G1_THEME[roundKey];
+    const body = root.querySelector('[data-g1-body]');
+    let queue = [], qi = 0, correct = 0;
+    let uiState = 'idle';                               // idle|playing|window|feedback|audioFailed|done
+    let repeatUsed = false, answered = false, pendingTimer = null;
+
+    function clearPending(){ if(pendingTimer){ clearTimeout(pendingTimer); pendingTimer = null; } }
+
+    function buildQueue(){
+      const cfg = G1_ROUNDS[roundKey];
+      const q = [
+        ...cfg.pos.map(w=>({word:w, target:true})),
+        ...cfg.neg.map(w=>({word:w, target:false}))
+      ];
+      for(let i=q.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); const t=q[i]; q[i]=q[j]; q[j]=t; }
+      return q;
+    }
+
+    function targetInner(){ return roundKey === 'a' ? illHTML('apple', 64) : ''; }
+    function meaningChip(word){
+      const d = W[word] || {zh:'', art:null};
+      return `<div class="g1__meaning">${d.art?illHTML(d.art,56):''}<div><b class="en">${colorWord(word)}</b>　${d.zh}</div></div>`;
+    }
+    function progressLine(){ return `<p class="g1__progress">第 ${qi+1} / ${queue.length} 题　对 ${correct}</p>`; }
+    function restartBtn(){ return `<button class="btn btn--ghost" data-g1-act="restart">重新开始这一轮</button>`; }
+
+    function renderIdle(){
+      uiState = 'idle';
+      body.innerHTML = `
+        <p class="g1__cmd">${theme.cmd}</p>
+        <button class="btn btn--ok" data-g1-act="start">开始这一轮</button>
+      `;
+    }
+    function renderPlaying(){
+      uiState = 'playing';
+      body.innerHTML = `
+        <div class="g1__stage"><button class="g1__target" disabled>${targetInner()}</button></div>
+        <p class="g1__hint">听……</p>
+        <div class="g1__ctl">${restartBtn()}</div>
+        ${progressLine()}
+      `;
+    }
+    function renderWindow(){
+      uiState = 'window';
+      answered = false;
+      body.innerHTML = `
+        <div class="g1__stage"><button class="g1__target" data-g1-act="tap">${targetInner()}</button></div>
+        <p class="g1__hint">${theme.cmd}</p>
+        <div class="g1__ctl">
+          <button class="btn btn--ghost" data-g1-act="again" ${repeatUsed?'disabled':''}>${ART.spk} 再听一次</button>
+          ${restartBtn()}
+        </div>
+        ${progressLine()}
+      `;
+      clearPending();
+      pendingTimer = laterOnce(()=>resolveAnswer(false), ANSWER_WINDOW_MS);
+    }
+    function renderFeedback(isRight, wasTap){
+      uiState = 'feedback';
+      const q = queue[qi];
+      const cls = isRight ? 'g1__target--pop' : (wasTap ? 'g1__target--shake' : '');
+      const hint = isRight ? '对啦！' : (wasTap ? '再听听看' : '刚才漏掉啦');
+      body.innerHTML = `
+        <div class="g1__stage"><button class="g1__target ${cls}" disabled>${targetInner()}</button></div>
+        <p class="g1__hint">${hint}</p>
+        ${isRight ? meaningChip(q.word) : ''}
+        <div class="g1__ctl">${restartBtn()}</div>
+        ${progressLine()}
+      `;
+      clearPending();
+      pendingTimer = laterOnce(()=>advance(), 900);
+    }
+    function renderAudioFailed(){
+      uiState = 'audioFailed';
+      body.innerHTML = `
+        <div class="g1__stage"><button class="g1__target" disabled>${targetInner()}</button></div>
+        <p class="g1__hint">声音没放出来，点页面顶部提示条重试</p>
+        <div class="g1__ctl">${restartBtn()}</div>
+        ${progressLine()}
+      `;
+    }
+    function renderResult(){
+      uiState = 'done';
+      const passed = correct >= 6;
+      const gs = state.games.grab[roundKey];
+      gs.best = Math.max(gs.best || 0, correct);
+      save();
+      body.innerHTML = `
+        <div class="g1__result"><b>${correct} / ${queue.length}</b>　${passed?'通关啦':'再来一轮就能通关（对 6 题过）'}<br>历史最好：${gs.best} / ${queue.length}</div>
+        <div class="g1__ctl"><button class="btn btn--ok" data-g1-act="restart">再玩一轮</button></div>
+      `;
+    }
+
+    function playQuestion(){
+      renderPlaying();
+      const q = queue[qi];
+      WordAudio.play(q.word).then(r=>{
+        if(r.status === 'ended') renderWindow();
+        else if(r.status === 'failed'){
+          renderAudioFailed();
+          showAudioFailure({ retry(){ playQuestion(); } });
+        }
+        // cancelled/blocked：静默（被更晚的请求或切页取消，§2.3）
+      });
+    }
+    function resolveAnswer(tapped){
+      if(uiState !== 'window' || answered) return;   // 播放期/反馈期锁答边界
+      answered = true;
+      clearPending();
+      const q = queue[qi];
+      const isRight = tapped === q.target;
+      if(isRight) correct++;
+      renderFeedback(isRight, tapped);
+    }
+    function advance(){
+      clearPending();
+      if(qi + 1 < queue.length){ qi++; repeatUsed = false; playQuestion(); }
+      else renderResult();
+    }
+    function startRound(){
+      clearPending();
+      queue = buildQueue();
+      qi = 0; correct = 0; repeatUsed = false; answered = false;
+      playQuestion();
+    }
+
+    renderIdle();
+    root.addEventListener('click', e=>{
+      const act = e.target.closest('[data-g1-act]');
+      if(!act) return;
+      const kind = act.dataset.g1Act;
+      if(kind === 'start' || kind === 'restart'){ startRound(); return; }
+      if(kind === 'tap'){ resolveAnswer(true); return; }
+      if(kind === 'again'){
+        if(uiState !== 'window' || repeatUsed) return;   // 限 1 次/题
+        repeatUsed = true;
+        clearPending();   // 显式失效旧作答窗计时器（resolveAnswer 的 uiState 校验本已兜底，此处求干净）
+        playQuestion();   // 重播本题音，ended 后 renderWindow 重新起 4 秒作答窗
+      }
+    });
   });
 }
 

@@ -120,7 +120,8 @@ def check2_blacklist_manifest(manifest: dict) -> tuple[bool, str]:
 # 自检③④ 提取源注册表 —— 对 week01-v3.html 数据字面量层提取运行时键
 # 每个源：(名称, 正则/提取函数)；任一源提取结果为空 = 失败（防正则静默失效）
 # 现有源：SOUNDS[*].demo / DAYS words|sight|sentences 块 items / WALL_HINT /
-#   BOOK.pages[].line。G1/G3/G4 题库、G5 白名单尚未在 v3 落地（S3/P2），留位。
+#   BOOK.pages[].line / G1_ROUNDS（S3 新增：G1 声音抓抓乐两轮 pos/neg 题库）。
+#   G3/G4 题库、G5 白名单尚未在 v3 落地（S4+/P2），留位。
 # ======================================================================
 DEMO_BLOCK_RE = re.compile(r"demo:\[(.*?)\]\}", re.S)
 WORDS_BLOCK_RE = re.compile(r"\{b:'words',\s*items:\[(.*?)\]\}", re.S)
@@ -128,6 +129,9 @@ SIGHT_BLOCK_RE = re.compile(r"\{b:'sight',\s*items:\[(.*?)\]\}", re.S)
 SENTENCES_BLOCK_RE = re.compile(r"\{b:'sentences',\s*items:\[(.*?)\]\}", re.S)
 WALL_HINT_BLOCK_RE = re.compile(r"const WALL_HINT\s*=\s*\{(.*?)\};", re.S)
 BOOK_PAGES_BLOCK_RE = re.compile(r"pages:\[(.*?)\]\s*\};", re.S)
+G1_ROUNDS_BLOCK_RE = re.compile(r"const G1_ROUNDS\s*=\s*\{(.*?)\n\};", re.S)
+G1_LIST_RE = re.compile(r"(?:pos|neg):\[([^\]]*)\]")
+G1_ROUND_ENTRY_RE = re.compile(r"(\w+):\s*\{\s*pos:\[([^\]]*)\],\s*neg:\[([^\]]*)\]\s*\}")
 
 PAIR_FIRST_RE = re.compile(r"\[\s*'([^']*)'\s*,")
 FLAT_STR_RE = re.compile(r"'([^']*)'")
@@ -180,6 +184,31 @@ def extract_book_lines(html: str) -> list[str]:
     return keys
 
 
+def extract_g1_rounds(html: str) -> list[str]:
+    """G1 声音抓抓乐两轮题库（S3 新增）：拉平 pos/neg 全词，供 check3/4 通用覆盖+黑名单检查。"""
+    keys = []
+    m = G1_ROUNDS_BLOCK_RE.search(html)
+    if not m:
+        return keys
+    for lst in G1_LIST_RE.findall(m.group(1)):
+        keys.extend(FLAT_STR_RE.findall(lst))
+    return keys
+
+
+def parse_g1_rounds_structured(html: str) -> dict[str, dict[str, list[str]]]:
+    """G1_ROUNDS 的结构化解析（轮次→pos/neg），供 check5 做形状级断言（不是简单集合覆盖）。"""
+    m = G1_ROUNDS_BLOCK_RE.search(html)
+    if not m:
+        return {}
+    result: dict[str, dict[str, list[str]]] = {}
+    for round_key, pos_str, neg_str in G1_ROUND_ENTRY_RE.findall(m.group(1)):
+        result[round_key] = {
+            "pos": FLAT_STR_RE.findall(pos_str),
+            "neg": FLAT_STR_RE.findall(neg_str),
+        }
+    return result
+
+
 EXTRACTION_REGISTRY = {
     "sounds_demo": extract_sounds_demo,
     "days_words": extract_days_words,
@@ -187,6 +216,7 @@ EXTRACTION_REGISTRY = {
     "days_sentences": extract_days_sentences,
     "wall_hint": extract_wall_hint,
     "book_lines": extract_book_lines,
+    "g1_rounds": extract_g1_rounds,
 }
 
 
@@ -227,15 +257,41 @@ def check4_blacklist_rendering(manifest: dict, extraction: dict[str, list[str]])
 
 
 # ======================================================================
-# 自检⑤ 题库断言（现阶段仅 G5 白名单==A 组 18 词的常量预置校验；
-# G1/G3/G4 题库源与 G5 在 v3 中尚不存在，S3/P2 落地时补运行时提取）
+# 自检⑤ 题库断言（v1.3 §10 自检⑤ + §4.1）：
+#   - G1 两轮（S3 新增）：pos/neg 各恰好4词、轮内不重复、⊆manifest、不含RESERVED
+#   - G5 白名单：现阶段 G5 在 v3 中尚未落地（P2），仍是 manifest 侧预置占位校验
+#   - G3/G4 题库源尚未在 v3 落地，留位
 # ======================================================================
-def check5_problem_bank_placeholder(manifest: dict) -> tuple[bool, str]:
+def check5_problem_bank(manifest: dict, html: str) -> tuple[bool, list[str]]:
+    problems: list[str] = []
     reserved = reserved_set(manifest)
+    manifest_keys = set(it["key"] for it in manifest["items"])
+
+    # G5 白名单占位校验（S3/P2 落地前）：manifest group A 应为 18 词、无保留词
     group_a = [it["key"] for it in manifest["items"] if it["group"] == "A"]
-    ok = len(group_a) == 18 and not (set(k.lower() for k in group_a) & reserved)
-    detail = f"manifest group A（拟作 G5 白名单）条目数={len(group_a)}（期望 18，且无保留词）"
-    return ok, detail
+    if not (len(group_a) == 18 and not (set(k.lower() for k in group_a) & reserved)):
+        problems.append(f"G5 白名单占位校验失败：group A 条目数={len(group_a)}（期望18，且无保留词）")
+
+    # G1 两轮题库断言（S3 新增）
+    rounds = parse_g1_rounds_structured(html)
+    if set(rounds.keys()) != {"s", "a"}:
+        problems.append(f"G1_ROUNDS 轮次键异常：期望 {{'s','a'}}，实际解析到 {sorted(rounds.keys())}")
+    for rk in sorted(rounds.keys()):
+        data = rounds[rk]
+        pos, neg = data.get("pos", []), data.get("neg", [])
+        if len(pos) != 4 or len(neg) != 4:
+            problems.append(f"G1 轮 {rk} 题量异常：pos={len(pos)}（期望4）neg={len(neg)}（期望4）")
+        combined = pos + neg
+        if len(set(combined)) != len(combined):
+            problems.append(f"G1 轮 {rk} 内部有重复词：{combined}")
+        missing = sorted(set(combined) - manifest_keys)
+        if missing:
+            problems.append(f"G1 轮 {rk} 题库词不在 manifest 中（缺 mp3 引用）：{missing}")
+        leaked = sorted(w for w in combined if w.lower() in reserved)
+        if leaked:
+            problems.append(f"G1 轮 {rk} 题库泄漏保留词：{leaked}")
+
+    return (not problems), problems
 
 
 # ======================================================================
@@ -445,9 +501,11 @@ def main() -> int:
         print(f"  - {p}")
     overall_ok &= ok4
 
-    hr("自检⑤ 题库断言（占位：G5 白名单==A组18词 的 manifest 侧预置校验）")
-    ok5, d5 = check5_problem_bank_placeholder(manifest)
-    print(("PASS " if ok5 else "FAIL ") + d5)
+    hr("自检⑤ 题库断言（G1 两轮结构 + G5 白名单占位）")
+    ok5, problems5 = check5_problem_bank(manifest, html)
+    print("PASS" if ok5 else "FAIL")
+    for p in problems5:
+        print(f"  - {p}")
     overall_ok &= ok5
 
     if args.no_inject:
