@@ -462,6 +462,7 @@ td .en{font-size:17px; font-weight:700}
 }
 .audio-fail-bar--show{display:block}
 .audio-fail-bar:hover{background:var(--vowel-line)}
+@media print{ .audio-fail-bar{display:none !important} }   /* 末次审 #3：失败条不进打印小书 */
 
 /* ================= G1 声音抓抓乐（v3 新增） ================= */
 .g1wrap{display:flex; gap:16px; flex-wrap:wrap}
@@ -1044,10 +1045,12 @@ const WordAudio = (() => {
         if(!ttsVoice || window.__disableTtsFallback){ finish('failed'); return; }
         phase = 'fallback';
         timeoutId = setTimeout(() => { if(isCurrent() && phase === 'fallback') finish('failed'); }, 8000);
-        /* Chrome/Edge：cancel() 后立刻 speak() 常被静默丢掉，错开一个短拍（v2 同款 workaround，预筛H2） */
+        /* Chrome/Edge：cancel() 后立刻 speak() 常被静默丢掉，错开一个短拍（v2 同款 workaround，预筛H2）。
+           opts.rate 是相对倍率（playbackRate 语义），TTS 侧换算为 0.75 基准 × 倍率——
+           否则慢速 0.8 会比常速 0.75 更快，兜底路径快慢关系反转（末次审 #1） */
         setTimeout(() => {
           if(settled || !isCurrent() || phase !== 'fallback') return;
-          speakFallback(key, opts.rate,
+          speakFallback(key, 0.75 * (opts.rate || 1),
             () => { if(isCurrent() && phase === 'fallback') finish('ended'); },
             () => { if(isCurrent() && phase === 'fallback') finish('failed'); });
         }, 60);
