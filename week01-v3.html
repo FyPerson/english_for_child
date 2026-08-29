@@ -1487,7 +1487,11 @@ const DAYS = [
 const KEY = 'soundblocks-w1-v1';
 let state = {days:{}};
 try{ const raw = localStorage.getItem(KEY); if(raw) state = JSON.parse(raw) || {days:{}}; }catch(e){}
-if(!state.days) state.days = {};
+// 合并审 C2：JSON.parse 可能返回非对象的合法 JSON（数字/字符串/数组/null），
+// `|| {days:{}}` 只挡得住 falsy 值——isPlainObject 是下面的 function 声明，
+// 会被提升到本块顶部，这里可以先调用。双守卫：state 本体 + state.days 都要查。
+if(!isPlainObject(state)) state = {days:{}};
+if(!isPlainObject(state.days)) state.days = {};
 
 /* ==================================================================
    state.games —— schema 整体建立 + 读取清洗（规格 §6.1/§6.2，S3 落地）。
@@ -2025,9 +2029,16 @@ function toggleStep(i, force){
   const body = el.querySelector('.step__body');
   const open = force != null ? force : body.hidden;
   if(!open){
-    // S3 预筛 M2：折叠时清理该 step 子树内所有 G1 卡的挂起计时器/陈旧回调，
-    // 否则作答窗计时器会在隐藏节点上继续跑，重新展开时弹出一个"过期"的反馈。
-    body.querySelectorAll('[data-g1-round]').forEach(g1=>{ if(g1._g1Reset) g1._g1Reset(); });
+    // S3 预筛 M2 + 合并审 C1：折叠时清理该 step 子树内所有 G1 卡的挂起计时器/
+    // 陈旧回调，否则作答窗计时器会在隐藏节点上继续跑，重新展开时弹出一个"过期"
+    // 的反馈。仅当子树里真的有 G1 卡时才 AudioBus.stopAll()（停音频+清顶部失败
+    // 提示条的 continuation）——先停一次音频，再逐卡 _g1Reset() 复位 UI；不含
+    // G1 卡的普通 step 折叠不掐别处正在播的音频（比如别的 step 在放示范词）。
+    const g1s = body.querySelectorAll('[data-g1-round]');
+    if(g1s.length){
+      AudioBus.stopAll();
+      g1s.forEach(g1=>{ if(g1._g1Reset) g1._g1Reset(); });
+    }
   }
   body.hidden = !open;
   el.classList.toggle('step--open', open);

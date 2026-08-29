@@ -80,12 +80,19 @@ def get_ffmpeg_exe() -> str:
 def run_ffmpeg(ffmpeg: str, args: list[str]) -> tuple[int, str]:
     """跑一次 ffmpeg，返回 (returncode, stderr 全文)（ffmpeg 的分析类 filter 输出都在 stderr）。
     H1 修复：调用方必须核对 returncode——非零退出即判处理/测量失败，不能只看 stderr 里
-    有没有碰巧解析出数字（decode 失败等场景 stderr 里也可能残留旧格式文本导致误判通过）。"""
-    proc = subprocess.run(
-        [ffmpeg, "-hide_banner", "-nostdin", *args],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        encoding="utf-8", errors="replace",
-    )
+    有没有碰巧解析出数字（decode 失败等场景 stderr 里也可能残留旧格式文本导致误判通过）。
+    C4 修复：加 timeout=60s，防止个别损坏/异常输入让 ffmpeg 挂死拖垮整条流水线；
+    超时视同失败，returncode 用 -1 这个不可能出现的合法值占位，调用方现有的
+    `rc != 0` 判定天然覆盖，不需要额外分支。"""
+    try:
+        proc = subprocess.run(
+            [ffmpeg, "-hide_banner", "-nostdin", *args],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            encoding="utf-8", errors="replace",
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired as e:
+        return -1, f"ffmpeg 超时（60s）被终止：{e}"
     return proc.returncode, (proc.stderr or "")
 
 
@@ -96,6 +103,35 @@ def load_manifest() -> dict:
 
 def reserved_set(manifest: dict) -> set[str]:
     return set(k.lower() for k in manifest["reserved_blacklist"])
+
+
+# ======================================================================
+# C3（合并审 medium，已裁定采纳）：manifest 每条 file 字段的路径安全前置闸——
+# 必须在任何 unlink/ffmpeg 调用之前跑完并通过，否则拒绝继续。两件事：
+#   ① file 必须是纯文件名：非绝对路径、无盘符、无目录分隔符/父目录穿越
+#     （`Path(f).name != f` 一个条件就能同时抓住这几种情况——只要含目录分隔符
+#     或盘符，取 .name 后就不再等于原字符串）。
+#   ② 文件名冲突检查改用 casefold 后的集合：check1 的 set(files) 是大小写敏感
+#     的字符串去重，抓不住"At.mp3" vs "at.mp3"这种在 Windows 文件系统里会互相
+#     覆盖、但作为 Python 字符串并不相等的真实冲突。
+# ======================================================================
+def check_manifest_paths(manifest: dict) -> tuple[bool, list[str]]:
+    problems: list[str] = []
+    for it in manifest["items"]:
+        f = it["file"]
+        p = Path(f)
+        if p.is_absolute() or p.drive or p.name != f:
+            problems.append(f"key={it['key']!r} file={f!r} 不是合法纯文件名（疑似绝对路径/盘符/含目录分隔符）")
+
+    by_casefold: dict[str, list[str]] = {}
+    for it in manifest["items"]:
+        by_casefold.setdefault(it["file"].casefold(), []).append(it["file"])
+    for cf, names in by_casefold.items():
+        distinct = sorted(set(names))
+        if len(distinct) > 1:
+            problems.append(f"文件名仅大小写不同、Windows 文件系统会视为同一文件：{distinct}")
+
+    return (not problems), problems
 
 
 # ======================================================================
@@ -146,36 +182,70 @@ FLAT_STR_RE = re.compile(r"'([^']*)'")
 WALL_HINT_EN_RE = re.compile(r"en:\s*'([^']*)'")
 BOOK_LINE_RE = re.compile(r"line:\s*'([^']*)'")
 
+# ======================================================================
+# C5（合并审 medium，已裁定采纳）：容器锚定——DEMO_BLOCK_RE/WORDS_BLOCK_RE/
+# SIGHT_BLOCK_RE/SENTENCES_BLOCK_RE/BOOK_PAGES_BLOCK_RE 都是"在全文任意位置"
+# 找形如 demo:[...]}/{b:'words',...}/pages:[...]}的通用模式，本身不知道自己
+# 该长在 SOUNDS/DAYS/BOOK 里——万一将来别的常量里长出一个撞形状的字段，会被
+# 静默一起吃进来。改成两层：先唯一定位 `const SOUNDS`/`const DAYS`/`const BOOK`
+# 这几个顶层声明的起止边界（各断言恰好 1 个锚点），只在对应子串里跑现有正则；
+# SOURCE_SPECS 的数量/去重断言保留为第二层，双保险。
+# 边界判定用"下一个顶层 const 声明的起始位置"——本文件所有顶层 const 都独占
+# 一行、不存在顶层 const 相互嵌套，够用，不需要写一个完整的花括号/字符串转义
+# 感知的 JS 解析器。
+# ======================================================================
+TOP_CONST_RE = re.compile(r"^const\s+(\w+)\b", re.M)
+
+
+def find_container_block(html: str, name: str) -> str:
+    starts = [m.start() for m in TOP_CONST_RE.finditer(html) if m.group(1) == name]
+    if len(starts) != 1:
+        raise RuntimeError(
+            f"顶层声明 'const {name}' 锚点数={len(starts)}（期望恰好 1 个），提取器容器锚定失败——"
+            f"检查是否被重命名/重复声明/移出顶层作用域"
+        )
+    start = starts[0]
+    all_starts = sorted(m.start() for m in TOP_CONST_RE.finditer(html))
+    later = [s for s in all_starts if s > start]
+    end = later[0] if later else len(html)
+    return html[start:end]
+
 
 def extract_sounds_demo(html: str) -> list[str]:
+    block_html = find_container_block(html, "SOUNDS")
     keys = []
-    for block in DEMO_BLOCK_RE.findall(html):
+    for block in DEMO_BLOCK_RE.findall(block_html):
         keys.extend(PAIR_FIRST_RE.findall(block))
     return keys
 
 
 def extract_days_words(html: str) -> list[str]:
+    block_html = find_container_block(html, "DAYS")
     keys = []
-    for block in WORDS_BLOCK_RE.findall(html):
+    for block in WORDS_BLOCK_RE.findall(block_html):
         keys.extend(FLAT_STR_RE.findall(block))
     return keys
 
 
 def extract_days_sight(html: str) -> list[str]:
+    block_html = find_container_block(html, "DAYS")
     keys = []
-    for block in SIGHT_BLOCK_RE.findall(html):
+    for block in SIGHT_BLOCK_RE.findall(block_html):
         keys.extend(PAIR_FIRST_RE.findall(block))
     return keys
 
 
 def extract_days_sentences(html: str) -> list[str]:
+    block_html = find_container_block(html, "DAYS")
     keys = []
-    for block in SENTENCES_BLOCK_RE.findall(html):
+    for block in SENTENCES_BLOCK_RE.findall(block_html):
         keys.extend(PAIR_FIRST_RE.findall(block))
     return keys
 
 
 def extract_wall_hint(html: str) -> list[str]:
+    # WALL_HINT_BLOCK_RE 本身已经是 `const WALL_HINT = {...}` 精确锚定，不属于
+    # C5 范围（C5 明确只针对 SOUNDS/DAYS/BOOK 这类"通用模式在全文搜"的提取器）。
     keys = []
     for block in WALL_HINT_BLOCK_RE.findall(html):
         keys.extend(WALL_HINT_EN_RE.findall(block))
@@ -183,8 +253,9 @@ def extract_wall_hint(html: str) -> list[str]:
 
 
 def extract_book_lines(html: str) -> list[str]:
+    block_html = find_container_block(html, "BOOK")
     keys = []
-    for block in BOOK_PAGES_BLOCK_RE.findall(html):
+    for block in BOOK_PAGES_BLOCK_RE.findall(block_html):
         for raw_line in BOOK_LINE_RE.findall(block):
             # 运行时 initBook() 用 pageData.line.replace(/[""]/g,'') 规范化
             # （该字符类实际是两个 ASCII 双引号 0x22，非弯引号），提取器同步镜像
@@ -430,6 +501,10 @@ def process_one(ffmpeg: str, item: dict) -> dict:
         str(out_path),
     ])
     if proc_rc != 0 or not out_path.exists() or out_path.stat().st_size == 0:
+        # C4：非零退出/超时都可能是 ffmpeg 已经开始写文件、写到一半才被判失败或被
+        # timeout 杀掉，留下部分写入的残缺文件——再 unlink 一次，确保"该条输出保持
+        # 已删除态"，不会被后面任何路径误当成有效 processed 产物。
+        out_path.unlink(missing_ok=True)
         result["reason"] = f"处理失败（returncode={proc_rc}）或输出缺失/空文件；ffmpeg stderr 尾部：{stderr[-400:]}"
         return result
 
@@ -563,6 +638,17 @@ def main() -> int:
     ok2, d2 = check2_blacklist_manifest(manifest)
     print(("PASS " if ok2 else "FAIL ") + d2)
     overall_ok &= ok2
+
+    hr("C3 manifest 路径安全前置闸")
+    ok_paths, problems_paths = check_manifest_paths(manifest)
+    print("PASS" if ok_paths else "FAIL")
+    for p in problems_paths:
+        print(f"  - {p}")
+    if not ok_paths:
+        # 硬门禁：不并入 overall_ok 继续跑，直接在任何 unlink/ffmpeg 调用之前停下
+        hr("总结")
+        print("FAIL：manifest 路径校验未通过，拒绝继续（未调用任何 unlink/ffmpeg）")
+        return 1
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
