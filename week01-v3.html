@@ -501,6 +501,22 @@ td .en{font-size:17px; font-weight:700}
 .g1__progress{font-size:12.5px; color:var(--ink-3)}
 .g1__result{font-size:14px; line-height:1.7}
 .g1__result b{color:var(--ok)}
+
+/* ================= G2 积木合体（v3 新增） ================= */
+.g2__nav{display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:4px}
+.g2__pg{font-family:var(--dis); font-size:13px; color:var(--ink-3); min-width:48px; text-align:center}
+.g2__reveal{display:flex; flex-direction:column; align-items:center; gap:6px}
+.g2__art{min-height:96px; display:flex; align-items:center; justify-content:center}
+.g2__word{font-size:15px; color:var(--ink-2); text-align:center}
+.g2__word b{color:var(--ink); font-family:var(--zh)}
+.g2__ask{font-size:15px; font-weight:600; text-align:center; margin:0}
+.g2__ask--ok{color:var(--ok)}
+.g2__confirm{position:relative; overflow:hidden}
+.g2__confirm-fill{
+  position:absolute; inset:0; background:rgba(255,255,255,.32);
+  transform:scaleX(0); transform-origin:left;
+}
+.g2__confirm-label{position:relative; z-index:1}
 </style>
 
 
@@ -1560,6 +1576,29 @@ function dayDone(n){
 }
 
 /* ==================================================================
+   confirms 写入层（规格 §6.1，T1/G2 落地；G4/G5 后续复用同一套）。
+   五入口守卫之一：confirmWord 入口拒绝保留词（§2.5 入口 5）。
+   ================================================================== */
+function confirmWord(w, src){
+  if(Guard.isReserved(w)){ console.warn('[confirms] blocked reserved word:', w); return; }
+  if(!isPlainObject(state.games.confirms[w])) state.games.confirms[w] = {};
+  state.games.confirms[w][src] = true;
+  save();
+}
+function unconfirmWord(w, src){
+  if(!isPlainObject(state.games.confirms[w])) state.games.confirms[w] = {};
+  state.games.confirms[w][src] = false;
+  save();
+}
+function derivedTrophies(){
+  return Object.keys(state.games.confirms).filter(w=>{
+    if(Guard.isReserved(w)) return false;
+    const rec = state.games.confirms[w];
+    return CONFIRM_SOURCES.some(src => rec[src] === true);
+  });
+}
+
+/* ==================================================================
    RENDER — blocks
    ================================================================== */
 const vowels = 'aeiou';
@@ -1649,18 +1688,16 @@ function blockHTML(b, ctx){
   }
 
   case 'blend':{
-    const id = 'bl' + (ctx.uid++);
-    return `<div class="blender" id="${id}" data-words="${b.words.join(',')}">
-      <div class="blender__stage" data-stage></div>
-      <div class="blender__mean" data-mean></div>
-      <div class="blender__ctl">
-        <button class="btn btn--ghost" data-act="one">① 一个一个念</button>
-        <button class="btn btn--ghost" data-act="fast">② 越念越快</button>
-        <button class="btn" data-act="merge">③ 合起来 ${ART.spk}</button>
+    // G2 积木合体（v1.3 §4.2）：v2 的 one/fast/merge 三按钮结构不保留——逐个点
+    // 字母积木听音素承接①的教学功能，合体后的慢速整词音承接②，词表数据不动。
+    const id = 'g2' + (ctx.uid++);
+    return `<div class="blender" id="${id}" data-g2="${b.words.join(',')}">
+      <div class="g2__nav">
+        <button class="iconbtn" data-act="prev" aria-label="上一个词">${ART.arrowL}</button>
+        <span class="g2__pg" data-pg></span>
+        <button class="iconbtn" data-act="next" aria-label="下一个词">${ART.arrowR}</button>
       </div>
-      ${b.words.length>1 ? `<div class="blender__ctl" data-picker>
-        ${b.words.map((w,i)=>`<button class="btn btn--ghost" style="padding:7px 15px;font-size:14px" data-pick="${i}">${w}</button>`).join('')}
-      </div>` : ''}
+      <div data-body></div>
     </div>`;
   }
 
@@ -2018,7 +2055,7 @@ function renderDay(n){
   </div>`;
 
   renderDots(n);
-  initBlenders(); initPairs(); initFlash(); initBook(); initG1();
+  initG2(); initPairs(); initFlash(); initBook(); initG1();
   updateFinish(n);
   // 展开第一个未完成的步骤
   const firstOpen = document.querySelector('.step');
@@ -2073,60 +2110,152 @@ function updateFinish(n){
 /* ==================================================================
    INTERACTIONS
    ================================================================== */
-function initBlenders(){
-  document.querySelectorAll('[data-words]').forEach(root=>{
-    const words = root.dataset.words.split(',');
+/* ==================================================================
+   bindLongPress —— 通用长按确认原语（G2 起用，规格约定 G4/G5 复用同一套）。
+   mousedown/touchstart 起计时 + 按住进度视觉（scaleX 宽度动画）；满 ms 触发
+   fn；提前松开/移出/取消触摸则清零不触发。触屏 touchstart/touchend 同挂，
+   触屏兼顾不作验收条件。fill 视觉目标元素：el 内找 [data-longpress-fill]，
+   找不到就退化为整个 el 自己变化——不绑定任何具体调用方的 DOM 结构/类名。
+   ================================================================== */
+function bindLongPress(el, fn, ms){
+  ms = ms || 1000;
+  let timer = null;
+  const fill = el.querySelector('[data-longpress-fill]') || el;
+  function arm(){
+    fill.style.transition = 'none';
+    fill.style.transform = 'scaleX(0)';
+    void fill.offsetWidth;   // 强制回流，确保下次按下重新触发过渡（不是复用同一次动画）
+  }
+  function start(e){
+    if(e && e.cancelable) e.preventDefault();
+    if(timer) return;   // 已经在计时，重复 down（如触屏又派生 mousedown）不重开
+    fill.style.transition = `transform ${ms}ms linear`;
+    fill.style.transform = 'scaleX(1)';
+    timer = setTimeout(()=>{ timer = null; arm(); fn(); }, ms);
+  }
+  function cancel(){
+    if(!timer) return;
+    clearTimeout(timer); timer = null;
+    arm();
+  }
+  arm();
+  el.addEventListener('mousedown', start);
+  el.addEventListener('mouseup', cancel);
+  el.addEventListener('mouseleave', cancel);
+  el.addEventListener('touchstart', start, {passive:false});
+  el.addEventListener('touchend', cancel);
+  el.addEventListener('touchcancel', cancel);
+}
+
+/* ==================================================================
+   G2 积木合体（blend 替换，v1.3 §4.2）：每词一屏——积木态（点字母听音素）
+   →合体→合成动画+插画+整词音频两遍→家长确认条（长按确认/再听一次/再试一次）
+   →已确认态（撤销）。词表逐词推进，过完即结束，不强制全确认。
+   ================================================================== */
+function initG2(){
+  document.querySelectorAll('[data-g2]').forEach(root=>{
+    const words = root.dataset.g2.split(',');
     let cur = 0;
-    const pending = [];
-    const stage = root.querySelector('[data-stage]');
-    const mean = root.querySelector('[data-mean]');
-    function draw(){
-      const w = words[cur];
-      stage.classList.remove('is-merged');
-      stage.innerHTML = w.split('').map(c=>tileHTML(c,'tile--lg',true)).join('');
-      mean.innerHTML = '';
-      root.querySelectorAll('[data-pick]').forEach((b,i)=>{
-        b.classList.toggle('btn--ghost', i!==cur);
+    const pg = root.querySelector('[data-pg]');
+    const body = root.querySelector('[data-body]');
+
+    function meaningArt(w, size){
+      const d = W[w] || {zh:'', art:null};
+      return d.art
+        ? illHTML(d.art, size)
+        : `<div style="font-family:var(--en);font-size:${Math.round(size*0.55)}px;font-weight:700">${colorWord(w)}</div>`;
+    }
+    function stageHTML(w, merged){
+      return `<div class="blender__stage ${merged?'is-merged':''}">${w.split('').map(c=>tileHTML(c,'tile--lg',!merged)).join('')}</div>`;
+    }
+    function revealHTML(w){
+      const d = W[w] || {zh:''};
+      return `<div class="g2__reveal">
+        <div class="g2__art">${meaningArt(w, 96)}</div>
+        <div class="g2__word"><span class="en" style="font-size:26px;font-weight:700">${colorWord(w)}</span>　<b>${d.zh}</b></div>
+      </div>`;
+    }
+    function playMergeSequence(onEnded){
+      // §2.3 阶段失败表 G2 行：慢速失败 retry=重播全序列；常速失败 retry=只重播常速。
+      // runAudioStage 的失败 retry 语义天然满足——外层 retry 重新走整段（慢→常），
+      // 内层 retry 只重放内层 playFn（常速）。
+      runAudioStage(() => WordAudio.play(words[cur], {rate:0.8}), () => {
+        runAudioStage(() => WordAudio.play(words[cur]), onEnded);
       });
     }
+
+    function renderBlocks(){
+      const w = words[cur];
+      body.innerHTML = `
+        ${stageHTML(w, false)}
+        <div class="blender__ctl"><button class="btn" data-act="merge">合体 ${ART.spk}</button></div>
+      `;
+    }
+    function renderMerging(){
+      const w = words[cur];
+      body.innerHTML = `
+        ${stageHTML(w, true)}
+        ${revealHTML(w)}
+        <p class="g2__ask">听……</p>
+        <div class="blender__ctl"><button class="btn btn--ghost" data-act="remerge">${ART.spk} 再放一遍</button></div>
+      `;
+      /* 音频被外部打断（点音素砖/词卡）时 cancelled 静默，onEnded 不触发——
+         「再放一遍」是本态的卡内恢复口（G1 interrupted 同款模式的轻量版） */
+      playMergeSequence(() => renderConfirm());
+    }
+    function renderConfirm(){
+      const w = words[cur];
+      body.innerHTML = `
+        ${stageHTML(w, true)}
+        ${revealHTML(w)}
+        <p class="g2__ask">孩子自己读出来了吗？</p>
+        <div class="blender__ctl">
+          <button class="btn btn--ok g2__confirm" data-act="confirm">
+            <span class="g2__confirm-fill" data-longpress-fill></span>
+            <span class="g2__confirm-label">按住 1 秒确认</span>
+          </button>
+          <button class="btn btn--ghost" data-act="replay">${ART.spk} 再听一次</button>
+          <button class="btn btn--ghost" data-act="retry">再试一次</button>
+        </div>
+      `;
+      bindLongPress(body.querySelector('.g2__confirm'), ()=>{
+        confirmWord(w, 'g2');
+        if(words[cur] === w) renderConfirmed();   // 长按满 1 秒期间没翻页才落到当前词
+      }, 1000);
+    }
+    function renderConfirmed(){
+      const w = words[cur];
+      body.innerHTML = `
+        ${stageHTML(w, true)}
+        ${revealHTML(w)}
+        <p class="g2__ask g2__ask--ok">${ART.tick} 已确认</p>
+        <div class="blender__ctl"><button class="btn btn--ghost" data-act="unconfirm">撤销</button></div>
+      `;
+    }
+    function draw(){
+      pg.textContent = `${cur+1} / ${words.length}`;
+      const w = words[cur];
+      const confirmed = !!(state.games.confirms[w] && state.games.confirms[w].g2);
+      confirmed ? renderConfirmed() : renderBlocks();
+    }
+
     root.addEventListener('click', e=>{
-      const pick = e.target.closest('[data-pick]');
-      if(pick){ cur = +pick.dataset.pick; draw(); return; }
+      const nav = e.target.closest('[data-act="prev"],[data-act="next"]');
+      if(nav){
+        AudioBus.stopAll();
+        cur = nav.dataset.act === 'next' ? (cur+1) % words.length : (cur-1+words.length) % words.length;
+        draw();
+        return;
+      }
       const act = e.target.closest('[data-act]');
       if(!act) return;
-      const w = words[cur];
-      const tiles = [...stage.querySelectorAll('.tile')];
-      // 换动作先清场：撤销上一轮未触发的定时器，止住正在播的音
-      if(['one','fast','merge'].includes(act.dataset.act)){
-        pending.forEach(clearTimeout); pending.length = 0;
-        Phone.stopAll();
-      }
-      if(act.dataset.act === 'one'){
-        stage.classList.remove('is-merged');
-        tiles.forEach((t,i)=> pending.push(laterOnce(()=>{
-          t.classList.remove('tile--lit'); void t.offsetWidth; t.classList.add('tile--lit');
-          Phone.say(w[i]);
-        }, i*820)));
-        mean.innerHTML = '<b>听一个，跟一个</b>：每个音停一下，孩子跟着念';
-      }
-      if(act.dataset.act === 'fast'){
-        stage.classList.remove('is-merged');
-        tiles.forEach((t,i)=> pending.push(laterOnce(()=>{
-          t.classList.remove('tile--lit'); void t.offsetWidth; t.classList.add('tile--lit');
-          Phone.say(w[i]);
-        }, i*380)));
-        mean.innerHTML = '<b>听它们挤在一起</b>：跟着一起加速念';
-      }
-      if(act.dataset.act === 'merge'){
-        stage.classList.add('is-merged');
-        tiles.forEach(t=>{ t.classList.remove('tile--lit'); void t.offsetWidth; t.classList.add('tile--lit'); });
-        runAudioStage(() => WordAudio.play(w, {rate:0.8}), () => {
-          runAudioStage(() => WordAudio.play(w), null);
-        });
-        const d = W[w] || {zh:''};
-        mean.innerHTML = `<span class="en" style="font-size:24px;font-weight:700">${colorWord(w)}</span>　<b>${d.zh}</b>`;
-      }
+      if(act.dataset.act === 'merge'){ renderMerging(); return; }
+      if(act.dataset.act === 'remerge'){ renderMerging(); return; }   // 打断后卡内恢复：重放全序列
+      if(act.dataset.act === 'replay'){ playMergeSequence(null); return; }
+      if(act.dataset.act === 'retry'){ renderBlocks(); return; }
+      if(act.dataset.act === 'unconfirm'){ unconfirmWord(words[cur], 'g2'); renderConfirm(); return; }
     });
+
     draw();
   });
 }
