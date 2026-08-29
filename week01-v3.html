@@ -318,6 +318,8 @@ details.fold>summary:hover{background:var(--surface-2)}
 .pairbtn img{width:56px;height:56px;object-fit:contain;display:block}
 .wcards--wall{grid-template-columns:repeat(6, minmax(0,1fr)); gap:12px}
 .wcard--wall{padding:16px 8px 14px; min-width:0}
+.wcard--trophy-off{filter:grayscale(1); opacity:.42; transition:opacity .16s}
+.wcard--trophy-off:hover{opacity:.65}
 .wcard__art--lg{width:100%; max-width:112px; aspect-ratio:1; height:auto; overflow:hidden}
 .wcard__art--lg img{width:100% !important; height:100% !important; max-width:none; object-fit:contain; display:block}
 .wall-hint{display:flex; flex-direction:column; align-items:center; gap:1px; line-height:1.35}
@@ -520,6 +522,28 @@ td .en{font-size:17px; font-weight:700}
   transform:scaleX(0); transform-origin:left;
 }
 .g2__confirm-label{position:relative; z-index:1}
+
+/* ================= Nat 庆祝 + 彩带覆盖层（v3 新增，规格 §5） ================= */
+.celebrate-overlay{
+  position:fixed; inset:0; z-index:400; cursor:pointer; overflow:hidden;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(35,43,40,.08);
+  animation:celebrate-fade .18s ease;
+}
+@keyframes celebrate-fade{from{opacity:0}to{opacity:1}}
+.celebrate-nat{width:180px; height:180px; color:var(--ink); animation:celebrate-bounce 1s ease-in-out infinite}
+@keyframes celebrate-bounce{
+  0%,100%{transform:translateY(0) scale(1)}
+  50%{transform:translateY(-26px) scale(1.05)}
+}
+.celebrate-confetti{
+  position:absolute; top:-16px; width:10px; height:14px; border-radius:2px;
+  animation-name:celebrate-fall; animation-timing-function:ease-in; animation-fill-mode:forwards;
+}
+@keyframes celebrate-fall{
+  0%{transform:translateY(0) rotate(0deg); opacity:1}
+  100%{transform:translateY(100vh) rotate(400deg); opacity:.15}
+}
 </style>
 
 
@@ -614,6 +638,14 @@ function nat(pose){
     <ellipse cx="72" cy="26" rx="19" ry="15"/>
     <path d="M64 22v5M80 22v5" stroke-width="3"/>
     <path d="M65 31q7 6 14 0" stroke-width="2.6"/>`);
+
+  if(pose === 'cheer') return S(`
+    <ellipse cx="50" cy="62" rx="22" ry="14" fill="${C.sand}"/>
+    <path d="M32 60q-14-6-14-20M68 60q14-6 14-20" stroke="${C.sand}" stroke-width="8"/>
+    <path d="M32 60q-14-6-14-20M68 60q14-6 14-20" stroke-width="2.4"/>
+    <path d="M40 74v14M60 74v14" stroke="${C.sand}" stroke-width="9"/>
+    <path d="M40 74v14M60 74v14" stroke-width="2.4"/>
+    ${natFaceFront(38, 20)}`);
 
   return '';
 }
@@ -1583,7 +1615,42 @@ function dayDone(n){
    T2 留的空钩子，T3 落地 Nat 庆祝时在这里加动画，本批不改调用方签名。
    ================================================================== */
 function isBetter(metric, a, b){ return metric === 'elapsed' ? a < b : a > b; }
-function onNewRecord(recKey){ /* T3 填充：Nat 庆祝动画 */ }
+
+/* ==================================================================
+   Nat 庆祝 + 日卡彩带（规格 §5 + §3.1）。celebrateNat()（Nat 跳跃姿态+彩带）
+   用于非 exam 的 step 完成/破纪录/G1 通关；celebrateConfetti()（纯彩带，无
+   Nat）用于 exam 所在 step 完成时的"日级机制"照常反馈——§3.1 隔离的是周检
+   内容本身的反馈（无逐题反馈/无音频/无庆祝动画这条特指 Nat 这类角色化演出），
+   日级盖章+彩带明确写"不属于隔离范围、照常"，所以两者拆开、共享同一套粒子
+   与覆盖层机制。2 秒自动结束，整层可点击跳过；无音效（D8）。
+   ================================================================== */
+function confettiHTML(){
+  return Array.from({length:12}, (_, i) => {
+    const hue = ['var(--ok)','var(--accent)','var(--cons)','var(--vowel)'][i % 4];
+    const left = Math.round(Math.random()*96) + 2;
+    const delay = (Math.random()*0.3).toFixed(2);
+    const dur = (1.1 + Math.random()*0.6).toFixed(2);
+    return `<span class="celebrate-confetti" style="left:${left}%; background:${hue}; animation-delay:${delay}s; animation-duration:${dur}s"></span>`;
+  }).join('');
+}
+let activeCelebration = null;
+function dismissCelebration(){
+  if(activeCelebration){ activeCelebration.remove(); activeCelebration = null; }
+}
+function showCelebration(bodyHTML){
+  dismissCelebration();   // 保险：极端连续触发时先收掉上一个，不叠加
+  const el = document.createElement('div');
+  el.className = 'celebrate-overlay';
+  el.innerHTML = bodyHTML;
+  el.addEventListener('click', dismissCelebration);   // 一律可点击跳过
+  activeCelebration = el;
+  document.body.appendChild(el);
+  setTimeout(()=>{ if(activeCelebration === el) dismissCelebration(); }, 2000);
+}
+function celebrateNat(){ showCelebration(confettiHTML() + `<div class="celebrate-nat">${nat('cheer')}</div>`); }
+function celebrateConfetti(){ showCelebration(confettiHTML()); }
+
+function onNewRecord(recKey){ celebrateNat(); }
 
 /* ==================================================================
    confirms 写入层（规格 §6.1，T1/G2 落地；G4/G5 后续复用同一套）。
@@ -1873,6 +1940,7 @@ function clearPageTimers(){
   pageTimers.forEach(id=>{ clearTimeout(id); clearInterval(id); });
   pageTimers = [];
   AudioBus.stopAll();   // 切页清理：stopAll 合法调用方②（内含 hideAudioFailure）
+  dismissCelebration();   // 切页也收掉挂在 body 上的庆祝覆盖层，防止残留到新页面
 }
 
 function renderHome(){
@@ -1998,6 +2066,11 @@ function taughtWords(){
 function renderWall(){
   clearPageTimers();
   const words = taughtWords();
+  // T4 战利品墙：derivedTrophies() 派生点亮态，不另存；保留词从不出现在这里——
+  // taughtWords() 只并集 DAYS 里 b.b==='words' 块的 items，grep 复核过 RESERVED
+  // 五词从未出现在任何 words 块字面量里，不需要额外过滤。
+  const trophies = new Set(derivedTrophies());
+  const litCount = words.filter(w => trophies.has(w)).length;
   document.getElementById('app').innerHTML = `
   <div class="wrap">
     <div class="dayhead">
@@ -2005,12 +2078,14 @@ function renderWall(){
       <span class="pill pill--c">图文对照</span>
       <h1>本周词卡墙</h1>
       <p class="lead" style="margin-top:10px">点卡片听单词。一共 ${words.length} 个，和每天课里拼过的是同一批。<span class="en">at</span>、<span class="en">in</span>、<span class="en">an</span> 听完单词后会再听词组。</p>
+      <p class="lead" style="margin-top:6px">读出来的词会点亮——已点亮 <b>${litCount} / ${words.length}</b></p>
     </div>
     <div class="wcards wcards--wall">
       ${words.map(w => {
         const d = W[w] || {zh:'',art:null};
         const hint = WALL_HINT[w];
-        return `<button class="wcard wcard--wall" data-say="${w}"${hint && hint.say ? ` data-phrase="${hint.en}"` : ''}>
+        const lit = trophies.has(w);
+        return `<button class="wcard wcard--wall ${lit?'':'wcard--trophy-off'}" data-say="${w}"${hint && hint.say ? ` data-phrase="${hint.en}"` : ''}>
           <div class="wcard__art wcard__art--lg">${d.art?illHTML(d.art,112):`<div style="font-family:var(--en);font-size:36px;font-weight:700">${colorWord(w)}</div>`}</div>
           <div class="wcard__w">${colorWord(w)}</div>
           ${hint
@@ -2445,6 +2520,9 @@ function initG1(){
         <div class="g1__result"><b>${correct} / ${queue.length}</b>　${passed?'通关啦':'再来一轮就能通关（对 6 题过）'}<br>历史最好：${gs.best} / ${queue.length}</div>
         <div class="g1__ctl"><button class="btn btn--ok" data-g1-act="restart">再玩一轮</button></div>
       `;
+      // T3 触发点③：G1 通关时庆祝。覆盖层是 body 级 fixed 定位，浮在结算 UI
+      // 上面显示，不会替换/打断上面刚写入的 body.innerHTML 结算内容。
+      if(passed) celebrateNat();
     }
 
     function playQuestion(){
@@ -2742,11 +2820,22 @@ document.addEventListener('click', e=>{
   if(chk){
     const key = chk.dataset.check;
     const st = dayState(curDay);
+    const wasDayDone = dayDone(curDay);
     st.checks[key] = !st.checks[key];
     chk.classList.toggle('checkitem--on', !!st.checks[key]);
     save();
     updateFinish(curDay);
     renderDots(curDay);
+    // T3 触发点①"step 完成"：v2/v3 每天只有一个 checks 块（在最后一个 step），
+    // 落实到代码里"step 完成"和"日完成"是同一个事件，没有更细的独立事件可挂——
+    // 按实际机制走，日完成才庆祝，勾选单项本身不庆祝（wasDayDone 的判断即此）。
+    // Day7 的 checks 与 exam 块同属一个 step（§3.1），该 step 完成时用无 Nat
+    // 的纯彩带（日级机制照常，但 exam 关联的角色化庆祝仍按规格禁用）。
+    if(!wasDayDone && dayDone(curDay)){
+      const stepIdx = +key.split('-')[1];
+      const stepHasExam = DAYS[curDay-1].steps[stepIdx].blocks.some(b => b.b === 'exam');
+      stepHasExam ? celebrateConfetti() : celebrateNat();
+    }
     return;
   }
 });
