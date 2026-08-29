@@ -2740,6 +2740,10 @@ function initG4(){
     const correctWords = new Set();   // 摆对过的词（session 内），达 3 只出软提示不锁
 
     function clearFeedbackTimer(){ if(feedbackTimer){ clearTimeout(feedbackTimer); feedbackTimer = null; } }
+    function cancelG4LongPress(){   // 复审 low#1：先真取消再置空（G2 同款）
+      if(root._g4Cancel){ try{ root._g4Cancel(); }catch(e){} }
+      root._g4Cancel = null;
+    }
 
     function renderOrders(){
       const rows = G4_WORDS.map(w=>{
@@ -2812,6 +2816,7 @@ function initG4(){
     }
     function pickWord(w){
       clearFeedbackTimer();   // F1：换词时若上一词还挂着摆错回退计时器，直接作废
+      cancelG4LongPress();    // 复审 low#1：换单前取消未完成长按
       word = w;
       slots = new Array(w.length).fill(null);
       usedTileIdx = [];
@@ -2862,8 +2867,11 @@ function initG4(){
           </button>
         </div>
       `;
-      bindLongPress(body.querySelector('.g4__confirm'), ()=>{
-        if(word !== myWord) return;   // 长按期间已经换词/换单，不落到别的词上（同 G2 D2）
+      /* 复审 low#1：保存 cancel 并在换单/复位/重绘前取消——词值相同的快速重选场景下，
+         仅 word===myWord 的值比对拦不住陈旧回调（G2 cancelG2LongPress 同款模式） */
+      cancelG4LongPress();
+      root._g4Cancel = bindLongPress(body.querySelector('.g4__confirm'), ()=>{
+        if(word !== myWord || uiState !== 'feedback' || slots.join('') !== myWord) return;   // 状态级三要素复核
         confirmWord(myWord, 'g4');
         renderOrders();
         renderConfirmFeedback();   // 切到"已确认+撤销"视图，不是简单文案替换
@@ -2903,6 +2911,7 @@ function initG4(){
       // 600ms 摆错回退计时器，避免它在折叠后的隐藏节点上迟到触发。
       roundToken++;
       clearFeedbackTimer();
+      cancelG4LongPress();   // 复审 low#1：折叠/复位前取消未完成长按
       word = null; slots = []; usedTileIdx = []; errorCount = 0;
       renderOrders();
       renderIdle();
