@@ -799,8 +799,11 @@ const WORD_AUDIO = {};
    speakFallback（同一请求内部阶段）与失败提示条渲染绝不调用它。 ---------- */
 const AudioBus = (() => {
   let stopCurrent = null; // 当前 WordAudio 请求注册的"被外部取消"回调
+  let gen = 0;            // 逻辑请求代际：每个新请求/清理递增，延时接续（词→词组）凭它判废（codex S1 审 #1）
   return {
+    generation(){ return gen; },
     stopAll(){
+      gen++;
       if(stopCurrent){ const fn = stopCurrent; stopCurrent = null; try{ fn(); }catch(e){} }
       try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
       try{ Phone.stopAll(); }catch(e){}
@@ -811,6 +814,7 @@ const AudioBus = (() => {
        D3「音素教学行为不动」优先于 §2.2 字面：blend fast 模式 380ms 连发六音的
        "挤在一起"教学效果正建立在音素间叠音上。单词↔音素互断语义保留。 */
     stopForPhone(){
+      gen++;
       if(stopCurrent){ const fn = stopCurrent; stopCurrent = null; try{ fn(); }catch(e){} }
       try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
       hideAudioFailure();
@@ -845,6 +849,7 @@ function speakFallback(text, rate, onend, onerror){
   u.rate = rate || 0.75; u.pitch = 1.05;   // 预筛M6：对齐 mp3 -20% 的教学语速基线
   if(onend) u.addEventListener('end', onend);
   if(onerror) u.addEventListener('error', onerror);
+  try{ speechSynthesis.resume(); }catch(e){}   // v2 同款：引擎 paused 态会让 utterance 静默排队（codex S1 审 #2）
   try{ speechSynthesis.speak(u); }catch(e){ onerror && onerror(); }
 }
 
@@ -2076,8 +2081,10 @@ document.addEventListener('click', e=>{
     const phrase = say.dataset.phrase;
     runAudioStage(() => WordAudio.play(word), () => {
       if(!phrase) return;
-      /* 词→词组之间留一口气（v2 为 380ms）；laterOnce 挂页面定时器，切页自动清（预筛L12） */
-      laterOnce(() => runAudioStage(() => WordAudio.play(phrase), null), 300);
+      /* 词→词组留一口气（v2 为 380ms）。laterOnce 防切页；gen 代际防同页新请求——
+         300ms 窗内点了别的词/音素，迟到的 phrase 不得反杀新请求（codex S1 审 #1） */
+      const g = AudioBus.generation();
+      laterOnce(() => { if(AudioBus.generation() === g) runAudioStage(() => WordAudio.play(phrase), null); }, 300);
     });
   }
 
