@@ -551,6 +551,23 @@ td .en{font-size:17px; font-weight:700}
 .g4__slots{display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; min-height:64px}
 .g4__rack{display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; margin-top:14px; padding-top:14px; border-top:1px dashed var(--line-2)}
 .tile--empty{background:var(--sunk); border-style:dashed; color:var(--ink-3)}
+
+/* ================= G5 造词工坊（v3 新增） ================= */
+/* .g4__slots/.g4__rack 是纯布局类（flex 行+换行），与"g4"这个前缀无关的
+   业务语义——G5 直接复用，不重复定义（同 G4 当初复用 G1 的 .g1__hint 等）。 */
+[data-g5]{position:relative}   /* 承载右下角打哈欠角标的定位参照 */
+.g5--locked{filter:grayscale(1); opacity:.6}
+.g5__lock-note{font-size:14.5px; font-weight:600; color:var(--ink-2); text-align:center; margin:0}
+.g5__slotlen{display:flex; gap:8px; justify-content:center; flex-wrap:wrap}
+.g5__yawn{
+  position:absolute; right:10px; bottom:10px; z-index:2; max-width:200px;
+  display:flex; align-items:center; gap:8px; cursor:pointer;
+  background:var(--surface); border:1px solid var(--line-2); border-radius:99px;
+  padding:6px 14px 6px 6px; box-shadow:var(--shadow-2);
+  animation:celebrate-fade .18s ease;
+}
+.g5__yawn-ic{width:40px; height:40px; flex:none; color:var(--ink)}
+.g5__yawn span{font-size:12.5px; color:var(--ink-2); line-height:1.35}
 </style>
 
 
@@ -1308,6 +1325,14 @@ const G3_PAIRS = [['sat','sit']];
 const G4_WORDS = ['at','it','an','in','sat','pin','nap'];
 
 /* ==================================================================
+   G5 造词工坊 —— 白名单常量（规格 v1.3 §4.5，与 build_audio.py 提取器
+   g5_whitelist 源对齐）：孩子用 satipn 积木自由摆词，摆满即判——是否为
+   "真词"只看这张白名单，与 manifest group A（18 词）逐词冻结一致，两处
+   各自独立维护、由 check⑤ 交叉核对，防止改了一处忘了改另一处。
+   ================================================================== */
+const G5_WHITELIST = ['an','at','in','it','nap','nip','pan','pat','pin','pit','sat','sip','sit','snap','spin','tap','tin','tip'];
+
+/* ==================================================================
    WEEK — 七天课程
    ================================================================== */
 const DAYS = [
@@ -1535,9 +1560,10 @@ const DAYS = [
       ]},
       {b:'note', tone:'bulb', html:'这个游戏的价值在于：让孩子发现<b>英语不在课本里，在他每天生活的房间里</b>。'}
     ]},
-    {t:'游戏二：积木造词', min:12, blocks:[
-      {b:'lead', html:'在纸上剪 12 张小卡片，写上 <span class="say">s a t i p n</span>（每个写两张）。随机摆三张，看能不能拼成真词。拼出真词得 1 分，拼出假词也读出来（这叫解码训练，同样有价值）。'},
-      {b:'note', tone:'ok', html:'能拼出的真词一共有二十多个。可以做成一张「战利品清单」贴在墙上，拼出一个划掉一个。'}
+    {t:'游戏二：造词工坊', min:12, blocks:[
+      {b:'lead', html:'点积木拼词，摆满自动看看是不是真词——猜的词也要读出来，这叫解码训练，跟拼对一样有价值。<b>拼出真词后长按确认，是他自己读出来的吗？</b>'},
+      {b:'g5'},
+      {b:'note', tone:'ok', html:'这个游戏要做完今天最后的「周检」才会打开——先看看这一周到底学会了没有，再决定往下走。真词和瞎拼的组合，屏幕提示是一模一样的「读读看」，不直接告诉他对错，让他自己去读、自己判断。'}
     ]},
     {t:'游戏三：读给别人听', min:10, blocks:[
       {b:'lead', html:'把《Nat Naps》读给爷爷奶奶、读给玩具熊、读给镜子里的自己。<b>换一个听众，孩子会重新认真一遍</b>。'}
@@ -1625,6 +1651,23 @@ cleanGamesState();
 
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
 function dayState(n){ if(!state.days[n]) state.days[n] = {checks:{}}; if(!state.days[n].checks) state.days[n].checks = {}; return state.days[n]; }
+/* ==================================================================
+   examRecorded —— G5 造词工坊的程序锁判定（规格 §2.5 入口1/5 + §3.1，U3
+   落地）：语义定位"含 exam 块的 step 的 checks[0]"，不硬编码 '7-5-0' 字面——
+   在 DAYS[day-1] 里找那个 blocks 含 {b:'exam'} 的 step，取它的 checks 列表
+   第 0 项。第一周（唯一有 exam 块的周）该 step 正是 Day7 的"周检 · 5 分钟"
+   （steps 下标 5），故此函数对 day=7 解析出的 key 恰好是 '7-5-0'，但这里
+   不写死，换天/换周结构变化也不用改这个函数。没有 exam 块的天视为锁死
+   （目前只有 Day7 会渲染 g5 块，这一分支实际不会被触发，但语义上更安全）。
+   ================================================================== */
+function examRecorded(day){
+  const d = DAYS[day-1];
+  if(!d) return false;
+  const stepIdx = d.steps.findIndex(s => s.blocks.some(b => b.b === 'exam'));
+  if(stepIdx === -1) return false;
+  const key = day + '-' + stepIdx + '-0';
+  return !!dayState(day).checks[key];
+}
 function dayDone(n){
   const d = DAYS[n-1]; const st = dayState(n);
   const total = d.steps.reduce((a,s)=> a + s.blocks.filter(b=>b.b==='checks').reduce((x,b)=>x+b.items.length,0), 0);
@@ -1884,6 +1927,15 @@ function blockHTML(b, ctx){
       <div class="blender__ctl" data-g4-orders></div>
       <div class="blender__ctl"><button class="btn btn--ghost" data-act="random">${ART.spk} 随机来一单</button></div>
       <div data-g4-body></div>
+    </div>`;
+  }
+
+  case 'g5':{
+    const id = 'g5' + (ctx.uid++);
+    // data-g5-day 把当前天数带进 DOM，供 initG5() 里的 examRecorded(day) 做
+    // 程序锁语义定位——不在 JS 里硬编码具体是第几天（§2.5 入口1/5 + §3.1）。
+    return `<div class="blender" id="${id}" data-g5 data-g5-day="${ctx.day}">
+      <div data-g5-body></div>
     </div>`;
   }
 
@@ -2211,7 +2263,7 @@ function renderDay(n){
   </div>`;
 
   renderDots(n);
-  initG2(); initG3(); initG4(); initFlash(); initBook(); initG1();
+  initG2(); initG3(); initG4(); initG5(); initFlash(); initBook(); initG1();
   updateFinish(n);
   // 展开第一个未完成的步骤
   const firstOpen = document.querySelector('.step');
@@ -2248,6 +2300,10 @@ function toggleStep(i, force){
     // 音频"的分支（会误停同页其它正在播的音频组件）。_flashReset() 只终止
     // 计时、不结算不写成绩。
     body.querySelectorAll('[data-reckey]').forEach(fl=>{ if(fl._flashReset) fl._flashReset(); });
+    // U3：G5 造词工坊全程不放音频（规格 §4.5 明确要求），12 分钟软提示计时器
+    // 也是纯本地 setTimeout，跟 G6 闪卡同理独立清理，不进上面的 AudioBus 分支。
+    // _g5Reset() 清计时+收起可能已出现的打哈欠角标，不结算不动 confirms。
+    body.querySelectorAll('[data-g5]').forEach(g5=>{ if(g5._g5Reset) g5._g5Reset(); });
   }
   body.hidden = !open;
   el.classList.toggle('step--open', open);
@@ -2815,6 +2871,185 @@ function initG4(){
 }
 
 /* ==================================================================
+   G5 造词工坊（Day7「游戏二：积木造词」替换，v1.3 §4.5 + §2.5 入口1/5 +
+   §3.1 程序锁）：解锁条件=examRecorded(day)（周检 checks[0] 勾选，见该函数
+   定义处）；锁定=卡片盖灰+期待式文案，无倒计时无进度。解锁后：12 块积木
+   (satipn×2)+2/3/4 槽切换（默认3）+清空重来；点积木入下一空槽、点槽内积木
+   撤回；摆满槽自动判——真词（⊆G5_WHITELIST 且不是保留词）→中性提示+长按
+   确认 confirms.g5（可撤销，战利品墙自动点亮，靠已有 derivedTrophies()，
+   这里不用另写点亮逻辑）；假词与保留词→完全同一段"这个组合，读读看"提示，
+   同一个函数产出，不是分别写的两份相似文案（DOM 级恒等）。判定顺序严格
+   Guard.isReserved 前置——先查保留词才查白名单，双保险（白名单本身也不含
+   保留词，build 自检⑤已断言）。全程不放任何词音频（真词也不放，§4.5 明确
+   要求，避免"真词播/保留词不播"这种反过来的差异信号）；积木点击仍可通过
+   全局 data-sayph 委托听音素。12 分钟计时到点/未清空前出 Nat 打哈欠角标
+   （非覆盖层，卡片右下角，点击消失），_g5Reset 清计时+收角标，不结算不动
+   confirms。程序锁的另一半在 checks 点击委托里（见该处 U3 注释）：勾选/
+   取消勾选周检第一项后主动广播 _g5Refresh()，不然锁定态要等切页才刷新。
+   ================================================================== */
+function initG5(){
+  document.querySelectorAll('[data-g5]').forEach(root=>{
+    const body = root.querySelector('[data-g5-body]');
+    const day = +root.dataset.g5Day;
+    const RACK_LETTERS = 'satipn'.split('').flatMap(c=>[c,c]);   // 12 块，每字母 2 块
+    let slotCount = 3;
+    let slots = new Array(slotCount).fill(null);
+    let usedTileIdx = [];
+    let idleTimerId = null;
+    let yawnEl = null;
+
+    function armIdleTimer(){ idleTimerId = laterOnce(showYawn, 12 * 60 * 1000); }
+    function clearIdleTimer(){ if(idleTimerId){ clearTimeout(idleTimerId); idleTimerId = null; } }
+    function showYawn(){
+      if(yawnEl) return;
+      yawnEl = document.createElement('div');
+      yawnEl.className = 'g5__yawn';
+      yawnEl.innerHTML = `<div class="g5__yawn-ic">${nat('nap')}</div><span>玩了好久啦，休息一下吧</span>`;
+      yawnEl.addEventListener('click', hideYawn, {once:true});
+      root.appendChild(yawnEl);
+    }
+    function hideYawn(){ if(yawnEl){ yawnEl.remove(); yawnEl = null; } }
+
+    function rackHTML(){
+      return RACK_LETTERS.map((c,i)=>{
+        const used = usedTileIdx.includes(i);
+        const cls = vowels.includes(c) ? 'tile--v' : 'tile--c';
+        return `<button class="tile ${cls}" data-sayph="${c}" data-g5-tile="${i}" data-g5-letter="${c}" ${used?'disabled':''} aria-label="听 ${SOUNDS[c].ipa} 的发音">${c}</button>`;
+      }).join('');
+    }
+    function slotsHTML(){
+      return slots.map((c,i)=>`<button class="tile tile--lg ${c?'':'tile--empty'}" data-g5-slot="${i}">${c||''}</button>`).join('');
+    }
+    // 假词与保留词共用同一个函数产出同一份 DOM——不是分别写的两处相似文案。
+    function neutralFeedbackHTML(){
+      return `<p class="g1__hint">这个组合，读读看</p>`;
+    }
+    function realWordFeedbackHTML(spelled){
+      const confirmed = !!(state.games.confirms[spelled] && state.games.confirms[spelled].g5);
+      if(confirmed){
+        return `
+          <p class="g1__hint" style="color:var(--ok)">${ART.tick} 已确认，读读看</p>
+          <div class="blender__ctl"><button class="btn btn--ghost" data-g5-act="unconfirm">撤销</button></div>
+        `;
+      }
+      return `
+        <p class="g1__hint">拼出一个词！读读看</p>
+        <div class="blender__ctl">
+          <button class="btn btn--ok g5__confirm" data-g5-act="confirm">
+            <span class="g2__confirm-fill" data-longpress-fill></span>
+            <span class="g2__confirm-label">按住 1 秒确认</span>
+          </button>
+        </div>
+      `;
+    }
+
+    function renderLockedView(){
+      root.classList.add('g5--locked');
+      body.innerHTML = `<p class="g5__lock-note">做完周检，造词工坊就开门啦</p>`;
+    }
+
+    function render(){
+      // 每次渲染都重新判定锁——checks[0] 是唯一真相源，不在实例里缓存 locked
+      // 状态（缓存了就要操心何时失效，不如每次都问一遍，成本可忽略）。
+      if(!examRecorded(day)){
+        clearIdleTimer();
+        hideYawn();
+        // 取消勾选→恢复锁定"派生无副作用"指的是不动 confirms/战利品墙这类
+        // 持久数据；正在摆的半成品字母不是持久数据，锁上时清空，避免下次
+        // 解锁又神不知鬼不觉地把上次锁定前的残局摆回来吓孩子一跳。
+        slots = new Array(slotCount).fill(null);
+        usedTileIdx = [];
+        renderLockedView();
+        return;
+      }
+      root.classList.remove('g5--locked');
+      if(!idleTimerId) armIdleTimer();   // 解锁后只要还没计时就补上一个，覆盖"折叠清理后重新触发渲染"这条路径
+      const full = slots.every(c=>c!==null);
+      let spelled = null, isRealWord = false;
+      if(full){
+        spelled = slots.join('');
+        // 判定顺序（规格明文）：Guard.isReserved 前置，命中就走假词分支
+        // （下面的三元里 isRealWord=false 直接落到 neutralFeedbackHTML，
+        // 与真正的假词是同一条代码路径，不是并列判断两次）。
+        isRealWord = !Guard.isReserved(spelled) && G5_WHITELIST.includes(spelled);
+      }
+      body.innerHTML = `
+        <div class="g5__slotlen">
+          ${[2,3,4].map(n=>`<button class="btn ${n===slotCount?'':'btn--ghost'}" data-g5-len="${n}">${n} 槽</button>`).join('')}
+        </div>
+        <div class="g4__slots">${slotsHTML()}</div>
+        <div class="g4__rack">${rackHTML()}</div>
+        <div class="blender__ctl"><button class="btn btn--ghost" data-g5-act="clear">清空重来</button></div>
+        ${full ? (isRealWord ? realWordFeedbackHTML(spelled) : neutralFeedbackHTML()) : ''}
+      `;
+      if(full && isRealWord && !(state.games.confirms[spelled] && state.games.confirms[spelled].g5)){
+        const mySpelled = spelled;
+        bindLongPress(body.querySelector('.g5__confirm'), ()=>{
+          if(slots.join('') !== mySpelled) return;   // 长按期间已经撤回/清空/换槽数，不落到别的词上
+          confirmWord(mySpelled, 'g5');
+          render();
+        }, 1000);
+      }
+    }
+
+    function placeLetter(tileIdx, letter){
+      const emptyIdx = slots.indexOf(null);
+      if(emptyIdx === -1) return;
+      slots[emptyIdx] = letter;
+      usedTileIdx.push(tileIdx);
+      render();
+    }
+    function retractSlot(slotIdx){
+      const letter = slots[slotIdx];
+      if(!letter) return;
+      slots[slotIdx] = null;
+      for(let i=usedTileIdx.length-1;i>=0;i--){
+        if(RACK_LETTERS[usedTileIdx[i]] === letter){ usedTileIdx.splice(i,1); break; }
+      }
+      render();
+    }
+    function setSlotCount(n){
+      slotCount = n;
+      slots = new Array(n).fill(null);
+      usedTileIdx = [];
+      render();
+    }
+    function clearAll(){
+      slots = new Array(slotCount).fill(null);
+      usedTileIdx = [];
+      render();
+    }
+
+    function reset(){
+      clearIdleTimer();
+      hideYawn();
+      slots = new Array(slotCount).fill(null);
+      usedTileIdx = [];
+      // 不在这里调用 render()：step 已经折叠隐藏，没必要重画；下次任何触发
+      // render() 的事件（周检勾选变化广播 _g5Refresh，或重新展开后的下一次
+      // 交互）都会用 examRecorded() 重新判定一次，语义上是等价的。
+    }
+    root._g5Reset = reset;
+    root._g5Refresh = render;
+
+    render();
+    root.addEventListener('click', e=>{
+      const lenBtn = e.target.closest('[data-g5-len]');
+      if(lenBtn){ setSlotCount(+lenBtn.dataset.g5Len); return; }
+      const tile = e.target.closest('[data-g5-tile]');
+      if(tile && !tile.disabled){ placeLetter(+tile.dataset.g5Tile, tile.dataset.g5Letter); return; }
+      const slot = e.target.closest('[data-g5-slot]');
+      if(slot){ retractSlot(+slot.dataset.g5Slot); return; }
+      const act = e.target.closest('[data-g5-act]');
+      if(act){
+        if(act.dataset.g5Act === 'clear'){ clearAll(); return; }
+        if(act.dataset.g5Act === 'unconfirm'){ unconfirmWord(slots.join(''), 'g5'); render(); return; }
+      }
+    });
+  });
+}
+
+/* ==================================================================
    G1 声音抓抓乐 —— 回合状态机（规格 v1.3 §4.1 + §2.3 失败口径）
    idle → playing → window → feedback → (next question | 结算)
                         ↳ failed → audioFailed → (retry 回 window)
@@ -3253,6 +3488,13 @@ document.addEventListener('click', e=>{
     save();
     updateFinish(curDay);
     renderDots(curDay);
+    // U3 程序锁实现自查点：checks 委托本身只做局部 DOM class 切换 + save，
+    // 不重渲染整个 day（不同于 renderDay 整块重绘）。G5 造词工坊的锁定态依赖
+    // examRecorded() 实时读 checks[key]，这里必须显式让当前页面上（如果有）
+    // 的 G5 卡重新判定一次，否则勾选/取消勾选周检第一项后卡片不会立即
+    // 解锁/恢复锁定，要等切页刷新才看得到——不勾选是否含 g5 的 step，
+    // 直接对页面上所有 [data-g5] 广播刷新，成本可忽略（最多 1 张卡）。
+    document.querySelectorAll('[data-g5]').forEach(g5=>{ if(g5._g5Refresh) g5._g5Refresh(); });
     // T3 触发点①"step 完成"：v2/v3 每天只有一个 checks 块（在最后一个 step），
     // 落实到代码里"step 完成"和"日完成"是同一个事件，没有更细的独立事件可挂——
     // 按实际机制走，日完成才庆祝，勾选单项本身不庆祝（wasDayDone 的判断即此）。

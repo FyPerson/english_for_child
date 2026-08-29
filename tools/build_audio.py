@@ -165,8 +165,8 @@ def check2_blacklist_manifest(manifest: dict) -> tuple[bool, str]:
 # 每个源：(名称, 正则/提取函数)；任一源提取结果为空 = 失败（防正则静默失效）
 # 现有源：SOUNDS[*].demo / DAYS words|sight|sentences 块 items / WALL_HINT /
 #   BOOK.pages[].line / G1_ROUNDS（S3：G1 声音抓抓乐两轮 pos/neg 题库）/
-#   G3_PAIRS（U1：G3 两扇门分流词对）/ G4_WORDS（U2：G4 点单题库）。
-#   G5 白名单尚未在 v3 落地（P2 待落），留位。
+#   G3_PAIRS（U1：G3 两扇门分流词对）/ G4_WORDS（U2：G4 点单题库）/
+#   G5_WHITELIST（U3：G5 造词工坊白名单，==manifest group A 18 词）。
 # ======================================================================
 DEMO_BLOCK_RE = re.compile(r"demo:\[(.*?)\]\}", re.S)
 WORDS_BLOCK_RE = re.compile(r"\{b:'words',\s*items:\[(.*?)\]\}", re.S)
@@ -185,6 +185,10 @@ G3_PAIR_RE = re.compile(r"\[\s*'([^']*)'\s*,\s*'([^']*)'\s*\]")
 # U2 新增：G4 点单游戏题库 const G4_WORDS = ['at','it',...]; ——扁平字符串数组，
 # 非贪婪到第一个 "];"（数组内没有更早的 "];" 子串，够用）。
 G4_WORDS_BLOCK_RE = re.compile(r"const G4_WORDS\s*=\s*\[(.*?)\];", re.S)
+# U3 新增：G5 造词工坊白名单 const G5_WHITELIST = ['an','at',...]; ——同样是扁平
+# 字符串数组，与 manifest group A（18 词）必须完全一致（同一份题库两处独立
+# 冻结，供 check5 交叉核对，防止只改一处）。
+G5_WHITELIST_BLOCK_RE = re.compile(r"const G5_WHITELIST\s*=\s*\[(.*?)\];", re.S)
 
 PAIR_FIRST_RE = re.compile(r"\[\s*'([^']*)'\s*,")
 FLAT_STR_RE = re.compile(r"'([^']*)'")
@@ -327,6 +331,17 @@ def extract_g4_words(html: str) -> list[str]:
     return keys
 
 
+def extract_g5_whitelist(html: str) -> list[str]:
+    """G5 造词工坊白名单（U3 新增）：拉平全词，供 check3/4 通用覆盖+黑名单检查，
+    以及 check5 与 manifest group A 的交叉核对。"""
+    keys = []
+    m = G5_WHITELIST_BLOCK_RE.search(html)
+    if not m:
+        return keys
+    keys.extend(FLAT_STR_RE.findall(m.group(1)))
+    return keys
+
+
 EXTRACTION_REGISTRY = {
     "sounds_demo": extract_sounds_demo,
     "days_words": extract_days_words,
@@ -337,6 +352,7 @@ EXTRACTION_REGISTRY = {
     "g1_rounds": extract_g1_rounds,
     "g3_pairs": extract_g3_pairs,
     "g4_words": extract_g4_words,
+    "g5_whitelist": extract_g5_whitelist,
 }
 
 
@@ -355,6 +371,7 @@ SOURCE_SPECS = {
     "g1_rounds":      {"anchor_re": G1_ROUNDS_BLOCK_RE,  "anchors": 1, "keys": 16, "unique": 15},  # dog 两轮各出现一次
     "g3_pairs":       {"anchor_re": G3_PAIRS_BLOCK_RE,   "anchors": 1, "keys": 2,  "unique": 2},
     "g4_words":       {"anchor_re": G4_WORDS_BLOCK_RE,   "anchors": 1, "keys": 7,  "unique": 7},
+    "g5_whitelist":   {"anchor_re": G5_WHITELIST_BLOCK_RE, "anchors": 1, "keys": 18, "unique": 18},
 }
 
 # ======================================================================
@@ -368,14 +385,27 @@ SOURCE_SPECS = {
 UNREFERENCED_KEYS = frozenset({"Nat", "naps"})
 
 # ======================================================================
-# M2（S2 预筛 medium，已裁定采纳）：tripwire——HTML 里出现 G5_ 前缀的题库常量
+# M2（S2 预筛 medium，已裁定采纳）：tripwire——HTML 里出现 G<n>_ 前缀的题库常量
 # 声明，但提取注册表/自检⑤没有对应处理，说明落地新游戏时忘了同步
-# build_audio.py。G1（g1_rounds）/G3（g3_pairs）/G4（g4_words）都已有提取源 +
-# check5 形状级断言，字符类收窄到 [5]，天然排除掉这三个已落地的、只继续盯
-# G5——U2 落地 G4_WORDS 时把 4 从字符类里摘掉，正是这条 tripwire 设计初衷要求
-# 的"同步更新"动作，不是绕过它。
+# build_audio.py。原先的写法是"字符类逐次收窄"（每次新落地一个 G<n> 就从
+# 字符类里摘掉对应数字，例如 U2 落地 G4_WORDS 时把 4 从 [45] 摘到只剩 [5]）——
+# U3 落地 G5_WHITELIST 后，G1（g1_rounds）/G3（g3_pairs）/G4（g4_words）/
+# G5（g5_whitelist）四个题库常量已全部接入提取源 + check5 断言，已经没有
+# "下一个待摘的数字"，继续硬编码一个不可能匹配的字符类纯属摆设，收尾语义
+# 也不清楚（空字符类是"暂时没有"还是"以后也不会有"，读代码的人看不出来）。
+# 改成显式白名单收尾：正则放开匹配任意 G<数字>_XXX 顶层常量声明，命中后再
+# 核对是否在 HANDLED_GAME_CONSTS 里——不在，说明落地了新游戏的题库常量却忘了
+# 同步 build_audio.py。这样写对未来的 G6/G7... 天然生效，不需要再手改正则。
 # ======================================================================
-GXX_CONST_RE = re.compile(r"\bconst\s+(G5_[A-Z][A-Z0-9_]*)\s*=")
+GXX_CONST_RE = re.compile(r"\bconst\s+(G\d+_[A-Z][A-Z0-9_]*)\s*=")
+# 放宽正则后第一次实测跑出个假阳性：G1_THEME（week01-v3.html 里 G1 每轮卡片的
+# 标题/图标/口令 UI 展示配置，形如 {title, icon, cmd}，不含任何词/音素，不是
+# 题库常量）——历史上字符类从没含过数字 1，这条常量从来没被扫描到过，不是
+# 这次新引入的问题，只是换成"广撒网+白名单"写法后第一次显形。跟三个真题库
+# 常量一起放进白名单，但语义不同：题库常量在这里代表"已接入提取源+check5
+# 断言"，G1_THEME 代表"确认过不是题库，不需要断言"——两种情况都是"已处理"，
+# 白名单不区分，注释区分。
+HANDLED_GAME_CONSTS = frozenset({"G1_ROUNDS", "G1_THEME", "G3_PAIRS", "G4_WORDS", "G5_WHITELIST"})
 
 
 def build_extraction_report(html: str) -> dict[str, list[str]]:
@@ -441,21 +471,17 @@ def check4_blacklist_rendering(manifest: dict, extraction: dict[str, list[str]])
 
 
 # ======================================================================
-# 自检⑤ 题库断言（v1.3 §10 自检⑤ + §4.1/§4.3/§4.4）：
+# 自检⑤ 题库断言（v1.3 §10 自检⑤ + §4.1/§4.3/§4.4/§4.5）：
 #   - G1 两轮（S3 新增）：pos/neg 各恰好4词、轮内不重复、⊆manifest、不含RESERVED
 #   - G3 两扇门（U1 新增）：至少1个词对、每对2个不同词、⊆manifest、不含RESERVED
 #   - G4 点单（U2 新增）：词表⊆manifest、不含RESERVED、内部不重复
-#   - G5 白名单：现阶段 G5 在 v3 中尚未落地（P2），仍是 manifest 侧预置占位校验
+#   - G5 造词白名单（U3 新增）：内部不重复、不含RESERVED、与 manifest group A
+#     18 词完全相等（两处独立冻结的交叉核对）
 # ======================================================================
 def check5_problem_bank(manifest: dict, html: str) -> tuple[bool, list[str]]:
     problems: list[str] = []
     reserved = reserved_set(manifest)
     manifest_keys = set(it["key"] for it in manifest["items"])
-
-    # G5 白名单占位校验（S3/P2 落地前）：manifest group A 应为 18 词、无保留词
-    group_a = [it["key"] for it in manifest["items"] if it["group"] == "A"]
-    if not (len(group_a) == 18 and not (set(k.lower() for k in group_a) & reserved)):
-        problems.append(f"G5 白名单占位校验失败：group A 条目数={len(group_a)}（期望18，且无保留词）")
 
     # G1 两轮题库断言（S3 新增）
     rounds = parse_g1_rounds_structured(html)
@@ -502,12 +528,32 @@ def check5_problem_bank(manifest: dict, html: str) -> tuple[bool, list[str]]:
     if leaked_g4:
         problems.append(f"G4_WORDS 泄漏保留词：{leaked_g4}")
 
-    # M2 tripwire：出现 G5_ 题库常量声明，但提取注册表/本函数都还没有
-    # 为它写对应处理——多半是落地新游戏时忘了同步 build_audio.py。
-    gxx_found = sorted(set(GXX_CONST_RE.findall(html)))
+    # G5 造词工坊白名单断言（U3 转实）：G5_WHITELIST 必须与 manifest group A
+    # 完全一致（同一份 18 词集合的两处独立冻结，防止改了一处忘了改另一处；
+    # G5 全程不播音频，⊆manifest 因此不是"缺 mp3 引用"意义上的硬需求，但既然
+    # 要求与 group A 逐词相等，manifest 侧覆盖是这条相等断言的自然推论）。
+    g5_whitelist = extract_g5_whitelist(html)
+    group_a = set(it["key"] for it in manifest["items"] if it["group"] == "A")
+    if not g5_whitelist:
+        problems.append("G5_WHITELIST 解析为空（正则可能已失效，或常量被重命名/移出顶层作用域）")
+    if len(set(g5_whitelist)) != len(g5_whitelist):
+        problems.append(f"G5_WHITELIST 内部有重复词：{g5_whitelist}")
+    if set(g5_whitelist) != group_a:
+        problems.append(
+            f"G5_WHITELIST 与 manifest group A 不一致：白名单多出={sorted(set(g5_whitelist) - group_a)}，"
+            f"缺少={sorted(group_a - set(g5_whitelist))}"
+        )
+    leaked_g5 = sorted(w for w in g5_whitelist if w.lower() in reserved)
+    if leaked_g5:
+        problems.append(f"G5_WHITELIST 泄漏保留词：{leaked_g5}")
+
+    # M2 tripwire：出现 G<n>_ 题库常量声明，但不在 HANDLED_GAME_CONSTS 白名单
+    # 里，说明提取注册表/本函数都还没有为它写对应处理——多半是落地新游戏时
+    # 忘了同步 build_audio.py（见上方 HANDLED_GAME_CONSTS 定义处的收尾说明）。
+    gxx_found = sorted(set(GXX_CONST_RE.findall(html)) - HANDLED_GAME_CONSTS)
     if gxx_found:
         problems.append(
-            f"发现 G5 题库常量声明，但提取注册表/自检⑤尚无对应断言，"
+            f"发现题库常量声明，但提取注册表/自检⑤尚无对应断言，"
             f"需在落地该游戏时同步补齐 build_audio.py：{gxx_found}"
         )
 
@@ -766,7 +812,7 @@ def main() -> int:
         print(f"  - {p}")
     overall_ok &= ok4
 
-    hr("自检⑤ 题库断言（G1 两轮结构 + G3 两扇门词对 + G4 点单词表 + G5 白名单占位）")
+    hr("自检⑤ 题库断言（G1 两轮结构 + G3 两扇门词对 + G4 点单词表 + G5 造词白名单）")
     ok5, problems5 = check5_problem_bank(manifest, html)
     print("PASS" if ok5 else "FAIL")
     for p in problems5:
