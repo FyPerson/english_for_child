@@ -93,15 +93,17 @@ def referenced_keys(html: str) -> dict[str, set[str]]:
 
 
 # ────────────────────────────── 规格化 + 编码
-def load_png(path: Path, raw: bool) -> bytes:
+CELEBRATE_PX = 384          # 庆祝图显示 190px，按 @2x 出图；词卡/助记图仍用 unify 默认的 192
+
+def load_png(path: Path, raw: bool, size: int | None = None) -> bytes:
     data = path.read_bytes()
     if raw:
         return data
     from PIL import Image                      # 延迟导入：--raw 时不需要 Pillow
-    from unify_card_outlines import unify, to_png_bytes, metrics
+    from unify_card_outlines import unify, to_png_bytes, metrics, TARGET
     im = Image.open(path).convert("RGBA")
     before = metrics(im)
-    im = unify(im)
+    im = unify(im, size=size or TARGET)
     after = metrics(im)
     print(f"    规格化 {path.name}: {before['size']} → {after['size']}"
           f"，主体占比 {before['bbox']}% → {after['bbox']}%，暗边 {after['dk']}%")
@@ -175,7 +177,7 @@ def main() -> int:
         p = assets / cand
         if p.exists():
             print(f"\n[CELEBRATE_NAT] 庆祝主角图：{cand}")
-            celebrate = to_data_uri(load_png(p, args.raw))
+            celebrate = to_data_uri(load_png(p, args.raw, CELEBRATE_PX))
             break
     else:
         print("\n[CELEBRATE_NAT] 庆祝主角图：素材目录里没有 celebrate.png，保持现状为空")
