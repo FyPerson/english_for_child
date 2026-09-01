@@ -1,0 +1,2 @@
+# 本周插画素材目录。celebrate.png 直接放在本层。
+# 出图后跑：python tools/embed_assets.py --target week02.html --assets assets/week02
