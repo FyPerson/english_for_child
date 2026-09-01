@@ -1,65 +1,412 @@
 {
-  "voice": "en-US-JennyNeural",
-  "rate": { "word": "-20%", "sentence": "-10%", "phrase": "-10%" },
-  "format": "mp3 24kHz 48kbps mono (edge-tts default)",
-  "frozen": "2026-08-29 v1.1 §1，共 56 条；键 = 页面 data-say/data-phrase 字面值",
-  "reserved_blacklist": ["nit", "sap", "tan", "pip", "spit"],
-  "items": [
-    { "key": "at",   "text": "at",   "type": "word", "group": "A", "file": "at.mp3" },
-    { "key": "sat",  "text": "sat",  "type": "word", "group": "A", "file": "sat.mp3" },
-    { "key": "it",   "text": "it",   "type": "word", "group": "A", "file": "it.mp3" },
-    { "key": "in",   "text": "in",   "type": "word", "group": "A", "file": "in.mp3" },
-    { "key": "sit",  "text": "sit",  "type": "word", "group": "A", "file": "sit.mp3" },
-    { "key": "pat",  "text": "pat",  "type": "word", "group": "A", "file": "pat.mp3" },
-    { "key": "pit",  "text": "pit",  "type": "word", "group": "A", "file": "pit.mp3" },
-    { "key": "sip",  "text": "sip",  "type": "word", "group": "A", "file": "sip.mp3" },
-    { "key": "tip",  "text": "tip",  "type": "word", "group": "A", "file": "tip.mp3" },
-    { "key": "tap",  "text": "tap",  "type": "word", "group": "A", "file": "tap.mp3" },
-    { "key": "an",   "text": "an",   "type": "word", "group": "A", "file": "an.mp3" },
-    { "key": "nap",  "text": "nap",  "type": "word", "group": "A", "file": "nap.mp3" },
-    { "key": "pan",  "text": "pan",  "type": "word", "group": "A", "file": "pan.mp3" },
-    { "key": "pin",  "text": "pin",  "type": "word", "group": "A", "file": "pin.mp3" },
-    { "key": "tin",  "text": "tin",  "type": "word", "group": "A", "file": "tin.mp3" },
-    { "key": "nip",  "text": "nip",  "type": "word", "group": "A", "file": "nip.mp3" },
-    { "key": "snap", "text": "snap", "type": "word", "group": "A", "file": "snap.mp3" },
-    { "key": "spin", "text": "spin", "type": "word", "group": "A", "file": "spin.mp3" },
-    { "key": "I",    "text": "I",    "type": "word", "group": "B", "file": "i.mp3" },
-    { "key": "a",    "text": "a",    "type": "word", "group": "B", "file": "a.mp3" },
-    { "key": "see",  "text": "see",  "type": "word", "group": "B", "file": "see.mp3" },
-    { "key": "sun",   "text": "sun",   "type": "word", "group": "C", "file": "sun.mp3" },
-    { "key": "dog",   "text": "dog",   "type": "word", "group": "C", "file": "dog.mp3" },
-    { "key": "sock",  "text": "sock",  "type": "word", "group": "C", "file": "sock.mp3" },
-    { "key": "bag",   "text": "bag",   "type": "word", "group": "C", "file": "bag.mp3" },
-    { "key": "cat",   "text": "cat",   "type": "word", "group": "C", "file": "cat.mp3" },
-    { "key": "hat",   "text": "hat",   "type": "word", "group": "C", "file": "hat.mp3" },
-    { "key": "cup",   "text": "cup",   "type": "word", "group": "C", "file": "cup.mp3" },
-    { "key": "snake", "text": "snake", "type": "word", "group": "C", "file": "snake.mp3" },
-    { "key": "milk",  "text": "milk",  "type": "word", "group": "C", "file": "milk.mp3" },
-    { "key": "fish",  "text": "fish",  "type": "word", "group": "C", "file": "fish.mp3" },
-    { "key": "map",   "text": "map",   "type": "word", "group": "C", "file": "map.mp3" },
-    { "key": "book",  "text": "book",  "type": "word", "group": "C", "file": "book.mp3" },
-    { "key": "bat",   "text": "bat",   "type": "word", "group": "C", "file": "bat.mp3" },
-    { "key": "tree",  "text": "tree",  "type": "word", "group": "C", "file": "tree.mp3" },
-    { "key": "ant",   "text": "ant",   "type": "word", "group": "D", "file": "ant.mp3" },
-    { "key": "apple", "text": "apple", "type": "word", "group": "D", "file": "apple.mp3" },
-    { "key": "ten",   "text": "ten",   "type": "word", "group": "D", "file": "ten.mp3" },
-    { "key": "top",   "text": "top",   "type": "word", "group": "D", "file": "top.mp3" },
-    { "key": "igloo", "text": "igloo", "type": "word", "group": "D", "file": "igloo.mp3" },
-    { "key": "pig",   "text": "pig",   "type": "word", "group": "D", "file": "pig.mp3" },
-    { "key": "pen",   "text": "pen",   "type": "word", "group": "D", "file": "pen.mp3" },
-    { "key": "nose",  "text": "nose",  "type": "word", "group": "D", "file": "nose.mp3" },
-    { "key": "net",   "text": "net",   "type": "word", "group": "D", "file": "net.mp3" },
-    { "key": "Nat",  "text": "Nat",  "type": "word", "group": "E", "file": "nat.mp3" },
-    { "key": "naps", "text": "naps", "type": "word", "group": "E", "file": "naps.mp3" },
-    { "key": "I see a pin.", "text": "I see a pin.", "type": "sentence", "group": "F", "file": "sent_i_see_a_pin.mp3" },
-    { "key": "Nat naps.",    "text": "Nat naps.",    "type": "sentence", "group": "F", "file": "sent_nat_naps.mp3" },
-    { "key": "I pat Nat.",   "text": "I pat Nat.",   "type": "sentence", "group": "F", "file": "sent_i_pat_nat.mp3" },
-    { "key": "I see Nat.",    "text": "I see Nat.",    "type": "sentence", "group": "G", "file": "sent_i_see_nat.mp3" },
-    { "key": "Sit, Nat!",     "text": "Sit, Nat!",     "type": "sentence", "group": "G", "file": "sent_sit_nat.mp3" },
-    { "key": "Nat sat.",      "text": "Nat sat.",      "type": "sentence", "group": "G", "file": "sent_nat_sat.mp3" },
-    { "key": "Nap, Nat, nap!", "text": "Nap, Nat, nap!", "type": "sentence", "group": "G", "file": "sent_nap_nat_nap.mp3" },
-    { "key": "at the door", "text": "at the door", "type": "phrase", "group": "H", "file": "phrase_at_the_door.mp3" },
-    { "key": "an egg",      "text": "an egg",      "type": "phrase", "group": "H", "file": "phrase_an_egg.mp3" },
-    { "key": "in the box",  "text": "in the box",  "type": "phrase", "group": "H", "file": "phrase_in_the_box.mp3" }
-  ]
+ "week": 1,
+ "voice": "en-US-JennyNeural",
+ "rate": {
+  "word": "-20%",
+  "sentence": "-10%",
+  "phrase": "-10%"
+ },
+ "format": "mp3 24kHz 48kbps mono (edge-tts default)",
+ "frozen": "2026-08-29 v1.1 §1，共 56 条；键 = 页面 data-say/data-phrase 字面值",
+ "reserved_blacklist": [
+  "nit",
+  "sap",
+  "tan",
+  "pip",
+  "spit"
+ ],
+ "items": [
+  {
+   "key": "at",
+   "text": "at",
+   "type": "word",
+   "group": "A",
+   "file": "at.mp3"
+  },
+  {
+   "key": "sat",
+   "text": "sat",
+   "type": "word",
+   "group": "A",
+   "file": "sat.mp3"
+  },
+  {
+   "key": "it",
+   "text": "it",
+   "type": "word",
+   "group": "A",
+   "file": "it.mp3"
+  },
+  {
+   "key": "in",
+   "text": "in",
+   "type": "word",
+   "group": "A",
+   "file": "in.mp3"
+  },
+  {
+   "key": "sit",
+   "text": "sit",
+   "type": "word",
+   "group": "A",
+   "file": "sit.mp3"
+  },
+  {
+   "key": "pat",
+   "text": "pat",
+   "type": "word",
+   "group": "A",
+   "file": "pat.mp3"
+  },
+  {
+   "key": "pit",
+   "text": "pit",
+   "type": "word",
+   "group": "A",
+   "file": "pit.mp3"
+  },
+  {
+   "key": "sip",
+   "text": "sip",
+   "type": "word",
+   "group": "A",
+   "file": "sip.mp3"
+  },
+  {
+   "key": "tip",
+   "text": "tip",
+   "type": "word",
+   "group": "A",
+   "file": "tip.mp3"
+  },
+  {
+   "key": "tap",
+   "text": "tap",
+   "type": "word",
+   "group": "A",
+   "file": "tap.mp3"
+  },
+  {
+   "key": "an",
+   "text": "an",
+   "type": "word",
+   "group": "A",
+   "file": "an.mp3"
+  },
+  {
+   "key": "nap",
+   "text": "nap",
+   "type": "word",
+   "group": "A",
+   "file": "nap.mp3"
+  },
+  {
+   "key": "pan",
+   "text": "pan",
+   "type": "word",
+   "group": "A",
+   "file": "pan.mp3"
+  },
+  {
+   "key": "pin",
+   "text": "pin",
+   "type": "word",
+   "group": "A",
+   "file": "pin.mp3"
+  },
+  {
+   "key": "tin",
+   "text": "tin",
+   "type": "word",
+   "group": "A",
+   "file": "tin.mp3"
+  },
+  {
+   "key": "nip",
+   "text": "nip",
+   "type": "word",
+   "group": "A",
+   "file": "nip.mp3"
+  },
+  {
+   "key": "snap",
+   "text": "snap",
+   "type": "word",
+   "group": "A",
+   "file": "snap.mp3"
+  },
+  {
+   "key": "spin",
+   "text": "spin",
+   "type": "word",
+   "group": "A",
+   "file": "spin.mp3"
+  },
+  {
+   "key": "I",
+   "text": "I",
+   "type": "word",
+   "group": "B",
+   "file": "i.mp3"
+  },
+  {
+   "key": "a",
+   "text": "a",
+   "type": "word",
+   "group": "B",
+   "file": "a.mp3"
+  },
+  {
+   "key": "see",
+   "text": "see",
+   "type": "word",
+   "group": "B",
+   "file": "see.mp3"
+  },
+  {
+   "key": "sun",
+   "text": "sun",
+   "type": "word",
+   "group": "C",
+   "file": "sun.mp3"
+  },
+  {
+   "key": "dog",
+   "text": "dog",
+   "type": "word",
+   "group": "C",
+   "file": "dog.mp3"
+  },
+  {
+   "key": "sock",
+   "text": "sock",
+   "type": "word",
+   "group": "C",
+   "file": "sock.mp3"
+  },
+  {
+   "key": "bag",
+   "text": "bag",
+   "type": "word",
+   "group": "C",
+   "file": "bag.mp3"
+  },
+  {
+   "key": "cat",
+   "text": "cat",
+   "type": "word",
+   "group": "C",
+   "file": "cat.mp3"
+  },
+  {
+   "key": "hat",
+   "text": "hat",
+   "type": "word",
+   "group": "C",
+   "file": "hat.mp3"
+  },
+  {
+   "key": "cup",
+   "text": "cup",
+   "type": "word",
+   "group": "C",
+   "file": "cup.mp3"
+  },
+  {
+   "key": "snake",
+   "text": "snake",
+   "type": "word",
+   "group": "C",
+   "file": "snake.mp3"
+  },
+  {
+   "key": "milk",
+   "text": "milk",
+   "type": "word",
+   "group": "C",
+   "file": "milk.mp3"
+  },
+  {
+   "key": "fish",
+   "text": "fish",
+   "type": "word",
+   "group": "C",
+   "file": "fish.mp3"
+  },
+  {
+   "key": "map",
+   "text": "map",
+   "type": "word",
+   "group": "C",
+   "file": "map.mp3"
+  },
+  {
+   "key": "book",
+   "text": "book",
+   "type": "word",
+   "group": "C",
+   "file": "book.mp3"
+  },
+  {
+   "key": "bat",
+   "text": "bat",
+   "type": "word",
+   "group": "C",
+   "file": "bat.mp3"
+  },
+  {
+   "key": "tree",
+   "text": "tree",
+   "type": "word",
+   "group": "C",
+   "file": "tree.mp3"
+  },
+  {
+   "key": "ant",
+   "text": "ant",
+   "type": "word",
+   "group": "D",
+   "file": "ant.mp3"
+  },
+  {
+   "key": "apple",
+   "text": "apple",
+   "type": "word",
+   "group": "D",
+   "file": "apple.mp3"
+  },
+  {
+   "key": "ten",
+   "text": "ten",
+   "type": "word",
+   "group": "D",
+   "file": "ten.mp3"
+  },
+  {
+   "key": "top",
+   "text": "top",
+   "type": "word",
+   "group": "D",
+   "file": "top.mp3"
+  },
+  {
+   "key": "igloo",
+   "text": "igloo",
+   "type": "word",
+   "group": "D",
+   "file": "igloo.mp3"
+  },
+  {
+   "key": "pig",
+   "text": "pig",
+   "type": "word",
+   "group": "D",
+   "file": "pig.mp3"
+  },
+  {
+   "key": "pen",
+   "text": "pen",
+   "type": "word",
+   "group": "D",
+   "file": "pen.mp3"
+  },
+  {
+   "key": "nose",
+   "text": "nose",
+   "type": "word",
+   "group": "D",
+   "file": "nose.mp3"
+  },
+  {
+   "key": "net",
+   "text": "net",
+   "type": "word",
+   "group": "D",
+   "file": "net.mp3"
+  },
+  {
+   "key": "Nat",
+   "text": "Nat",
+   "type": "word",
+   "group": "E",
+   "file": "nat.mp3"
+  },
+  {
+   "key": "naps",
+   "text": "naps",
+   "type": "word",
+   "group": "E",
+   "file": "naps.mp3"
+  },
+  {
+   "key": "I see a pin.",
+   "text": "I see a pin.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_i_see_a_pin.mp3"
+  },
+  {
+   "key": "Nat naps.",
+   "text": "Nat naps.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_nat_naps.mp3"
+  },
+  {
+   "key": "I pat Nat.",
+   "text": "I pat Nat.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_i_pat_nat.mp3"
+  },
+  {
+   "key": "I see Nat.",
+   "text": "I see Nat.",
+   "type": "sentence",
+   "group": "G",
+   "file": "sent_i_see_nat.mp3"
+  },
+  {
+   "key": "Sit, Nat!",
+   "text": "Sit, Nat!",
+   "type": "sentence",
+   "group": "G",
+   "file": "sent_sit_nat.mp3"
+  },
+  {
+   "key": "Nat sat.",
+   "text": "Nat sat.",
+   "type": "sentence",
+   "group": "G",
+   "file": "sent_nat_sat.mp3"
+  },
+  {
+   "key": "Nap, Nat, nap!",
+   "text": "Nap, Nat, nap!",
+   "type": "sentence",
+   "group": "G",
+   "file": "sent_nap_nat_nap.mp3"
+  },
+  {
+   "key": "at the door",
+   "text": "at the door",
+   "type": "phrase",
+   "group": "H",
+   "file": "phrase_at_the_door.mp3"
+  },
+  {
+   "key": "an egg",
+   "text": "an egg",
+   "type": "phrase",
+   "group": "H",
+   "file": "phrase_an_egg.mp3"
+  },
+  {
+   "key": "in the box",
+   "text": "in the box",
+   "type": "phrase",
+   "group": "H",
+   "file": "phrase_in_the_box.mp3"
+  }
+ ]
 }

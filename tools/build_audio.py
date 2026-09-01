@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 """构建管线：按 tools/audio_manifest.json 对 assets/audio_raw/ 的 56 条 mp3 做
 后处理（裁头尾静音 + 峰值归一），产出 assets/audio_processed/，并在自检全绿后
-把 WORD_AUDIO 注入 week01-v3.html。
+把 WORD_AUDIO 注入目标周课件 HTML。
 
 规格来源：docs/声音积木v3游戏版实施规格_20260829_v1.3.md §1（后处理参数）+ §10
 （build_audio.py 七项自检契约）；本次实现的目录/ffmpeg 来源/处理链/注入锚/原子
 写出/提取源注册表设计均由主会话在 S2 派单 spec 草稿中拍板，本文件照此实现。
 
 用法：
-  python tools/build_audio.py --no-inject   # 只跑「处理 + 自检①-⑥」，不碰 week01-v3.html
+  python tools/build_audio.py --no-inject   # 只跑「处理 + 自检①-⑥」，不碰目标 HTML
+  python tools/build_audio.py --manifest tools/audio_manifest_w2.json --target week02.html
   python tools/build_audio.py                # 处理 + 自检七项全部 + 注入 + 原子写出
 
 设计要点（对应 S2 spec 草稿 1-6 条）：
@@ -17,7 +18,7 @@
   3. 处理链：每条两遍 ffmpeg（测量 → 处理），处理后再复测验证
   4. 注入锚：/* WORD_AUDIO_INJECT_START */ ... /* WORD_AUDIO_INJECT_END */ 标记对，
      首跑替换占位符 `const WORD_AUDIO = {};`，重跑替换标记对本身（幂等）
-  5. 原子写出：先写 .tmp 再 os.replace；任一自检失败 = 非零退出，不写 week01-v3.html
+  5. 原子写出：先写 .tmp 再 os.replace；任一自检失败 = 非零退出，不写目标 HTML
   6. 七项自检：见下方 check1..check7，失败即整体非零退出
 
 产物边界（M4，S2 预筛裁定）：assets/audio_processed/ 是**可重建缓存**，不是交付物——
@@ -44,6 +45,8 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent
+# 默认值 = 第一周（保持既有调用方式不变）；--manifest / --target 可覆盖，
+# 这样每加一周不用再改脚本，只加一份 manifest（规范 §11 明确要求）。
 MANIFEST_PATH = ROOT / "tools" / "audio_manifest.json"
 RAW_DIR = ROOT / "assets" / "audio_raw"          # 禁区：只读
 PROCESSED_DIR = ROOT / "assets" / "audio_processed"
@@ -144,8 +147,9 @@ def check1_uniqueness(manifest: dict) -> tuple[bool, str]:
     n = len(items)
     n_keys = len(set(keys))
     n_files = len(set(files))
-    ok = (n == 56 and n_keys == n == n_files)
-    detail = f"条目数={n}，去重键数={n_keys}，去重文件名数={n_files}（期望三者均=56）"
+    expected = manifest.get("expected_items", 56)
+    ok = (n == expected and n_keys == n == n_files)
+    detail = f"条目数={n}，去重键数={n_keys}，去重文件名数={n_files}（期望三者均={expected}）"
     return ok, detail
 
 
@@ -408,6 +412,100 @@ GXX_CONST_RE = re.compile(r"\bconst\s+(G\d+_[A-Z][A-Z0-9_]*)\s*=")
 HANDLED_GAME_CONSTS = frozenset({"G1_ROUNDS", "G1_THEME", "G3_PAIRS", "G4_WORDS", "G5_WHITELIST"})
 
 
+SPEC_FIELDS = {"anchors", "keys", "unique"}
+
+
+def apply_manifest_overrides(manifest: dict) -> None:
+    """把 manifest 里的每周冻结常量灌进模块级 SPEC——只覆盖计数，正则仍在代码里。
+
+    tripwire 语义不变：改了数据形状还不改 manifest 里的计数，自检照样先炸。
+    校验从严（codex M-8）：源名必须恰好是全部十个、字段必须恰好是三个、值必须是
+    非负整数。原先只拒绝未知源名，字段名拼错会被静默忽略然后退回第一周默认值——
+    那等于参数化白做，且错得无声无息。
+    """
+    global UNREFERENCED_KEYS
+    specs = manifest.get("source_specs")
+    if specs is not None:
+        if not isinstance(specs, dict):
+            raise SystemExit("manifest.source_specs 必须是对象")
+        missing = set(SOURCE_SPECS) - set(specs)
+        unknown = set(specs) - set(SOURCE_SPECS)
+        if missing or unknown:
+            raise SystemExit(
+                f"manifest.source_specs 源名必须与提取注册表一一对应；缺少={sorted(missing)}，多余={sorted(unknown)}"
+            )
+        for name, spec in specs.items():
+            if not isinstance(spec, dict) or set(spec) != SPEC_FIELDS:
+                raise SystemExit(f"source_specs.{name} 字段必须恰好是 {sorted(SPEC_FIELDS)}，实际 {sorted(spec) if isinstance(spec, dict) else type(spec).__name__}")
+            for f, v in spec.items():
+                if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+                    raise SystemExit(f"source_specs.{name}.{f} 必须是非负整数，实际 {v!r}")
+            SOURCE_SPECS[name] = {**SOURCE_SPECS[name], **spec}
+    ukeys = manifest.get("unreferenced_keys")
+    if ukeys is not None:
+        if not isinstance(ukeys, list) or not all(isinstance(k, str) for k in ukeys):
+            raise SystemExit("manifest.unreferenced_keys 必须是字符串数组")
+        UNREFERENCED_KEYS = frozenset(ukeys)
+
+    # R-2：week 必填条件——新版清单（带 source_specs 的）一律要求 week，否则
+    # check_week_pairing 会因为 week 缺失/拼错（weeks / Week…）而静默关闭错配保护。
+    # 只给没有 source_specs 的旧版清单留缺省兼容。
+    if specs is not None and "week" not in manifest:
+        raise SystemExit("带 source_specs 的清单必须显式写 week（周次号），否则错配保护会被静默关闭")
+    week = manifest.get("week")
+    if week is not None and (not isinstance(week, int) or isinstance(week, bool) or week <= 0):
+        raise SystemExit(f"manifest.week 必须是正整数，实际 {week!r}")
+
+    # R-2：其余每周冻结常量的类型校验，同样防拼错后静默退回默认值
+    n_items = manifest.get("expected_items")
+    if n_items is not None and (not isinstance(n_items, int) or isinstance(n_items, bool) or n_items <= 0):
+        raise SystemExit(f"manifest.expected_items 必须是正整数，实际 {n_items!r}")
+    rk = manifest.get("g1_round_keys")
+    if rk is not None and (not isinstance(rk, list) or not rk or not all(isinstance(k, str) and k for k in rk)):
+        raise SystemExit(f"manifest.g1_round_keys 必须是非空字符串数组，实际 {rk!r}")
+    wg = manifest.get("g5_whitelist_group")
+    if wg is not None and (not isinstance(wg, str) or not wg):
+        raise SystemExit(f"manifest.g5_whitelist_group 必须是非空字符串，实际 {wg!r}")
+
+    # R-6：unreachable_keys 是纯登记字段（"提取源引用得到、但运行时没有可达入口"），
+    # 不参与自检口径，但形态要守住，否则数据变了它会悄悄失真。
+    unreach = manifest.get("unreachable_keys")
+    if unreach is not None:
+        if not isinstance(unreach, list) or not all(isinstance(k, str) for k in unreach):
+            raise SystemExit("manifest.unreachable_keys 必须是字符串数组")
+        if len(set(unreach)) != len(unreach):
+            raise SystemExit(f"manifest.unreachable_keys 有重复项：{sorted(k for k in set(unreach) if unreach.count(k) > 1)}")
+        item_keys = {it["key"] for it in manifest["items"]}
+        stray = sorted(set(unreach) - item_keys)
+        if stray:
+            raise SystemExit(f"manifest.unreachable_keys 出现不在 items 里的键：{stray}")
+        overlap = sorted(set(unreach) & set(ukeys or []))
+        if overlap:
+            raise SystemExit(
+                f"unreachable_keys 与 unreferenced_keys 相交：{overlap}。"
+                "两者语义不同——前者是'提取得到但运行时不可达'，后者是'任何提取源都引用不到'，不应重叠。")
+
+
+def check_week_pairing(manifest: dict, target: Path) -> None:
+    """清单与目标周必须配套（codex M-8）。
+
+    两周词表高度重叠（第二周 73 条里 37 条直接复用第一周），所以"引用覆盖检查
+    通常会挡住错配"这句话里的"通常"并不可靠——重叠够高时错配可能一路绿灯，
+    然后把音频写进错误的周文件。这里按 localStorage KEY 里的周次号硬核对。
+    """
+    week = manifest.get("week")
+    if week is None:
+        return   # 只剩没有 source_specs 的旧版清单会走到这里；新版在上面已强制要求 week
+    m = re.search(r"const KEY = 'soundblocks-w(\d+)-v\d+';", target.read_text(encoding="utf-8"))
+    if not m:
+        raise SystemExit(f"在 {target.name} 里找不到 soundblocks-w<N>-v<M> 形式的 KEY，无法核对周次")
+    if int(m.group(1)) != int(week):
+        raise SystemExit(
+            f"清单与目标周不配套：manifest.week={week}，但 {target.name} 的 KEY 是第 {m.group(1)} 周。"
+            f"请检查 --manifest / --target 是否配对。"
+        )
+
+
 def build_extraction_report(html: str) -> dict[str, list[str]]:
     return {name: fn(html) for name, fn in EXTRACTION_REGISTRY.items()}
 
@@ -421,7 +519,12 @@ def check3_reference_coverage(manifest: dict, html: str, extraction: dict[str, l
             f"EXTRACTION_REGISTRY 与 SOURCE_SPECS 源名不一致：{sorted(set(EXTRACTION_REGISTRY) ^ set(SOURCE_SPECS))}"
         )
 
-    empty_sources = [name for name, keys in extraction.items() if not keys]
+    # 空源 = 正则失效的信号，但"这一周根本没用这个块"也是合法的（例如第二周没有
+    # sentences 步骤、WALL_HINT 为空）。区分办法：冻结计数 keys==0 表示本周有意
+    # 不用，跳过；keys>0 却提取为空，才是正则失效。tripwire 语义不减弱——把某源
+    # 冻结成 0 是一次显式声明，改回有内容时计数对不上照样会炸。
+    empty_sources = [name for name, keys in extraction.items()
+                     if not keys and SOURCE_SPECS.get(name, {}).get("keys", 1) > 0]
     if empty_sources:
         problems.append(f"以下提取源结果为空（正则可能已失效）：{empty_sources}")
 
@@ -485,8 +588,10 @@ def check5_problem_bank(manifest: dict, html: str) -> tuple[bool, list[str]]:
 
     # G1 两轮题库断言（S3 新增）
     rounds = parse_g1_rounds_structured(html)
-    if set(rounds.keys()) != {"s", "a"}:
-        problems.append(f"G1_ROUNDS 轮次键异常：期望 {{'s','a'}}，实际解析到 {sorted(rounds.keys())}")
+    # 轮次键每周不同（第一周 s/a，第二周 c/e），从 manifest 冻结读取
+    expect_rounds = set(manifest.get("g1_round_keys", ["s", "a"]))
+    if set(rounds.keys()) != expect_rounds:
+        problems.append(f"G1_ROUNDS 轮次键异常：期望 {sorted(expect_rounds)}，实际解析到 {sorted(rounds.keys())}")
     for rk in sorted(rounds.keys()):
         data = rounds[rk]
         pos, neg = data.get("pos", []), data.get("neg", [])
@@ -533,14 +638,16 @@ def check5_problem_bank(manifest: dict, html: str) -> tuple[bool, list[str]]:
     # G5 全程不播音频，⊆manifest 因此不是"缺 mp3 引用"意义上的硬需求，但既然
     # 要求与 group A 逐词相等，manifest 侧覆盖是这条相等断言的自然推论）。
     g5_whitelist = extract_g5_whitelist(html)
-    group_a = set(it["key"] for it in manifest["items"] if it["group"] == "A")
+    # 与白名单逐词交叉核对的分组名每周可不同，从 manifest 读（默认沿用第一周的 "A"）
+    wl_group = manifest.get("g5_whitelist_group", "A")
+    group_a = set(it["key"] for it in manifest["items"] if it["group"] == wl_group)
     if not g5_whitelist:
         problems.append("G5_WHITELIST 解析为空（正则可能已失效，或常量被重命名/移出顶层作用域）")
     if len(set(g5_whitelist)) != len(g5_whitelist):
         problems.append(f"G5_WHITELIST 内部有重复词：{g5_whitelist}")
     if set(g5_whitelist) != group_a:
         problems.append(
-            f"G5_WHITELIST 与 manifest group A 不一致：白名单多出={sorted(set(g5_whitelist) - group_a)}，"
+            f"G5_WHITELIST 与 manifest group {wl_group} 不一致：白名单多出={sorted(set(g5_whitelist) - group_a)}，"
             f"缺少={sorted(group_a - set(g5_whitelist))}"
         )
     leaked_g5 = sorted(w for w in g5_whitelist if w.lower() in reserved)
@@ -738,12 +845,30 @@ def hr(title: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--no-inject", action="store_true", help="只跑处理+自检①-⑥，不注入/不改动 week01-v3.html")
+    ap.add_argument("--no-inject", action="store_true", help="只跑处理+自检①-⑥，不注入/不改动目标 HTML")
+    ap.add_argument("--manifest", help="词表清单路径（默认 tools/audio_manifest.json，第一周）")
+    ap.add_argument("--target", help="注入目标 HTML（默认 week01-v3.html）")
     args = ap.parse_args()
+
+    global MANIFEST_PATH, TARGET_HTML
+    if bool(args.manifest) != bool(args.target):
+        raise SystemExit("--manifest 与 --target 必须成对提供（只给一个会把某一周的词表写进另一周的文件）")
+    if args.manifest:
+        MANIFEST_PATH = Path(args.manifest)
+        if not MANIFEST_PATH.is_absolute():
+            MANIFEST_PATH = ROOT / args.manifest
+    if args.target:
+        TARGET_HTML = Path(args.target)
+        if not TARGET_HTML.is_absolute():
+            TARGET_HTML = ROOT / args.target
+    print(f"manifest: {MANIFEST_PATH}")
+    print(f"target  : {TARGET_HTML}")
 
     overall_ok = True
 
     manifest = load_manifest()
+    apply_manifest_overrides(manifest)
+    check_week_pairing(manifest, TARGET_HTML)
     ffmpeg = get_ffmpeg_exe()
     print(f"ffmpeg: {ffmpeg}")
 
@@ -785,7 +910,7 @@ def main() -> int:
 
     hr("自检⑥ 音频完整性（解码/时长/峰值/首尾静音，处理后测量值）")
     ok6, failed6 = check6_audio_integrity(results)
-    print("PASS 全部 56 条通过" if ok6 else f"FAIL {len(failed6)} 条未通过：")
+    print(f"PASS 全部 {len(results)} 条通过" if ok6 else f"FAIL {len(failed6)} 条未通过：")
     for r in failed6:
         print(f"  - {r['key']} ({r['file']}): {r['reason']}")
     overall_ok &= ok6
@@ -823,7 +948,7 @@ def main() -> int:
         hr("自检⑦ 体积报告")
         print("跳过（--no-inject 模式：本轮不注入，体积增量在注入时才有意义）")
         hr("注入")
-        print("跳过（--no-inject）：week01-v3.html 未被读取以外的任何方式触碰，未写入")
+        print("跳过（--no-inject）：目标 HTML 未被读取以外的任何方式触碰，未写入")
         hr("总结")
         print("整体：" + ("PASS（①-⑥全绿，可进入注入阶段）" if overall_ok else "FAIL（存在未通过项，见上）"))
         return 0 if overall_ok else 1
@@ -831,7 +956,7 @@ def main() -> int:
     # ---- 注入路径（本次派单不会走到这里，因为调用方会传 --no-inject）----
     if not overall_ok:
         hr("总结")
-        print("FAIL：自检未全绿，不执行注入，不写 week01-v3.html")
+        print("FAIL：自检未全绿，不执行注入，不写目标 HTML")
         return 1
 
     # M3：体积预算改判 WORD_AUDIO 载荷本身的字节数（len(block)），不用文件 delta——
@@ -851,7 +976,7 @@ def main() -> int:
         print(f"警告：WORD_AUDIO 载荷 {payload_bytes/1024/1024:.2f}MB 超过 1.2MB 预算（不阻断，人工判断）")
 
     hr("总结")
-    print("PASS：七项自检全绿，已原子写出 week01-v3.html")
+    print("PASS：七项自检全绿，已原子写出目标 HTML")
     return 0
 
 
