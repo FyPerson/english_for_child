@@ -115,7 +115,11 @@
    "text": "cap",
    "type": "word",
    "group": "A",
-   "file": "cap.mp3"
+   "file": "cap.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
   },
   {
    "key": "cat",
@@ -157,7 +161,11 @@
    "text": "dip",
    "type": "word",
    "group": "A",
-   "file": "dip.mp3"
+   "file": "dip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
   },
   {
    "key": "dog",
@@ -206,7 +214,11 @@
    "text": "hip",
    "type": "word",
    "group": "A",
-   "file": "hip.mp3"
+   "file": "hip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
   },
   {
    "key": "hit",
@@ -269,7 +281,11 @@
    "text": "map",
    "type": "word",
    "group": "A",
-   "file": "map.mp3"
+   "file": "map.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
   },
   {
    "key": "mat",
@@ -304,7 +320,11 @@
    "text": "nap",
    "type": "word",
    "group": "A",
-   "file": "nap.mp3"
+   "file": "nap.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
   },
   {
    "key": "net",
@@ -318,7 +338,11 @@
    "text": "nip",
    "type": "word",
    "group": "A",
-   "file": "nip.mp3"
+   "file": "nip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
   },
   {
    "key": "nose",
@@ -416,7 +440,11 @@
    "text": "rip",
    "type": "word",
    "group": "A",
-   "file": "rip.mp3"
+   "file": "rip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
   },
   {
    "key": "sad",
@@ -451,7 +479,11 @@
    "text": "sip",
    "type": "word",
    "group": "A",
-   "file": "sip.mp3"
+   "file": "sip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.9
+   }
   },
   {
    "key": "sit",
@@ -472,7 +504,11 @@
    "text": "snap",
    "type": "word",
    "group": "A",
-   "file": "snap.mp3"
+   "file": "snap.mp3",
+   "manual_trim": {
+    "start": 0.18,
+    "end": 1.0
+   }
   },
   {
    "key": "sock",
@@ -500,7 +536,11 @@
    "text": "tap",
    "type": "word",
    "group": "A",
-   "file": "tap.mp3"
+   "file": "tap.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
   },
   {
    "key": "ten",
@@ -528,14 +568,22 @@
    "text": "tip",
    "type": "word",
    "group": "A",
-   "file": "tip.mp3"
+   "file": "tip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
   },
   {
    "key": "top",
    "text": "top",
    "type": "word",
    "group": "B",
-   "file": "top.mp3"
+   "file": "top.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
   },
   {
    "key": "A cat sat.",
