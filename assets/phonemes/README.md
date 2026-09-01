@@ -31,12 +31,12 @@ TTS 合成和"从单词里切一刀"都极易得到 `kuh`、`duh` 这种**带 sc
 | `i.mp3` | i | /ɪ/ | 第一周 | 同上 |
 | `p.mp3` | p | /p/ | 第一周 | 同上 |
 | `n.mp3` | n | /n/ | 第一周 | 同上 |
-| — | c | /k/ | **第二周·缺** | 待采集 |
-| — | e | /e/ | **第二周·缺** | 待采集 |
-| — | h | /h/ | **第二周·缺** | 待采集 |
-| — | r | /r/ | **第二周·缺** | 待采集 |
-| — | m | /m/ | **第二周·缺** | 待采集 |
-| — | d | /d/ | **第二周·缺** | 待采集 |
+| `c.mp3` | c / k | /k/ | 第二周 | Freesound · margo_heston · `K.wav` |
+| `e.mp3` | e | /e/ | 第二周 | Freesound · margo_heston · `Eh.wav` |
+| `h.mp3` | h | /h/ | 第二周 | Freesound · margo_heston · `Hh.wav` |
+| `r.mp3` | r | /r/ | 第二周 | Freesound · margo_heston · `Rr.wav` |
+| `m.mp3` | m | /m/ | 第二周 | Freesound · margo_heston · `Mm.wav` |
+| `d.mp3` | d | /d/ | 第二周 | Freesound · margo_heston · `D.wav` |
 | — | g o u l f b | | 第三周·未开始 | 待采集 |
 
 **别名**：第二周的 `k` 不单独录音，页面通过 `SOUNDS.k.audioKey = 'c'` 复用 `c.mp3`。
@@ -50,6 +50,12 @@ TTS 合成和"从单词里切一刀"都极易得到 `kuh`、`duh` 这种**带 sc
 第一周六段剪自 Freesound 用户 **margo_heston** 的
 [「English Phonemes」音包](https://freesound.org/people/margo_heston/packs/12249/)，
 授权 **CC BY-NC 4.0**（署名 - 非商业）。已降噪并裁剪为纯音素段。
+
+第二周六段也来自同一作者、同一音包的公开 HQ 试听流；先从发音前后的空段采样底噪，
+做轻度频谱降噪（`/h/` 使用更温和的参数以保留送气），再裁成纯音素段，
+转为 44100 Hz 单声道 64 kbps，并把峰值控制在 −4 到 −2 dBFS。
+原文件分别是 `K.wav`、`Eh.wav`、`Hh.wav`、`Rr.wav`、`Mm.wav`、`D.wav`。
+试听流是 MP3 派生文件，不是作者上传的原始 WAV；用于课件前仍需人耳确认没有 schwa 尾音。
 
 **署名义务**：课件页脚必须保留出处链接。第一周的写法见 `week01-v3.html` 的
 `.foot__credits`，换周时不要漏掉这一段。**非商业授权** —— 这套课件不得用于商业分发。
@@ -71,10 +77,11 @@ TTS 合成和"从单词里切一刀"都极易得到 `kuh`、`duh` 这种**带 sc
 | 码率 | 64 kbps |
 | 峰值 | −3 dBFS（容差 ±1 dB） |
 | 首尾静音 | 已裁除（阈值 −40 dB） |
-| 时长 | 0.31–0.73 s（合格区间 0.12–2.0 s） |
+| 时长 | 0.13–0.73 s（合格区间 0.12–2.0 s） |
 
 注意与**单词音**规格不同：单词音走 `tools/build_audio.py`，是 24000 Hz / 48k。
-音素音要听清发音细节，所以规格更高。六段共约 24 KB，内嵌代价可忽略。
+音素音要听清发音细节，所以规格更高。第一周六段约 24 KB；第二周补齐后十二段约 43.5 KB，
+内嵌代价仍很小。
 
 ## 怎么加新音素
 

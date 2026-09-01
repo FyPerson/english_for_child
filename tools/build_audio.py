@@ -708,14 +708,33 @@ def process_one(ffmpeg: str, item: dict) -> dict:
     gain_db = TARGET_PEAK_DBFS - raw_mv
     result["gain_db"] = gain_db
 
-    # 第二遍：处理（裁首尾静音 + 峰值归一）
-    af_chain = (
-        f"silenceremove=start_periods=1:start_threshold={SILENCE_THRESHOLD_DB}dB,"
-        f"areverse,"
-        f"silenceremove=start_periods=1:start_threshold={SILENCE_THRESHOLD_DB}dB,"
-        f"areverse,"
-        f"volume={gain_db:.3f}dB"
-    )
+    # 第二遍：处理（裁首尾静音 + 峰值归一）。极少数词的词尾塞音爆破会低于
+    # 通用静音阈值；这类条目允许在 manifest 里给出人工核听后的 manual_trim，
+    # 避免反向 silenceremove 把闭塞后的爆破一起裁掉。
+    manual_trim = item.get("manual_trim")
+    if manual_trim is not None:
+        try:
+            trim_start = float(manual_trim["start"])
+            trim_end = float(manual_trim["end"])
+        except (KeyError, TypeError, ValueError):
+            result["reason"] = "manual_trim 必须包含数值 start/end"
+            return result
+        if trim_start < 0 or trim_end <= trim_start:
+            result["reason"] = f"manual_trim 区间非法：{trim_start}–{trim_end}s"
+            return result
+        af_chain = (
+            f"atrim=start={trim_start:.3f}:end={trim_end:.3f},"
+            f"asetpts=PTS-STARTPTS,"
+            f"volume={gain_db:.3f}dB"
+        )
+    else:
+        af_chain = (
+            f"silenceremove=start_periods=1:start_threshold={SILENCE_THRESHOLD_DB}dB,"
+            f"areverse,"
+            f"silenceremove=start_periods=1:start_threshold={SILENCE_THRESHOLD_DB}dB,"
+            f"areverse,"
+            f"volume={gain_db:.3f}dB"
+        )
     # H1：编码前先清掉旧 processed 产物——若本次 ffmpeg 实际失败，不会误留上一次成功
     # 跑出来的同名旧文件，让后面的存在性检查误判通过（陈旧缓存复用风险）。
     out_path.unlink(missing_ok=True)

@@ -45,16 +45,23 @@ with sync_playwright() as p:
     ok("undefined" not in body, "首页出现 undefined")
     ok("[object" not in body, "首页出现 [object Object]")
 
-    # 本周新音没有真人录音 → 点亮墙积木不该是发音按钮。
-    # R-5：只数 data-sayph 锁不住语义——"button 还在、只是没了 data-sayph"照样能通过，
-    # 而这正是 H-1 当初被放过去的原因。必须断言元素类型。
-    ok(pg.locator(".tiles-demo .tile[data-sayph]").count() == 0,
-       "新音积木仍带 data-sayph（会成为点了没反应的哑巴按钮）")
+    # 音素录音可分批补进来。断言必须锁"音频在 → button；音频不在 → div"的配对关系，
+    # 不能写死第二周永远缺音，否则素材一到位测试就会因为错误的原因变红。
+    new_sounds = ["c", "k", "e", "h", "r", "m", "d"]
+    live_new = pg.evaluate(
+        "chs => chs.map(ch => ({ch, live: hasPhoneme(ch)}))", new_sounds)
+    live_count = sum(1 for item in live_new if item["live"])
+    ok(pg.locator(".tiles-demo .tile[data-sayph]").count() == live_count,
+       f"点亮墙可听积木数与音频不匹配：应为 {live_count}，"
+       f"实际 {pg.locator('.tiles-demo .tile[data-sayph]').count()}")
     tags = pg.evaluate("[...document.querySelectorAll('.tiles-demo .tile')].map(e=>e.tagName)")
-    ok(tags == ["DIV"] * 7 + ["BUTTON"],
-       f"点亮墙元素类型不对：期望 7 个 DIV + 1 个示例词 BUTTON，实际 {tags}")
-    ok(pg.locator('.tiles-demo div.tile[role="img"]').count() == 7,
-       "无录音的新音积木没有渲染成 div[role=img]")
+    expected_tags = ["BUTTON" if item["live"] else "DIV" for item in live_new] + ["BUTTON"]
+    ok(tags == expected_tags,
+       f"点亮墙元素类型与音频不匹配：期望 {expected_tags}，实际 {tags}")
+    missing_count = len(new_sounds) - live_count
+    ok(pg.locator('.tiles-demo div.tile[role="img"]').count() == missing_count,
+       f"无录音的新音应有 {missing_count} 个 div[role=img]，"
+       f"实际 {pg.locator('.tiles-demo div.tile[role="img"]').count()}")
     ok(pg.locator(".tiles-demo button.tile:not([data-sayph]):not([data-say])").count() == 0,
        "存在既无 data-sayph 也无 data-say、却仍是 button 的积木（哑巴按钮）")
 
@@ -95,8 +102,14 @@ with sync_playwright() as p:
     pg.locator(".step__hd").nth(1).click()   # 新声音 /k/
     pg.wait_for_timeout(300)
     lab = pg.locator(".soundlab").inner_text()
-    ok("这个音还没有真人录音" in lab, "无录音时没有出现家长示范降级提示")
-    ok(pg.locator(".soundlab__listen").count() == 0, "无录音却仍渲染了听音按钮")
+    c_has_audio = pg.evaluate("hasPhoneme('c')")
+    ok(("这个音还没有真人录音" not in lab) if c_has_audio
+       else ("这个音还没有真人录音" in lab),
+       "新声音区的录音/降级提示与 c 音频状态不匹配")
+    want_listen = 1 if c_has_audio else 0
+    ok(pg.locator(".soundlab__listen").count() == want_listen,
+       f"新声音区听音按钮与 c 音频状态不匹配：应为 {want_listen}，"
+       f"实际 {pg.locator('.soundlab__listen').count()}")
     day1_art = pg.evaluate("SOUNDS['c'].art")
     want_mnemonic = 1 if day1_art in ILL["ph"] else 0
     ok(pg.locator(".mnemonic-img").count() == want_mnemonic,
@@ -104,8 +117,12 @@ with sync_playwright() as p:
        f"{'已内嵌，应渲染 1 张' if want_mnemonic else '未内嵌，不该渲染'}，"
        f"实际 {pg.locator('.mnemonic-img').count()} 张")
     card = pg.locator(".sound").first.inner_text()
-    ok("点字母积木听真人示范" not in card, "没有录音却仍宣称「点字母积木听真人示范」")
-    ok("真人示范音待补" in card, "音素卡副标题没有如实说明录音待补")
+    ok(("点字母积木听真人示范" in card) if c_has_audio
+       else ("点字母积木听真人示范" not in card),
+       "音素卡真人示范提示与 c 音频状态不匹配")
+    ok(("真人示范音待补" not in card) if c_has_audio
+       else ("真人示范音待补" in card),
+       "音素卡待补提示与 c 音频状态不匹配")
 
     pg.locator('.dots [data-goto="5"]').click()
     pg.wait_for_timeout(200)
