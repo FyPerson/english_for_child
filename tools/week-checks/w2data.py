@@ -108,18 +108,18 @@ SOUNDS.k = Object.assign({}, SOUNDS.c, { L:'k' });"""
 
 # ---- §5.1 #3 词库 ----
 W_BLOCK = """const W = {
-  /* ---- 第一周已学词：快闪复习、G3 词对、G5 造词工坊会用到。插画未随第二周
-         带过来（第二周不需要它们出图），art 一律 null，走"词 + 中文"降级。 ---- */
+  /* ---- 第一周已学词：快闪复习、G3 词对、G5 造词工坊会用到。第三天会复用
+         第一周的 natSit / natPat PNG 原图，其余旧词仍走“词 + 中文”降级。 ---- */
   at:{zh:'在',art:null},      it:{zh:'它',art:null},      an:{zh:'一个',art:null},   in:{zh:'在里面',art:null},
-  sat:{zh:'坐下了',art:null}, sit:{zh:'坐',art:null},     pat:{zh:'轻轻拍',art:null}, pit:{zh:'坑',art:null},
+  sat:{zh:'坐下了',art:'natSit'}, sit:{zh:'坐',art:'natSit'}, pat:{zh:'轻轻拍',art:'natPat'}, pit:{zh:'坑',art:null},
   pin:{zh:'大头针',art:null}, pan:{zh:'平底锅',art:null}, nap:{zh:'打个盹',art:null}, tap:{zh:'水龙头',art:null},
   tip:{zh:'小费',art:null},   sip:{zh:'小口喝',art:null}, tin:{zh:'铁罐头',art:null}, nip:{zh:'轻轻咬一口',art:null},
   snap:{zh:'打响指',art:null},spin:{zh:'转圈圈',art:null},
 
   /* ---- 第二周教学词（34）。art 键与 docs/插画生成提示词_第二周 的文件名一一对应；
-         插画未就位时 hasIll() 返回 false，自动降级成"词 + 中文"。 ---- */
+         插画未就位时 hasIll() 返回 false；日课与词卡墙都参考第一周 it，用放大单词占图位。 ---- */
   cat:{zh:'猫',art:'cat'},    cap:{zh:'鸭舌帽',art:'cap'}, can:{zh:'罐头',art:'can'},  kit:{zh:'工具包',art:'kit'},
-  set:{zh:'一套',art:'set'},  ten:{zh:'十',art:'ten'},     net:{zh:'网',art:'net'},    pen:{zh:'笔',art:'pen'},
+  set:{zh:'一套',art:'set'},  ten:{zh:'十',art:'ten'},     net:{zh:'网',art:'net'},    pen:{zh:'钢笔',art:'pen'},
   pet:{zh:'宠物',art:'pet'},  hat:{zh:'帽子',art:'hat'},   hen:{zh:'母鸡',art:'hen'},  hit:{zh:'敲一下',art:'hit'},
   hip:{zh:'胯',art:'hip'},    rat:{zh:'老鼠',art:'rat'},   ran:{zh:'跑了',art:'ran'},  rip:{zh:'撕开',art:'rip'},
   rim:{zh:'边缘',art:'rim'},  rest:{zh:'休息',art:'rest'}, mat:{zh:'垫子',art:'mat'},  man:{zh:'男人',art:'man'},

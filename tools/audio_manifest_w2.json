@@ -186,7 +186,8 @@
    "text": "ham",
    "type": "word",
    "group": "A",
-   "file": "ham.mp3"
+   "file": "ham.mp3",
+   "tempo": 0.85
   },
   {
    "key": "hat",
@@ -207,7 +208,8 @@
    "text": "him",
    "type": "word",
    "group": "A",
-   "file": "him.mp3"
+   "file": "him.mp3",
+   "tempo": 0.85
   },
   {
    "key": "hip",
@@ -253,7 +255,11 @@
    "text": "it",
    "type": "word",
    "group": "A",
-   "file": "it.mp3"
+   "file": "it.mp3",
+   "manual_trim": {
+    "start": 0.18,
+    "end": 0.66
+   }
   },
   {
    "key": "kit",

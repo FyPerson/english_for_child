@@ -173,6 +173,148 @@ with sync_playwright() as p:
            f"第 {day_n} 天 G1 提前暴露了尚未教的音：{early}"
            f"（当天及之前已教：{taught}）")
 
+    # 第 3 天词族游戏：与第 4 天统一为无状态算式行，可反复点击并短暂弹图。
+    pg.locator('.dots [data-goto="3"]').click()
+    pg.wait_for_timeout(200)
+    for i in range(pg.locator(".step").count()):
+        pg.locator(".step__hd").nth(i).click()
+        pg.wait_for_timeout(50)
+    pg.wait_for_timeout(250)
+    family = pg.locator('[data-wordforge="family"]')
+    ok(family.count() == 1, f"第 3 天词族积木工坊不是 1 个（实际 {family.count()}）")
+    family_choices = family.locator("[data-wf-word]")
+    ok(family_choices.count() == 7,
+       f"第 3 天词族游戏不是 7 个可点组合（实际 {family_choices.count()}）")
+    if family_choices.count() == 7:
+        ok(family.locator(".wordforge__equation-rows").count() == 2,
+           "第 3 天词族游戏不是 at / it 两组纵向算式")
+        ok(family_choices.evaluate_all("els=>els.map(e=>e.dataset.wfWord)") ==
+           ["cat", "hat", "pat", "sat", "hit", "kit", "sit"],
+           "第 3 天词族游戏的 7 个算式单词不正确")
+        family_equations = family.locator(".wordforge__equation").evaluate_all(
+            "els=>els.slice(0,2).map(e=>e.textContent.replace(/\\s/g,''))")
+        ok(family_equations == ["c＋at→cat", "h＋at→hat"],
+           f"第 3 天词族游戏没有采用 c + at → cat 式排版（实际 {family_equations}）")
+        ok(family.locator("[data-wf-reset]").count() == 0 and
+           family.locator("[data-wf-progress]").count() == 0,
+           "第 3 天词族游戏仍显示重新开始或已发现计数")
+        initial_bg = family_choices.first.evaluate("e=>getComputedStyle(e).backgroundColor")
+        pg.evaluate("""()=>{
+            window.__wfOriginalPlay = WordAudio.play;
+            window.__wfPlayed = [];
+            WordAudio.play = key => { window.__wfPlayed.push(key); return Promise.resolve({status:'ended'}); };
+        }""")
+        family.locator(".wordforge__brick--tail").first.click(); pg.wait_for_timeout(80)
+        ok(pg.evaluate("window.__wfPlayed.slice()") == [],
+           "第 3 天点击词尾也会播放单词，点击范围没有限制在音素头")
+        family_choices.first.click(); pg.wait_for_timeout(80)
+        family_choices.first.click(); pg.wait_for_timeout(80)
+        ok(pg.evaluate("window.__wfPlayed.slice()") == ["cat", "cat"],
+           "第 3 天同一个词不能反复点击发音")
+        ok(family_choices.first.evaluate("e=>getComputedStyle(e).backgroundColor") == initial_bg,
+           "第 3 天词族游戏点击后仍会保持加深背景")
+        family_picture = family.locator('[data-wf-picture]')
+        ok(family_picture.count() == 1 and family_picture.get_attribute("data-wf-picture-word") == "cat",
+           "第 3 天点击 cat 后没有短暂弹出对应插画")
+        ok(family_picture.evaluate("e=>e.parentElement.hasAttribute('data-wf-result')"),
+           "第 3 天配图没有显示在练习区最下方的反馈栏")
+        for inherited_word in ("pat", "sat", "sit"):
+            family.locator(f'[data-wf-word="{inherited_word}"]').click()
+            pg.wait_for_timeout(80)
+            inherited_picture = family.locator('[data-wf-picture]')
+            ok(inherited_picture.count() == 1 and
+               inherited_picture.get_attribute("data-wf-picture-word") == inherited_word,
+               f"第 3 天点击 {inherited_word} 后没有显示对应插画")
+            ok(inherited_picture.locator("img").count() == 1 and
+               inherited_picture.locator("svg").count() == 0,
+               f"{inherited_word} 没有复用第一周的 PNG 原图，或仍在显示 SVG")
+        pg.evaluate("""()=>{
+            WordAudio.play = window.__wfOriginalPlay;
+            delete window.__wfOriginalPlay;
+            delete window.__wfPlayed;
+        }""")
+
+    # 第 4 天换头游戏：每组固定词尾，两个头都能单独点击和发音。
+    pg.locator('.dots [data-goto="4"]').click()
+    pg.wait_for_timeout(200)
+    for i in range(pg.locator(".step").count()):
+        pg.locator(".step__hd").nth(i).click()
+        pg.wait_for_timeout(50)
+    pg.wait_for_timeout(250)
+    swap = pg.locator('[data-wordforge="swap"]')
+    ok(swap.count() == 1, f"第 4 天换头造词机不是 1 个（实际 {swap.count()}）")
+    swap_choices = swap.locator("[data-wf-word]")
+    ok(swap.locator(".wordforge__swap-family").count() == 3,
+       f"第 4 天换头游戏不是 3 组固定词尾（实际 {swap.locator('.wordforge__swap-family').count()}）")
+    ok(swap.locator(".wordforge__swap-family").evaluate_all(
+       "els=>els.every(e=>parseFloat(getComputedStyle(e).borderWidth)>0)"),
+       "第 4 天三组词没有像第 3 天一样分别用边框包裹")
+    ok(swap.locator(".wordforge__equation-rows").count() == 3,
+       "第 4 天换头游戏没有给每组建立上下两行")
+    ok(swap_choices.count() == 6,
+       f"第 4 天换头游戏不是 6 个可点的头（实际 {swap_choices.count()}）")
+    if swap_choices.count() == 6:
+        ok(swap_choices.evaluate_all("els=>els.map(e=>e.dataset.wfWord)") ==
+           ["hat", "rat", "hip", "rip", "can", "ran"],
+           "第 4 天换头游戏的 3 组双头单词不正确")
+        ok(swap.locator(".wordforge__swap-family").first.locator(".wordforge__equation-choice").count() == 2,
+           "第 4 天换头游戏首组不是上下两个词")
+        ok(swap.locator(".wordforge__equation-rows").first.evaluate("e=>getComputedStyle(e).flexDirection") == "column",
+           "第 4 天换头游戏的两个词没有纵向排列")
+        first_equations = swap.locator(".wordforge__equation").evaluate_all(
+            "els=>els.slice(0,2).map(e=>e.textContent.replace(/\\s/g,''))")
+        ok(first_equations == ["h＋at→hat", "r＋at→rat"],
+           f"第 4 天换头游戏首组排版不是 h + at → hat / r + at → rat（实际 {first_equations}）")
+        first_word_size = float(swap.locator(".wordforge__equation-word").first.evaluate(
+            "e=>parseFloat(getComputedStyle(e).fontSize)"))
+        ok(first_word_size <= 20,
+           f"第 4 天换头结果词仍然过大（实际 {first_word_size}px）")
+        ok(swap.locator("[data-wf-reset]").count() == 0 and
+           swap.locator("[data-wf-progress]").count() == 0,
+           "第 4 天换头游戏仍显示重新开始或已听过计数")
+        initial_swap_bg = swap_choices.first.evaluate("e=>getComputedStyle(e).backgroundColor")
+        # 用立即结束的音频桩确认：点哪个头，只播放该头组成的一个单词。
+        pg.evaluate("""()=>{
+            window.__wfOriginalPlay = WordAudio.play;
+            window.__wfPlayed = [];
+            WordAudio.play = key => { window.__wfPlayed.push(key); return Promise.resolve({status:'ended'}); };
+        }""")
+        swap.locator(".wordforge__equation-word").first.click(); pg.wait_for_timeout(80)
+        ok(pg.evaluate("window.__wfPlayed.slice()") == [],
+           "第 4 天点击结果词也会播放单词，点击范围没有限制在音素头")
+        swap_choices.first.click(); pg.wait_for_timeout(80)
+        ok(pg.evaluate("window.__wfPlayed.slice()") == ["hat"],
+           f"点击 h 头没有只播放 hat（实际 {pg.evaluate('window.__wfPlayed.slice()')}）")
+        picture = swap.locator('[data-wf-picture]')
+        ok(picture.count() == 1 and picture.get_attribute("data-wf-picture-word") == "hat",
+           "点击 hat 后没有弹出对应插画")
+        ok(picture.locator("img").count() == 1,
+           "hat 的短暂反馈没有使用词卡插画")
+        ok(picture.evaluate("e=>e.parentElement.hasAttribute('data-wf-result')"),
+           "第 4 天配图没有显示在练习区最下方的反馈栏")
+        swap_choices.nth(1).click(); pg.wait_for_timeout(80)
+        ok(pg.evaluate("window.__wfPlayed.slice()") == ["hat", "rat"],
+           f"再点击 r 头没有单独播放 rat（实际 {pg.evaluate('window.__wfPlayed.slice()')}）")
+        ok(picture.count() == 1 and picture.get_attribute("data-wf-picture-word") == "rat",
+           "连续点击另一个头时，插画没有立即切换为 rat")
+        pg.wait_for_timeout(1550)
+        ok(picture.count() == 0,
+           "换头造词插画弹出后没有自动消失")
+        ok("反复比较" in swap.locator("[data-wf-result]").inner_text(),
+           "换头造词插画消失后没有恢复底部提示")
+        for i in range(2, 6):
+            swap_choices.nth(i).click(); pg.wait_for_timeout(50)
+        swap_choices.first.click(); pg.wait_for_timeout(80)
+        ok(pg.evaluate("window.__wfPlayed.slice(-1)") == ["hat"],
+           "第 4 天换头游戏听完一轮后不能继续反复点击")
+        ok(swap_choices.first.evaluate("e=>getComputedStyle(e).backgroundColor") == initial_swap_bg,
+           "第 4 天换头游戏点击后仍会保持加深背景")
+        pg.evaluate("""()=>{
+            WordAudio.play = window.__wfOriginalPlay;
+            delete window.__wfOriginalPlay;
+            delete window.__wfPlayed;
+        }""")
+
     pg.locator('.dots [data-goto="5"]').click()
     pg.wait_for_timeout(200)
     for i in range(pg.locator(".step").count()):
@@ -182,6 +324,25 @@ with sync_playwright() as p:
     ok(pg.locator(".flash").count() >= 2, "第 5 天缺闪卡组件")
     ok(pg.locator("[data-act='timer']").count() >= 1, "第 5 天裸读没有计时按钮")
     ok(pg.locator(".flash img").count() == 0, "闪卡里出现了插图（违反铁律 4）")
+    him_card = pg.locator('.wcard[data-say="him"]')
+    ok(him_card.count() == 1, f"第 5 天 him 日课词卡不是 1 张（实际 {him_card.count()}）")
+    ok(him_card.locator(".wcard__art").count() == 1,
+       "第 5 天 him 没有第一周 it 式文字图位")
+    ok(him_card.inner_text().count("him") == 2,
+       "第 5 天 him 没有同时显示放大词和卡片正文")
+
+    pg.locator('.dots [data-goto="6"]').click()
+    pg.wait_for_timeout(200)
+    for i in range(pg.locator(".step").count()):
+        pg.locator(".step__hd").nth(i).click()
+        pg.wait_for_timeout(60)
+    pg.wait_for_timeout(300)
+    did_card = pg.locator('.wcard[data-say="did"]')
+    ok(did_card.count() == 1, f"第 6 天 did 日课词卡不是 1 张（实际 {did_card.count()}）")
+    ok(did_card.locator(".wcard__art").count() == 1,
+       "第 6 天 did 没有第一周 it 式文字图位")
+    ok(did_card.inner_text().count("did") == 2,
+       "第 6 天 did 没有同时显示放大词和卡片正文")
 
     pg.locator('.dots [data-goto="7"]').click()
     pg.wait_for_timeout(200)
@@ -221,15 +382,20 @@ with sync_playwright() as p:
     pg.wait_for_timeout(500)
     ok(pg.locator(".wcard").count() == 34, f"词卡墙不是 34 张（实际 {pg.locator('.wcard').count()}）")
     wall = pg.locator("#app").inner_text()
-    # 无图降级不应把单词渲染两遍（图位一次 + 卡片词一次）
+    # 有图词只显示一遍正文；did / him 参考第一周 it，用放大单词占据图位。
     first = pg.locator(".wcard").first.inner_text()
-    ok(first.count("cat") == 1, f"词卡把单词渲染了 {first.count('cat')} 遍（无图降级重复）")
+    ok(first.count("cat") == 1, f"有图词卡把单词渲染了 {first.count('cat')} 遍")
+    for w in ("did", "him"):
+        card = pg.locator(f'.wcard[data-say="{w}"]')
+        ok(card.locator(".wcard__art").count() == 1, f"{w} 没有第一周 it 式文字图位")
+        ok(card.inner_text().count(w) == 2, f"{w} 没有同时显示放大词和卡片正文")
     want_art = pg.evaluate(
         "taughtWords().filter(w => !Guard.isReserved(w))"
         ".filter(w => W[w] && hasIll(W[w].art)).length")
-    ok(pg.locator(".wcard .wcard__art").count() == want_art,
-       f"词卡图位数与素材不匹配：应为 {want_art}，实际 {pg.locator('.wcard .wcard__art').count()}"
-       "（有图才给图位，没图直接不渲染容器）")
+    ok(pg.locator(".wcard .wcard__art").count() == 34,
+       f"词卡图位不是 34 个（实际 {pg.locator('.wcard .wcard__art').count()}）")
+    ok(pg.locator(".wcard .wcard__art img").count() == want_art,
+       f"词卡图片数与素材不匹配：应为 {want_art}，实际 {pg.locator('.wcard .wcard__art img').count()}")
     # WALL_HINT 为空时不该出现词组提示
     ok("听完单词后会再听词组" not in wall, "WALL_HINT 为空却仍出现词组提示文案")
     for w in ("ram", "hem", "rid", "dam", "kid"):
