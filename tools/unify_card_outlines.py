@@ -127,13 +127,15 @@ def recrop(im: Image.Image, size: int = TARGET, pad_frac: float = PAD_FRAC) -> I
     return canvas
 
 
-def unify(im: Image.Image, force_stroke: bool = False) -> Image.Image:
+def unify(im: Image.Image, force_stroke: bool = False, size: int = TARGET) -> Image.Image:
+    """size 默认 TARGET(192)=词卡/助记图规格。庆祝图显示 190px 且是全屏动画主角，
+    需要 384（@2x）才不发虚——第一周就是 384，别用 192 覆盖它。"""
     im = key_out_flat_bg(im)
     im = strip_light_halo(im)
     dk = _dark_edge_pct(np.array(im.convert("RGBA")))
     if force_stroke or dk < DARK_EDGE_PCT:
         im = add_dark_stroke(im, STROKE)
-    return recrop(im)
+    return recrop(im, size)
 
 
 def metrics(im: Image.Image) -> dict:

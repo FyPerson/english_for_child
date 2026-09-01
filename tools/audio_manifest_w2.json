@@ -313,7 +313,11 @@
    "text": "milk",
    "type": "word",
    "group": "D",
-   "file": "milk.mp3"
+   "file": "milk.mp3",
+   "manual_trim": {
+    "start": 0.19,
+    "end": 0.86
+   }
   },
   {
    "key": "nap",
@@ -384,7 +388,11 @@
    "text": "pig",
    "type": "word",
    "group": "B",
-   "file": "pig.mp3"
+   "file": "pig.mp3",
+   "manual_trim": {
+    "start": 0.19,
+    "end": 0.79
+   }
   },
   {
    "key": "pin",
@@ -515,7 +523,11 @@
    "text": "sock",
    "type": "word",
    "group": "B",
-   "file": "sock.mp3"
+   "file": "sock.mp3",
+   "manual_trim": {
+    "start": 0.19,
+    "end": 0.95
+   }
   },
   {
    "key": "spin",
