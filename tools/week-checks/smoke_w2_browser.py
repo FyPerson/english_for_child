@@ -58,6 +58,14 @@ with sync_playwright() as p:
     ok(pg.locator(".tiles-demo button.tile:not([data-sayph]):not([data-say])").count() == 0,
        "存在既无 data-sayph 也无 data-say、却仍是 button 的积木（哑巴按钮）")
 
+    # 插画是分批补进来的（tools/embed_assets.py）。下面所有"缺图降级"的断言都不能
+    # 写死"一张图都没有"，否则图一到位就会因为错误的原因变红。改成断言**配对关系**：
+    # 图在 → 必须渲染出来；图不在 → 必须连容器一起收起。
+    ILL = pg.evaluate("({word:Object.keys(WORD_ILL), ph:Object.keys(PHONEME_ILL),"
+                      " book:Object.keys(BOOK_IMG), cel:!!CELEBRATE_NAT})")
+    print(f"当前素材：词卡 {len(ILL['word'])} / 音素 {len(ILL['ph'])} / 小书 {len(ILL['book'])}"
+          f" / 庆祝图 {'有' if ILL['cel'] else '无'}")
+
     # ---------- ② 逐天 ----------
     for n in range(1, 8):
         pg.locator(f'.dots [data-goto="{n}"]').click()
@@ -89,7 +97,12 @@ with sync_playwright() as p:
     lab = pg.locator(".soundlab").inner_text()
     ok("这个音还没有真人录音" in lab, "无录音时没有出现家长示范降级提示")
     ok(pg.locator(".soundlab__listen").count() == 0, "无录音却仍渲染了听音按钮")
-    ok(pg.locator(".mnemonic-img").count() == 0, "无助记图却仍渲染了 <img>")
+    day1_art = pg.evaluate("SOUNDS['c'].art")
+    want_mnemonic = 1 if day1_art in ILL["ph"] else 0
+    ok(pg.locator(".mnemonic-img").count() == want_mnemonic,
+       f"助记图渲染与素材不匹配：'{day1_art}' "
+       f"{'已内嵌，应渲染 1 张' if want_mnemonic else '未内嵌，不该渲染'}，"
+       f"实际 {pg.locator('.mnemonic-img').count()} 张")
     card = pg.locator(".sound").first.inner_text()
     ok("点字母积木听真人示范" not in card, "没有录音却仍宣称「点字母积木听真人示范」")
     ok("真人示范音待补" in card, "音素卡副标题没有如实说明录音待补")
@@ -112,8 +125,11 @@ with sync_playwright() as p:
     pg.wait_for_timeout(500)
     ok(pg.locator("[data-g1-round]").count() == 2, "第 7 天 G1 不是两轮")
     # R-5：G1 标题图标容器有固定 36px，缺图时必须整块不渲染，不能留空盒子
-    ok(pg.locator(".g1card__ico").count() == 0,
-       "没有 G1 主题插画却仍渲染了 .g1card__ico 容器（36px 空洞）")
+    want_ico = pg.evaluate(
+        "Object.values(G1_THEME).filter(th => hasIll(th.icon)).length")
+    ok(pg.locator(".g1card__ico").count() == want_ico,
+       f"G1 图标容器数与素材不匹配：应为 {want_ico}，实际 {pg.locator('.g1card__ico').count()}"
+       "（缺图时必须整块不渲染，不能留 36px 空盒子）")
     ok(pg.locator("[data-g5]").count() == 1, "第 7 天缺 G5 造词工坊")
     # G4：积木架要先选一张订单才出现（与第一周同款流程）
     ok(pg.locator("[data-g4-order]").count() == 8, "G4 订单不是 8 张")
@@ -142,7 +158,12 @@ with sync_playwright() as p:
     # 无图降级不应把单词渲染两遍（图位一次 + 卡片词一次）
     first = pg.locator(".wcard").first.inner_text()
     ok(first.count("cat") == 1, f"词卡把单词渲染了 {first.count('cat')} 遍（无图降级重复）")
-    ok(pg.locator(".wcard .wcard__art").count() == 0, "没有插画却仍渲染了空的图位")
+    want_art = pg.evaluate(
+        "taughtWords().filter(w => !Guard.isReserved(w))"
+        ".filter(w => W[w] && hasIll(W[w].art)).length")
+    ok(pg.locator(".wcard .wcard__art").count() == want_art,
+       f"词卡图位数与素材不匹配：应为 {want_art}，实际 {pg.locator('.wcard .wcard__art').count()}"
+       "（有图才给图位，没图直接不渲染容器）")
     # WALL_HINT 为空时不该出现词组提示
     ok("听完单词后会再听词组" not in wall, "WALL_HINT 为空却仍出现词组提示文案")
     for w in ("ram", "hem", "rid", "dam", "kid"):
@@ -280,14 +301,21 @@ with sync_playwright() as p:
     pg.wait_for_timeout(600)
     ok(pg.locator(".book__art").count() >= 1, "第 6 天没有渲染出小书")
     if pg.locator(".book__art").count():
+        page1_art = pg.evaluate("BOOK.pages[0].art")
+        has_img = page1_art in ILL["book"]
         vis = pg.evaluate(
             "(()=>{const e=document.querySelector('.book__art');"
             " if(!e) return null; const r=e.getBoundingClientRect();"
             " return {hidden:e.hidden, h:r.height, w:r.width,"
-            "  disp:getComputedStyle(e).display};})()")
-        ok(vis and vis["hidden"] is True, f"缺图时 .book__art 没有置 hidden（实际 {vis}）")
-        ok(vis and vis["h"] == 0 and vis["w"] == 0,
-           f"缺图时 .book__art 仍占据 {vis and vis['w']}×{vis and vis['h']} 的空间（220px 空洞）")
+            "  imgs:e.querySelectorAll('img').length};})()")
+        if has_img:
+            ok(vis and vis["hidden"] is False and vis["imgs"] == 1,
+               f"小书第 1 页有插画 '{page1_art}' 却没正常渲染（实际 {vis}）")
+            ok(vis and vis["h"] > 0, f"小书图位有图却没有高度（实际 {vis}）")
+        else:
+            ok(vis and vis["hidden"] is True, f"缺图时 .book__art 没有置 hidden（实际 {vis}）")
+            ok(vis and vis["h"] == 0 and vis["w"] == 0,
+               f"缺图时 .book__art 仍占 {vis and vis['w']}×{vis and vis['h']} 的空间（220px 空洞）")
 
     ok(not errors, "控制台报错：" + "; ".join(errors[:5]))
     br.close()
