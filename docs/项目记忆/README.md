@@ -73,6 +73,19 @@ source_of_truth: self（导航与现状快照的权威；具体做法以各专�
 8. [v3 游戏版改造交接](v3游戏版改造交接.md) —— 六个游戏怎么来的、编码期硬约定（**改播放层前必读**）
 9. [修复也是改动](修复也是改动.md) —— 删旧防护前盘点其完整防护范围
 
+## 2b. 仓库自带的两个 SKILL
+
+`.claude/skills/` 下带了两个 SKILL，**`git pull` 之后 Claude Code 在本仓库内自动加载**，
+不用手动安装：
+
+| SKILL | 用途 |
+|---|---|
+| `/handoff` | 把项目整理成「换机器 / 换工具 / 换人都能接着干」的状态并推 GitHub |
+| `/tidy-docs` | 校验文档落位（被 `handoff` 第 4 步依赖） |
+
+它们本质是跨项目通用的，真相源在 `~/.claude/skills/` 与 `E:\skill-libraryctive\`；
+放进仓库只是为了跟车 `git pull`。改动规则见 [.claude/skills/README.md](../../.claude/skills/README.md)。
+
 ## 3. 环境依赖
 
 | 用途 | 依赖 |
