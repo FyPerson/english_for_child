@@ -227,7 +227,7 @@ def main() -> int:
         return 0
 
     tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(new_html, encoding="utf-8")
+    tmp.write_text(new_html, encoding="utf-8", newline="")   # newline="" 防止 Windows 把 LF 写成 CRLF（见 .gitattributes）
     os.replace(tmp, target)
     print(f"已原子写出 {target.name}")
     print("下一步：跑一遍自检——"

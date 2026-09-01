@@ -114,7 +114,7 @@ const META = {{
             parts.append("\n".join(alias) + "\n")
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("\n".join(parts), encoding="utf-8")
+    out.write_text("\n".join(parts), encoding="utf-8", newline="")   # newline="" 防止 Windows 把 LF 写成 CRLF（见 .gitattributes）
     kb = out.stat().st_size / 1024
     print(f"已抽出 {out}（{kb:.0f} KB）")
     print(f"  周次 {week} · 存储键 {key}")

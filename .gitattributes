@@ -1,0 +1,46 @@
+# 换行统一：仓库内 LF，检出也一律 LF（不按平台）
+#
+# 这个项目会在 Windows / Linux / Web 之间来回交接（Claude Code 在 Windows，
+# 接手方可能在别的环境）。若按平台检出，同一份文件在不同机器上字节不同，
+# 改一行会产生整文件级的假 diff，也让「用 sha256 校验文件完整性」失效。
+# 统一 LF 之后，任何机器上 clone 出来的工作区逐字节相同。
+#
+# 配套要求：任何写文本文件的脚本都要用 newline="" （不做平台转换），
+# 否则会把 LF 写回 CRLF。参见 tools/*.py 的 write_text 调用。
+* text=auto eol=lf
+
+# ---- 二进制资产：绝不做换行或编码转换 ----
+# git 通常能自动识别，但显式声明可以防止新增类型被误判成文本而损坏。
+
+# 音频（音素示范音、单词录音）
+*.mp3  binary
+*.wav  binary
+*.m4a  binary
+*.ogg  binary
+*.flac binary
+
+# 图像（词卡、助记图、发音口型图、截图）
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+
+# 字体（课件内嵌字体子集的源文件）
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+
+# 文档与归档
+*.pdf  binary
+*.zip  binary
+*.7z   binary
+*.xls  binary
+*.xlsx binary
+*.docx binary
+*.pptx binary
+
+# ---- 语言标注：让 GitHub 的语言统计与 diff 更准 ----
+*.html linguist-detectable

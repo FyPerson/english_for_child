@@ -297,7 +297,7 @@ sub(DY.EXAM_OLD_1, DY.EXAM_NEW_1, "周检导语")
 sub(DY.EXAM_OLD_2, DY.EXAM_NEW_2, "周检结论表")
 sub(DY.EXAM_OLD_4, DY.EXAM_NEW_4, "周检提示")
 
-DST.write_text(text, encoding="utf-8")
+DST.write_text(text, encoding="utf-8", newline="")   # newline="" 防止 Windows 把 LF 写成 CRLF（见 .gitattributes）
 print(f"已写出 {DST}（{len(text)/1024:.0f} KB）")
 print(f"完成 {len(done)} 项替换：")
 for i, d in enumerate(done, 1):

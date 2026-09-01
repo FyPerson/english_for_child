@@ -432,7 +432,7 @@ def main() -> int:
         return 0
 
     tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(new_html, encoding="utf-8")
+    tmp.write_text(new_html, encoding="utf-8", newline="")   # newline="" 防止 Windows 把 LF 写成 CRLF（见 .gitattributes）
     tmp.replace(target)          # 原子替换
     print(f"\n已写入 {target}")
     return 0
