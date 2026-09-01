@@ -1453,15 +1453,10 @@ const DAYS = [
       {b:'blend', words:['cat','cap','can','kit']},
       {b:'words', items:['cat','cap','can','kit']}
     ]},
-    {t:'听音找首字母', min:5, blocks:[
-      {b:'lead', html:'你随机说一个词，孩子指出它开头是 <span class="en">c</span> 还是 <span class="en">k</span>。<b>这一步只观察，不纠正</b>——今天不要求他知道什么时候该用哪个字母。'},
-      {b:'table', head:['你说这个词','孩子指哪张卡'], rows:[
-        ['<b class="en">cat</b>　猫','<b class="en">c</b>'],
-        ['<b class="en">kit</b>　工具包','<b class="en">k</b>'],
-        ['<b class="en">cap</b>　鸭舌帽','<b class="en">c</b>'],
-        ['<b class="en">can</b>　罐头','<b class="en">c</b>']
-      ]},
-      {b:'note', tone:'bulb', html:'孩子会发现 <span class="en">c</span> 出现得多得多。<b>这个观察本身就很有价值</b>，让他自己注意到就行，不用你替他总结。'}
+    {t:'听音游戏', min:5, blocks:[
+      {b:'lead', html:'和第一周第一天一样，今天也用耳朵收尾。<b>电脑会念词，孩子听到开头是 /k/ 的就拍气球。</b>先跟他把口令说一遍再开始。'},
+      {b:'g1', only:'c'},
+      {b:'note', tone:'bulb', html:'注意听 <span class="en">cat</span> 和 <span class="en">kit</span>——<b>开头是同一个 /k/，但写出来一个是 c 一个是 k</b>，正好印证今天那件「两件外套」的事。<br>拍错很正常，不用评判对错，游戏自己会记分。'}
     ]},
     {t:'收尾打卡', min:3, blocks:[
       {b:'checks', items:[
@@ -2145,8 +2140,13 @@ function blockHTML(b, ctx){
 
   case 'g1':{
     const id = 'g1' + (ctx.uid++);
+    /* b.only 指定只出某一轮——第一天只教 /k/，不提前暴露第二天才教的 /e/。
+       不给 only 就出全部轮次（第七天玩一天用的就是全量）。
+       只影响渲染哪几张卡；G1_ROUNDS 常量本身不动，音频提取器 g1_rounds 源
+       与清洗层（grabKeys 从 G1_ROUNDS 派生）都不受影响。 */
+    const rounds = b.only ? [b.only].filter(rk => G1_ROUNDS[rk]) : Object.keys(G1_ROUNDS);
     return `<div class="g1wrap" id="${id}">
-      ${Object.keys(G1_ROUNDS).map(rk=>{
+      ${rounds.map(rk=>{
         const theme = G1_THEME[rk];
         return `<div class="g1card g1card--${rk}" data-g1-round="${rk}">
           <div class="g1card__hd">

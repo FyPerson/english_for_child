@@ -147,6 +147,32 @@ with sync_playwright() as p:
        else ("真人示范音待补" in card),
        "音素卡待补提示与 c 音频状态不匹配")
 
+    # G1 轮次过滤：带 only 的块只出那一轮（第一天只教 /k/，不提前暴露第二天的 /e/），
+    # 不带 only 的出全部轮次。锁"块声明与实际渲染的配对关系"，不写死轮次键，
+    # 换周改 G1_ROUNDS 或改哪天放游戏都不用动这条断言。
+    for day_n in (1, 7):
+        pg.locator(f'.dots [data-goto="{day_n}"]').click()
+        pg.wait_for_timeout(200)
+        for i in range(pg.locator(".step__hd").count()):
+            pg.locator(".step__hd").nth(i).click()
+            pg.wait_for_timeout(50)
+        pg.wait_for_timeout(250)
+        want = pg.evaluate(
+            "(n)=>{const blks=DAYS[n-1].steps.flatMap(s=>s.blocks).filter(b=>b.b==='g1');"
+            "return blks.flatMap(b=>b.only?[b.only]:Object.keys(G1_ROUNDS));}", day_n)
+        got = pg.eval_on_selector_all(".g1card", "els=>els.map(e=>e.dataset.g1Round)")
+        ok(got == want,
+           f"第 {day_n} 天 G1 渲染的轮次与块声明不符：应 {want}，实际 {got}")
+        # ↑ 上一条只验"渲染跟着声明走"，去掉 only 时两边同步变化、抓不住教学顺序问题。
+        # ↓ 这一条才是真不变量：当天出现的轮次，其音必须当天或之前已教过。
+        taught = pg.evaluate(
+            "(n)=>{const s=new Set(); for(let i=0;i<n;i++) DAYS[i].sounds.forEach(x=>s.add(x));"
+            "return [...s];}", day_n)
+        early = [r for r in got if r not in taught]
+        ok(not early,
+           f"第 {day_n} 天 G1 提前暴露了尚未教的音：{early}"
+           f"（当天及之前已教：{taught}）")
+
     pg.locator('.dots [data-goto="5"]').click()
     pg.wait_for_timeout(200)
     for i in range(pg.locator(".step").count()):
