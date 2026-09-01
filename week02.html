@@ -1946,12 +1946,21 @@ function blockHTML(b, ctx){
   case 'sound':{
     const s = SOUNDS[b.s];
     const isV = s.type === 'v';
+    /* 一音多形：把 audioKey 指向本音的其他字母一并渲染成积木（第二周 c/k
+       ——「一个声音，两件外套」）。这层关系已经在数据里（SOUNDS.k.audioKey==='c'），
+       渲染器读它即可，换周新增 ck/ss 之类不必改代码。
+       自指的 audioKey（SOUNDS.c.audioKey==='c'）要排除，否则本音会被渲染两次。
+       每块都过 tileHTML(...,true)：有录音才成为按钮，没录音降级为 div（铁律 8）；
+       播放走 Phone.say → phAudioKey 别名，两个字母共用同一段录音。 */
+    const forms = [b.s].concat(
+      Object.keys(SOUNDS).filter(k => k !== b.s && SOUNDS[k].audioKey === b.s)
+    );
     return `<div class="sound">
       <div class="sound__hd">
-        ${tileHTML(s.L,'tile--lg',true)}
+        ${forms.map(f => tileHTML(SOUNDS[f].L,'tile--lg',true)).join('')}
         <div class="sound__meta">
           <div class="sound__ipa ${isV?'is-v':'is-c'}">${s.ipa}</div>
-          <div class="sound__hint">${isV?'元音':'辅音'} · ${hasPhoneme(b.s) ? '点字母积木听真人示范' : '真人示范音待补，先按下面的口令示范'}</div>
+          <div class="sound__hint">${isV?'元音':'辅音'} · ${hasPhoneme(b.s) ? (forms.length>1 ? forms.map(f=>SOUNDS[f].L).join(' 和 ')+' 发同一个音，点哪块都能听' : '点字母积木听真人示范') : '真人示范音待补，先按下面的口令示范'}</div>
         </div>
       </div>
       <div class="sound__body">
