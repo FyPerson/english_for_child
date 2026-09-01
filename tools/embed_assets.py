@@ -16,6 +16,7 @@ HTML、写死了某个会话目录、写死了文件名映射，复用不了；�
   assets/week{NN}/word-cards/<词>.png   → WORD_ILL      （词卡插画，键取自 W[].art）
   assets/week{NN}/book/<键>.png         → BOOK_IMG      （小书插画，键取自 BOOK.pages[].art）
   assets/week{NN}/celebrate.png         → CELEBRATE_NAT （庆祝主角图，单张）
+  assets/wall-nat/<键>.png              → WORD_ILL      （复用第一周已有的 Nat 动作原图；本周目录优先）
   下划线开头的文件一律跳过（角色定妆图等中间产物，不进课件）。
 
 幂等：每次都从目录全量重建这四个常量再整体替换，可以边补图边重跑。
@@ -170,6 +171,23 @@ def main() -> int:
                 problems.append(f"孤儿图 {f.relative_to(ROOT)}：art 键 '{key}' 没有被数据层引用，未注入")
                 continue
             built[const][key] = to_data_uri(load_png(f, args.raw))
+
+    # 第一周已经生成过一套 Nat 动作 PNG。后续周若在 W[].art 里显式引用同名键，
+    # 直接复用这批原图；本周 word-cards 目录若有同名素材，仍以本周版本优先。
+    # 共享图已经是 192×192 RGBA 的课件成品，因此按原始字节内嵌，不再二次规格化。
+    shared_word_dir = ROOT / "assets" / "wall-nat"
+    if shared_word_dir.exists():
+        missing_word_keys = sorted(refs["WORD_ILL"] - set(built["WORD_ILL"]))
+        reused = []
+        for key in missing_word_keys:
+            for ext in (".png", ".webp"):
+                source = shared_word_dir / f"{key}{ext}"
+                if source.exists():
+                    built["WORD_ILL"][key] = to_data_uri(source.read_bytes())
+                    reused.append(source.relative_to(ROOT))
+                    break
+        if reused:
+            print("\n[WORD_ILL] 复用第一周 Nat 原图：" + ", ".join(map(str, reused)))
 
     # 庆祝主角图（单张）
     celebrate = ""

@@ -113,18 +113,18 @@ SOUNDS.k = Object.assign({}, SOUNDS.c, { L:'k' });
 
 
 const W = {
-  /* ---- 第一周已学词：快闪复习、G3 词对、G5 造词工坊会用到。插画未随第二周
-         带过来（第二周不需要它们出图），art 一律 null，走"词 + 中文"降级。 ---- */
+  /* ---- 第一周已学词：快闪复习、G3 词对、G5 造词工坊会用到。第三天会复用
+         第一周的 natSit / natPat PNG 原图，其余旧词仍走“词 + 中文”降级。 ---- */
   at:{zh:'在',art:null},      it:{zh:'它',art:null},      an:{zh:'一个',art:null},   in:{zh:'在里面',art:null},
-  sat:{zh:'坐下了',art:null}, sit:{zh:'坐',art:null},     pat:{zh:'轻轻拍',art:null}, pit:{zh:'坑',art:null},
+  sat:{zh:'坐下了',art:'natSit'}, sit:{zh:'坐',art:'natSit'}, pat:{zh:'轻轻拍',art:'natPat'}, pit:{zh:'坑',art:null},
   pin:{zh:'大头针',art:null}, pan:{zh:'平底锅',art:null}, nap:{zh:'打个盹',art:null}, tap:{zh:'水龙头',art:null},
   tip:{zh:'小费',art:null},   sip:{zh:'小口喝',art:null}, tin:{zh:'铁罐头',art:null}, nip:{zh:'轻轻咬一口',art:null},
   snap:{zh:'打响指',art:null},spin:{zh:'转圈圈',art:null},
 
   /* ---- 第二周教学词（34）。art 键与 docs/插画生成提示词_第二周 的文件名一一对应；
-         插画未就位时 hasIll() 返回 false，自动降级成"词 + 中文"。 ---- */
+         插画未就位时 hasIll() 返回 false；日课与词卡墙都参考第一周 it，用放大单词占图位。 ---- */
   cat:{zh:'猫',art:'cat'},    cap:{zh:'鸭舌帽',art:'cap'}, can:{zh:'罐头',art:'can'},  kit:{zh:'工具包',art:'kit'},
-  set:{zh:'一套',art:'set'},  ten:{zh:'十',art:'ten'},     net:{zh:'网',art:'net'},    pen:{zh:'笔',art:'pen'},
+  set:{zh:'一套',art:'set'},  ten:{zh:'十',art:'ten'},     net:{zh:'网',art:'net'},    pen:{zh:'钢笔',art:'pen'},
   pet:{zh:'宠物',art:'pet'},  hat:{zh:'帽子',art:'hat'},   hen:{zh:'母鸡',art:'hen'},  hit:{zh:'敲一下',art:'hit'},
   hip:{zh:'胯',art:'hip'},    rat:{zh:'老鼠',art:'rat'},   ran:{zh:'跑了',art:'ran'},  rip:{zh:'撕开',art:'rip'},
   rim:{zh:'边缘',art:'rim'},  rest:{zh:'休息',art:'rest'}, mat:{zh:'垫子',art:'mat'},  man:{zh:'男人',art:'man'},
@@ -277,15 +277,10 @@ const DAYS = [
       {b:'words', items:['hat','hen','hit','hip']}
     ]},
     {t:'同一家人', min:7, blocks:[
-      {b:'lead', html:'固定后面两块积木，只换第一块。<b>让孩子自己换、自己读</b>，读出来之后你再告诉他中文意思。'},
-      {b:'table', head:['换掉第一块','读出来是'], rows:[
-        ['<b class="en">c</b> + <b class="en">at</b>','<b class="en">cat</b>　猫'],
-        ['<b class="en">h</b> + <b class="en">at</b>','<b class="en">hat</b>　帽子'],
-        ['<b class="en">p</b> + <b class="en">at</b>','<b class="en">pat</b>　轻轻拍'],
-        ['<b class="en">s</b> + <b class="en">at</b>','<b class="en">sat</b>　坐下了'],
-        ['<b class="en">h</b> + <b class="en">it</b>','<b class="en">hit</b>　敲一下'],
-        ['<b class="en">k</b> + <b class="en">it</b>','<b class="en">kit</b>　工具包'],
-        ['<b class="en">s</b> + <b class="en">it</b>','<b class="en">sit</b>　坐']
+      {b:'lead', html:'固定后面两块积木，只换第一块。<b>让孩子点一块头积木，先自己读，再听页面核对</b>。'},
+      {b:'wordforge', mode:'family', families:[
+        {tail:'at', heads:['c','h','p','s']},
+        {tail:'it', heads:['h','k','s']}
       ]},
       {b:'note', tone:'bulb', html:'这是孩子第一次看见<b>「词族」</b>：屁股一样，只换头。发现这一点之后他读新词会快很多——因为不再是一个一个音硬拼，而是认出了熟悉的半截。'}
     ]},
@@ -316,11 +311,9 @@ const DAYS = [
       {b:'note', tone:'warn', html:'拼 <span class="en"><b>rest</b></span> 卡住时，<b>先拼前面三个音 r-e-s，读出来，再在后面补一个 /t/</b>。四个音的词都这样拆：先拼三个，再补一个。这和第一周 snap 的「从后往前接」正好相反——因为这次的难点在结尾，不在开头。'}
     ]},
     {t:'换头造词', min:7, blocks:[
-      {b:'lead', html:'亲手把第一块积木换成 <span class="en">r</span>，每换一个都要自己读出来。'},
-      {b:'table', head:['原来的词','换成 r 之后'], rows:[
-        ['<b class="en">hat</b>　帽子','<b class="en">rat</b>　老鼠'],
-        ['<b class="en">hip</b>　胯','<b class="en">rip</b>　撕开'],
-        ['<b class="en">can</b>　罐头','<b class="en">ran</b>　跑了']
+      {b:'lead', html:'每组固定后面两块积木，前面放两个不同的“头”。<b>让孩子轮流点两个头，听一听只换第一个音时，单词怎么变</b>。'},
+      {b:'wordforge', mode:'swap', pairs:[
+        ['hat','rat'],['hip','rip'],['can','ran']
       ]},
       {b:'note', tone:'ok', html:'读的时候注意看：换成 /r/ 之后，孩子的舌尖有没有碰到上牙后面？碰到了就是发成 /d/ 或者中文「日」了，提醒他<b>舌尖悬空</b>就好。'}
     ]},

@@ -35,7 +35,11 @@
    "text": "it",
    "type": "word",
    "group": "A",
-   "file": "it.mp3"
+   "file": "it.mp3",
+   "manual_trim": {
+    "start": 0.18,
+    "end": 0.66
+   }
   },
   {
    "key": "in",
@@ -70,21 +74,33 @@
    "text": "sip",
    "type": "word",
    "group": "A",
-   "file": "sip.mp3"
+   "file": "sip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.9
+   }
   },
   {
    "key": "tip",
    "text": "tip",
    "type": "word",
    "group": "A",
-   "file": "tip.mp3"
+   "file": "tip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
   },
   {
    "key": "tap",
    "text": "tap",
    "type": "word",
    "group": "A",
-   "file": "tap.mp3"
+   "file": "tap.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
   },
   {
    "key": "an",
@@ -98,7 +114,11 @@
    "text": "nap",
    "type": "word",
    "group": "A",
-   "file": "nap.mp3"
+   "file": "nap.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
   },
   {
    "key": "pan",
@@ -126,14 +146,22 @@
    "text": "nip",
    "type": "word",
    "group": "A",
-   "file": "nip.mp3"
+   "file": "nip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
   },
   {
    "key": "snap",
    "text": "snap",
    "type": "word",
    "group": "A",
-   "file": "snap.mp3"
+   "file": "snap.mp3",
+   "manual_trim": {
+    "start": 0.18,
+    "end": 1.0
+   }
   },
   {
    "key": "spin",
@@ -182,7 +210,11 @@
    "text": "sock",
    "type": "word",
    "group": "C",
-   "file": "sock.mp3"
+   "file": "sock.mp3",
+   "manual_trim": {
+    "start": 0.19,
+    "end": 0.95
+   }
   },
   {
    "key": "bag",
@@ -210,7 +242,11 @@
    "text": "cup",
    "type": "word",
    "group": "C",
-   "file": "cup.mp3"
+   "file": "cup.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
   },
   {
    "key": "snake",
@@ -224,7 +260,11 @@
    "text": "milk",
    "type": "word",
    "group": "C",
-   "file": "milk.mp3"
+   "file": "milk.mp3",
+   "manual_trim": {
+    "start": 0.19,
+    "end": 0.86
+   }
   },
   {
    "key": "fish",
@@ -238,7 +278,11 @@
    "text": "map",
    "type": "word",
    "group": "C",
-   "file": "map.mp3"
+   "file": "map.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
   },
   {
    "key": "book",
@@ -287,7 +331,11 @@
    "text": "top",
    "type": "word",
    "group": "D",
-   "file": "top.mp3"
+   "file": "top.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
   },
   {
    "key": "igloo",
@@ -301,7 +349,11 @@
    "text": "pig",
    "type": "word",
    "group": "D",
-   "file": "pig.mp3"
+   "file": "pig.mp3",
+   "manual_trim": {
+    "start": 0.19,
+    "end": 0.79
+   }
   },
   {
    "key": "pen",

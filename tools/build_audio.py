@@ -373,7 +373,7 @@ SOURCE_SPECS = {
     "wall_hint":      {"anchor_re": WALL_HINT_BLOCK_RE,  "anchors": 1, "keys": 3,  "unique": 3},
     "book_lines":     {"anchor_re": BOOK_PAGES_BLOCK_RE, "anchors": 1, "keys": 6,  "unique": 6},
     "g1_rounds":      {"anchor_re": G1_ROUNDS_BLOCK_RE,  "anchors": 1, "keys": 16, "unique": 15},  # dog 两轮各出现一次
-    "g3_pairs":       {"anchor_re": G3_PAIRS_BLOCK_RE,   "anchors": 1, "keys": 2,  "unique": 2},
+    "g3_pairs":       {"anchor_re": G3_PAIRS_BLOCK_RE,   "anchors": 1, "keys": 6,  "unique": 6},
     "g4_words":       {"anchor_re": G4_WORDS_BLOCK_RE,   "anchors": 1, "keys": 7,  "unique": 7},
     "g5_whitelist":   {"anchor_re": G5_WHITELIST_BLOCK_RE, "anchors": 1, "keys": 18, "unique": 18},
 }
@@ -708,9 +708,18 @@ def process_one(ffmpeg: str, item: dict) -> dict:
     gain_db = TARGET_PEAK_DBFS - raw_mv
     result["gain_db"] = gain_db
 
-    # 第二遍：处理（裁首尾静音 + 峰值归一）。极少数词的词尾塞音爆破会低于
+    # 第二遍：处理（裁首尾静音 + 可选逐词变速 + 峰值归一）。极少数词的词尾塞音爆破会低于
     # 通用静音阈值；这类条目允许在 manifest 里给出人工核听后的 manual_trim，
     # 避免反向 silenceremove 把闭塞后的爆破一起裁掉。
+    try:
+        tempo = float(item.get("tempo", 1.0))
+    except (TypeError, ValueError):
+        result["reason"] = "tempo 必须是 0.5–2.0 之间的数值"
+        return result
+    if not (0.5 <= tempo <= 2.0):
+        result["reason"] = f"tempo 超出 ffmpeg atempo 支持范围：{tempo}（应为 0.5–2.0）"
+        return result
+
     manual_trim = item.get("manual_trim")
     if manual_trim is not None:
         try:
@@ -722,19 +731,21 @@ def process_one(ffmpeg: str, item: dict) -> dict:
         if trim_start < 0 or trim_end <= trim_start:
             result["reason"] = f"manual_trim 区间非法：{trim_start}–{trim_end}s"
             return result
-        af_chain = (
-            f"atrim=start={trim_start:.3f}:end={trim_end:.3f},"
-            f"asetpts=PTS-STARTPTS,"
-            f"volume={gain_db:.3f}dB"
-        )
+        filters = [
+            f"atrim=start={trim_start:.3f}:end={trim_end:.3f}",
+            "asetpts=PTS-STARTPTS",
+        ]
     else:
-        af_chain = (
-            f"silenceremove=start_periods=1:start_threshold={SILENCE_THRESHOLD_DB}dB,"
-            f"areverse,"
-            f"silenceremove=start_periods=1:start_threshold={SILENCE_THRESHOLD_DB}dB,"
-            f"areverse,"
-            f"volume={gain_db:.3f}dB"
-        )
+        filters = [
+            f"silenceremove=start_periods=1:start_threshold={SILENCE_THRESHOLD_DB}dB",
+            "areverse",
+            f"silenceremove=start_periods=1:start_threshold={SILENCE_THRESHOLD_DB}dB",
+            "areverse",
+        ]
+    if tempo != 1.0:
+        filters.append(f"atempo={tempo:.3f}")
+    filters.append(f"volume={gain_db:.3f}dB")
+    af_chain = ",".join(filters)
     # H1：编码前先清掉旧 processed 产物——若本次 ffmpeg 实际失败，不会误留上一次成功
     # 跑出来的同名旧文件，让后面的存在性检查误判通过（陈旧缓存复用风险）。
     out_path.unlink(missing_ok=True)
