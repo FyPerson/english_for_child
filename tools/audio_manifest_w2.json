@@ -1,0 +1,601 @@
+{
+ "voice": "en-US-JennyNeural",
+ "rate": {
+  "word": "-20%",
+  "sentence": "-10%",
+  "phrase": "-10%"
+ },
+ "format": "mp3 24kHz 48kbps mono (edge-tts default)",
+ "frozen": "2026-08-31 第二周 73 条 = week02.html 十个静态提取源的引用键并集（含 unreachable_keys 里那 8 个暂时没有播放入口的旧 demo 词）",
+ "expected_items": 73,
+ "reserved_blacklist": [
+  "ram",
+  "hem",
+  "rid",
+  "dam",
+  "kid"
+ ],
+ "source_specs": {
+  "sounds_demo": {
+   "anchors": 12,
+   "keys": 36,
+   "unique": 31
+  },
+  "days_words": {
+   "anchors": 6,
+   "keys": 34,
+   "unique": 34
+  },
+  "days_sight": {
+   "anchors": 1,
+   "keys": 2,
+   "unique": 2
+  },
+  "days_sentences": {
+   "anchors": 0,
+   "keys": 0,
+   "unique": 0
+  },
+  "wall_hint": {
+   "anchors": 1,
+   "keys": 0,
+   "unique": 0
+  },
+  "book_lines": {
+   "anchors": 1,
+   "keys": 6,
+   "unique": 6
+  },
+  "g1_rounds": {
+   "anchors": 1,
+   "keys": 16,
+   "unique": 14
+  },
+  "g3_pairs": {
+   "anchors": 1,
+   "keys": 6,
+   "unique": 6
+  },
+  "g4_words": {
+   "anchors": 1,
+   "keys": 8,
+   "unique": 8
+  },
+  "g5_whitelist": {
+   "anchors": 1,
+   "keys": 50,
+   "unique": 50
+  }
+ },
+ "items": [
+  {
+   "key": "an",
+   "text": "an",
+   "type": "word",
+   "group": "A",
+   "file": "an.mp3"
+  },
+  {
+   "key": "ant",
+   "text": "ant",
+   "type": "word",
+   "group": "B",
+   "file": "ant.mp3"
+  },
+  {
+   "key": "apple",
+   "text": "apple",
+   "type": "word",
+   "group": "E",
+   "file": "apple.mp3"
+  },
+  {
+   "key": "at",
+   "text": "at",
+   "type": "word",
+   "group": "A",
+   "file": "at.mp3"
+  },
+  {
+   "key": "bat",
+   "text": "bat",
+   "type": "word",
+   "group": "D",
+   "file": "bat.mp3"
+  },
+  {
+   "key": "can",
+   "text": "can",
+   "type": "word",
+   "group": "A",
+   "file": "can.mp3"
+  },
+  {
+   "key": "cap",
+   "text": "cap",
+   "type": "word",
+   "group": "A",
+   "file": "cap.mp3"
+  },
+  {
+   "key": "cat",
+   "text": "cat",
+   "type": "word",
+   "group": "A",
+   "file": "cat.mp3"
+  },
+  {
+   "key": "dad",
+   "text": "dad",
+   "type": "word",
+   "group": "B",
+   "file": "dad.mp3"
+  },
+  {
+   "key": "den",
+   "text": "den",
+   "type": "word",
+   "group": "A",
+   "file": "den.mp3"
+  },
+  {
+   "key": "did",
+   "text": "did",
+   "type": "word",
+   "group": "B",
+   "file": "did.mp3"
+  },
+  {
+   "key": "dim",
+   "text": "dim",
+   "type": "word",
+   "group": "A",
+   "file": "dim.mp3"
+  },
+  {
+   "key": "dip",
+   "text": "dip",
+   "type": "word",
+   "group": "A",
+   "file": "dip.mp3"
+  },
+  {
+   "key": "dog",
+   "text": "dog",
+   "type": "word",
+   "group": "D",
+   "file": "dog.mp3"
+  },
+  {
+   "key": "fish",
+   "text": "fish",
+   "type": "word",
+   "group": "D",
+   "file": "fish.mp3"
+  },
+  {
+   "key": "ham",
+   "text": "ham",
+   "type": "word",
+   "group": "A",
+   "file": "ham.mp3"
+  },
+  {
+   "key": "hat",
+   "text": "hat",
+   "type": "word",
+   "group": "A",
+   "file": "hat.mp3"
+  },
+  {
+   "key": "hen",
+   "text": "hen",
+   "type": "word",
+   "group": "A",
+   "file": "hen.mp3"
+  },
+  {
+   "key": "him",
+   "text": "him",
+   "type": "word",
+   "group": "A",
+   "file": "him.mp3"
+  },
+  {
+   "key": "hip",
+   "text": "hip",
+   "type": "word",
+   "group": "A",
+   "file": "hip.mp3"
+  },
+  {
+   "key": "hit",
+   "text": "hit",
+   "type": "word",
+   "group": "A",
+   "file": "hit.mp3"
+  },
+  {
+   "key": "igloo",
+   "text": "igloo",
+   "type": "word",
+   "group": "E",
+   "file": "igloo.mp3"
+  },
+  {
+   "key": "in",
+   "text": "in",
+   "type": "word",
+   "group": "A",
+   "file": "in.mp3"
+  },
+  {
+   "key": "is",
+   "text": "is",
+   "type": "word",
+   "group": "C",
+   "file": "is.mp3"
+  },
+  {
+   "key": "it",
+   "text": "it",
+   "type": "word",
+   "group": "A",
+   "file": "it.mp3"
+  },
+  {
+   "key": "kit",
+   "text": "kit",
+   "type": "word",
+   "group": "A",
+   "file": "kit.mp3"
+  },
+  {
+   "key": "mad",
+   "text": "mad",
+   "type": "word",
+   "group": "A",
+   "file": "mad.mp3"
+  },
+  {
+   "key": "man",
+   "text": "man",
+   "type": "word",
+   "group": "A",
+   "file": "man.mp3"
+  },
+  {
+   "key": "map",
+   "text": "map",
+   "type": "word",
+   "group": "A",
+   "file": "map.mp3"
+  },
+  {
+   "key": "mat",
+   "text": "mat",
+   "type": "word",
+   "group": "A",
+   "file": "mat.mp3"
+  },
+  {
+   "key": "men",
+   "text": "men",
+   "type": "word",
+   "group": "A",
+   "file": "men.mp3"
+  },
+  {
+   "key": "met",
+   "text": "met",
+   "type": "word",
+   "group": "A",
+   "file": "met.mp3"
+  },
+  {
+   "key": "milk",
+   "text": "milk",
+   "type": "word",
+   "group": "D",
+   "file": "milk.mp3"
+  },
+  {
+   "key": "nap",
+   "text": "nap",
+   "type": "word",
+   "group": "A",
+   "file": "nap.mp3"
+  },
+  {
+   "key": "net",
+   "text": "net",
+   "type": "word",
+   "group": "A",
+   "file": "net.mp3"
+  },
+  {
+   "key": "nip",
+   "text": "nip",
+   "type": "word",
+   "group": "A",
+   "file": "nip.mp3"
+  },
+  {
+   "key": "nose",
+   "text": "nose",
+   "type": "word",
+   "group": "B",
+   "file": "nose.mp3"
+  },
+  {
+   "key": "pan",
+   "text": "pan",
+   "type": "word",
+   "group": "A",
+   "file": "pan.mp3"
+  },
+  {
+   "key": "pat",
+   "text": "pat",
+   "type": "word",
+   "group": "A",
+   "file": "pat.mp3"
+  },
+  {
+   "key": "pen",
+   "text": "pen",
+   "type": "word",
+   "group": "A",
+   "file": "pen.mp3"
+  },
+  {
+   "key": "pet",
+   "text": "pet",
+   "type": "word",
+   "group": "A",
+   "file": "pet.mp3"
+  },
+  {
+   "key": "pig",
+   "text": "pig",
+   "type": "word",
+   "group": "B",
+   "file": "pig.mp3"
+  },
+  {
+   "key": "pin",
+   "text": "pin",
+   "type": "word",
+   "group": "A",
+   "file": "pin.mp3"
+  },
+  {
+   "key": "pit",
+   "text": "pit",
+   "type": "word",
+   "group": "A",
+   "file": "pit.mp3"
+  },
+  {
+   "key": "ran",
+   "text": "ran",
+   "type": "word",
+   "group": "A",
+   "file": "ran.mp3"
+  },
+  {
+   "key": "rat",
+   "text": "rat",
+   "type": "word",
+   "group": "A",
+   "file": "rat.mp3"
+  },
+  {
+   "key": "red",
+   "text": "red",
+   "type": "word",
+   "group": "A",
+   "file": "red.mp3"
+  },
+  {
+   "key": "rest",
+   "text": "rest",
+   "type": "word",
+   "group": "A",
+   "file": "rest.mp3"
+  },
+  {
+   "key": "rim",
+   "text": "rim",
+   "type": "word",
+   "group": "A",
+   "file": "rim.mp3"
+  },
+  {
+   "key": "rip",
+   "text": "rip",
+   "type": "word",
+   "group": "A",
+   "file": "rip.mp3"
+  },
+  {
+   "key": "sad",
+   "text": "sad",
+   "type": "word",
+   "group": "A",
+   "file": "sad.mp3"
+  },
+  {
+   "key": "sand",
+   "text": "sand",
+   "type": "word",
+   "group": "A",
+   "file": "sand.mp3"
+  },
+  {
+   "key": "sat",
+   "text": "sat",
+   "type": "word",
+   "group": "A",
+   "file": "sat.mp3"
+  },
+  {
+   "key": "set",
+   "text": "set",
+   "type": "word",
+   "group": "A",
+   "file": "set.mp3"
+  },
+  {
+   "key": "sip",
+   "text": "sip",
+   "type": "word",
+   "group": "A",
+   "file": "sip.mp3"
+  },
+  {
+   "key": "sit",
+   "text": "sit",
+   "type": "word",
+   "group": "A",
+   "file": "sit.mp3"
+  },
+  {
+   "key": "snake",
+   "text": "snake",
+   "type": "word",
+   "group": "E",
+   "file": "snake.mp3"
+  },
+  {
+   "key": "snap",
+   "text": "snap",
+   "type": "word",
+   "group": "A",
+   "file": "snap.mp3"
+  },
+  {
+   "key": "sock",
+   "text": "sock",
+   "type": "word",
+   "group": "B",
+   "file": "sock.mp3"
+  },
+  {
+   "key": "spin",
+   "text": "spin",
+   "type": "word",
+   "group": "A",
+   "file": "spin.mp3"
+  },
+  {
+   "key": "sun",
+   "text": "sun",
+   "type": "word",
+   "group": "D",
+   "file": "sun.mp3"
+  },
+  {
+   "key": "tap",
+   "text": "tap",
+   "type": "word",
+   "group": "A",
+   "file": "tap.mp3"
+  },
+  {
+   "key": "ten",
+   "text": "ten",
+   "type": "word",
+   "group": "A",
+   "file": "ten.mp3"
+  },
+  {
+   "key": "the",
+   "text": "the",
+   "type": "word",
+   "group": "C",
+   "file": "the.mp3"
+  },
+  {
+   "key": "tin",
+   "text": "tin",
+   "type": "word",
+   "group": "A",
+   "file": "tin.mp3"
+  },
+  {
+   "key": "tip",
+   "text": "tip",
+   "type": "word",
+   "group": "A",
+   "file": "tip.mp3"
+  },
+  {
+   "key": "top",
+   "text": "top",
+   "type": "word",
+   "group": "B",
+   "file": "top.mp3"
+  },
+  {
+   "key": "A cat sat.",
+   "text": "A cat sat.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_a_cat_sat.mp3"
+  },
+  {
+   "key": "Dan pats it.",
+   "text": "Dan pats it.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_dan_pats_it.mp3"
+  },
+  {
+   "key": "Dan pats the cat.",
+   "text": "Dan pats the cat.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_dan_pats_the_cat.mp3"
+  },
+  {
+   "key": "Dan sat.",
+   "text": "Dan sat.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_dan_sat.mp3"
+  },
+  {
+   "key": "The cat is sad.",
+   "text": "The cat is sad.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_the_cat_is_sad.mp3"
+  },
+  {
+   "key": "The cat naps.",
+   "text": "The cat naps.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_the_cat_naps.mp3"
+  }
+ ],
+ "g1_round_keys": [
+  "c",
+  "e"
+ ],
+ "g5_whitelist_group": "A",
+ "week": 2,
+ "unreferenced_keys": [],
+ "unreachable_keys": [
+  "ant",
+  "apple",
+  "igloo",
+  "nose",
+  "pig",
+  "snake",
+  "sock",
+  "top"
+ ],
+ "unreachable_note": "语义区分：unreferenced_keys 指「提取源都引用不到」（自检③ 断言用）；本字段指「提取源引用得到、但运行时没有可达播放入口」，仅作登记，不参与自检。这 8 个词来自第一周六条 SOUNDS 记录的 demo 例词——那六条记录在第二周整体保留（快闪复习要用其 ipa/mem，真人录音也已内嵌），于是 demo 例词被 sounds_demo 提取器一并收进清单，但第二周没有任何入口会重新打开旧音的音素实验室，所以这些单词音频实际点不到（约 36KB base64，占全文件 5.7%）。刻意不删、不改提取器：保持「十源并集 = 全部可播放键」这个按构造正确的性质，比省 36KB 重要；且旧 SOUNDS 保留就是为了某周回头复习旧音时能直接开课，届时这些音频立刻可达。（codex 首审 M-3，判定：部分采纳——如实登记，不删）"
+}
