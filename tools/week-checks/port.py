@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import w2data as D
 import w2days as DY
 
-ROOT = Path(r"E:\projects\english_for_child")
+ROOT = Path(__file__).resolve().parent.parent.parent   # 从脚本自身位置推导仓库根，不写死盘符
 SRC = ROOT / "week01-v3.html"
 DST = ROOT / "week02.html"
 
