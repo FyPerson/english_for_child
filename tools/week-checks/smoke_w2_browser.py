@@ -117,9 +117,32 @@ with sync_playwright() as p:
        f"{'已内嵌，应渲染 1 张' if want_mnemonic else '未内嵌，不该渲染'}，"
        f"实际 {pg.locator('.mnemonic-img').count()} 张")
     card = pg.locator(".sound").first.inner_text()
-    ok(("点字母积木听真人示范" in card) if c_has_audio
-       else ("点字母积木听真人示范" not in card),
-       "音素卡真人示范提示与 c 音频状态不匹配")
+    # 一音多形（第二周 c/k）：sound__hd 里每个字母积木都要与**自己的**录音状态配对。
+    # 这里锁元素类型而不是文案——文案改措辞不该让测试变红，而"有录音却没做成按钮"
+    # 或"没录音却渲染成 button"（铁律 8 哑巴按钮）必须被抓住。
+    forms = pg.evaluate("""()=>{
+        const s='c';
+        const all=[s].concat(Object.keys(SOUNDS).filter(k=>k!==s && SOUNDS[k].audioKey===s));
+        return all.map(f=>({f:f, has:hasPhoneme(f)}));
+    }""")
+    tiles = pg.evaluate("""()=>[...document.querySelectorAll('#app .sound__hd .tile')]
+        .map(t=>({ch:t.textContent.trim(), tag:t.tagName, sayph:t.getAttribute('data-sayph')}))""")
+    ok(len(tiles) == len(forms),
+       f"新声音区字母积木数与一音多形不符：应 {len(forms)} 块"
+       f"（{[x['f'] for x in forms]}），实际 {len(tiles)} 块")
+    for want, got in zip(forms, tiles):
+        ok(got["ch"] == want["f"],
+           f"字母积木内容/顺序不符：应 '{want['f']}'，实际 '{got['ch']}'")
+        if want["has"]:
+            ok(got["tag"] == "BUTTON" and got["sayph"] == want["f"],
+               f"'{want['f']}' 有录音却不是听音按钮"
+               f"（tag={got['tag']} data-sayph={got['sayph']}）")
+        else:
+            ok(got["tag"] != "BUTTON",
+               f"'{want['f']}' 没有录音却渲染成 button（铁律 8 哑巴按钮）")
+    hint = pg.locator(".sound__hint").first.inner_text()
+    ok(("听" in hint) if c_has_audio else ("待补" in hint),
+       f"音素卡提示语与 c 音频状态不匹配：有录音应引导去听、没录音应说明待补，实际「{hint}」")
     ok(("真人示范音待补" not in card) if c_has_audio
        else ("真人示范音待补" in card),
        "音素卡待补提示与 c 音频状态不匹配")
