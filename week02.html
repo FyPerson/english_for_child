@@ -2440,7 +2440,7 @@ function renderDay(n){
       <button class="backlink" data-goto="0">${ART.arrowL} 返回本周总览</button>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span class="pill pill--c">${d.wd}</span>
-        ${d.sounds.length?`<span class="pill">今日音 ${d.sounds.map(s=>SOUNDS[s].ipa).join(' ')}</span>`:''}
+        ${d.sounds.length?`<span class="pill">今日音 ${[...new Set(d.sounds.map(s=>SOUNDS[s].ipa))].join(' ')}</span>`:''}
         <span class="pill ${d.rest?'pill--a':''}">${d.rest?'休息日':'共 '+total+' 分钟'}</span>
       </div>
       <h1>${d.title}</h1>
