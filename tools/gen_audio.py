@@ -37,27 +37,39 @@ async def gen_one(sem, voice, rate_map, it, force):
     if not force and out.exists() and out.stat().st_size > 0:
         return ("skip", it["key"])
     async with sem:
-        tts = edge_tts.Communicate(it["text"], voice, rate=rate_map[it["type"]])
+        # 默认沿用整周声线/分类语速；小书等特殊条目可在 manifest 中逐条覆盖。
+        # 这样儿童故事能使用儿童声线，而单词、音素和其他句子不被连带重生成。
+        item_voice = it.get("voice", voice)
+        item_rate = it.get("rate", rate_map[it["type"]])
+        tts = edge_tts.Communicate(it["text"], item_voice, rate=item_rate)
         await tts.save(str(out))
     return ("ok", it["key"])
 
 
-async def main(force):
+async def main(force, only_keys=None):
     m = load_manifest()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    items = m["items"]
+    if only_keys:
+        requested = set(only_keys)
+        known = {it["key"] for it in items}
+        missing = sorted(requested - known)
+        if missing:
+            raise SystemExit(f"--key 不在 manifest 中：{missing}")
+        items = [it for it in items if it["key"] in requested]
     sem = asyncio.Semaphore(CONCURRENCY)
-    tasks = [gen_one(sem, m["voice"], m["rate"], it, force) for it in m["items"]]
+    tasks = [gen_one(sem, m["voice"], m["rate"], it, force) for it in items]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     ok = skip = 0
     failed = []
-    for it, r in zip(m["items"], results):
+    for it, r in zip(items, results):
         if isinstance(r, Exception):
             failed.append((it["key"], repr(r)))
         elif r[0] == "ok":
             ok += 1
         else:
             skip += 1
-    print(f"生成 {ok} 条，跳过 {skip} 条，失败 {len(failed)} 条")
+    print(f"本次选择 {len(items)} 条：生成 {ok} 条，跳过 {skip} 条，失败 {len(failed)} 条")
     for k, e in failed:
         print(f"  FAILED {k}: {e}")
     if failed:
@@ -75,8 +87,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true", help="忽略已有文件全部重新生成")
     ap.add_argument("--manifest", help="词表清单路径（默认第一周 tools/audio_manifest.json）")
+    ap.add_argument("--key", action="append", help="只生成指定 key；可重复传入，适合局部回炉")
     _a = ap.parse_args()
     if _a.manifest:
         _p = Path(_a.manifest)
         MANIFEST = _p if _p.is_absolute() else ROOT / _a.manifest
-    asyncio.run(main(_a.force))
+    asyncio.run(main(_a.force, _a.key))

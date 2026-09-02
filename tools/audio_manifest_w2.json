@@ -608,42 +608,60 @@
    "text": "A cat sat.",
    "type": "sentence",
    "group": "F",
-   "file": "sent_a_cat_sat.mp3"
+   "file": "sent_a_cat_sat.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "Dan pats it.",
    "text": "Dan pats it.",
    "type": "sentence",
    "group": "F",
-   "file": "sent_dan_pats_it.mp3"
+   "file": "sent_dan_pats_it.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "Dan pats the cat.",
    "text": "Dan pats the cat.",
    "type": "sentence",
    "group": "F",
-   "file": "sent_dan_pats_the_cat.mp3"
+   "file": "sent_dan_pats_the_cat.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "Dan sat.",
    "text": "Dan sat.",
    "type": "sentence",
    "group": "F",
-   "file": "sent_dan_sat.mp3"
+   "file": "sent_dan_sat.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "The cat is sad.",
    "text": "The cat is sad.",
    "type": "sentence",
    "group": "F",
-   "file": "sent_the_cat_is_sad.mp3"
+   "file": "sent_the_cat_is_sad.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "The cat naps.",
    "text": "The cat naps.",
    "type": "sentence",
    "group": "F",
-   "file": "sent_the_cat_naps.mp3"
+   "file": "sent_the_cat_naps.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   }
  ],
  "g1_round_keys": [

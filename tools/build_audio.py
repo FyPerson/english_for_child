@@ -712,6 +712,14 @@ def process_one(ffmpeg: str, item: dict) -> dict:
     # 通用静音阈值；这类条目允许在 manifest 里给出人工核听后的 manual_trim，
     # 避免反向 silenceremove 把闭塞后的爆破一起裁掉。
     try:
+        silence_threshold_db = float(item.get("silence_threshold_db", SILENCE_THRESHOLD_DB))
+    except (TypeError, ValueError):
+        result["reason"] = "silence_threshold_db 必须是 -90 到 -20 之间的数值"
+        return result
+    if not (-90 <= silence_threshold_db <= -20):
+        result["reason"] = f"silence_threshold_db 超出范围：{silence_threshold_db}（应为 -90 到 -20）"
+        return result
+    try:
         tempo = float(item.get("tempo", 1.0))
     except (TypeError, ValueError):
         result["reason"] = "tempo 必须是 0.5–2.0 之间的数值"
@@ -737,9 +745,9 @@ def process_one(ffmpeg: str, item: dict) -> dict:
         ]
     else:
         filters = [
-            f"silenceremove=start_periods=1:start_threshold={SILENCE_THRESHOLD_DB}dB",
+            f"silenceremove=start_periods=1:start_threshold={silence_threshold_db:g}dB",
             "areverse",
-            f"silenceremove=start_periods=1:start_threshold={SILENCE_THRESHOLD_DB}dB",
+            f"silenceremove=start_periods=1:start_threshold={silence_threshold_db:g}dB",
             "areverse",
         ]
     if tempo != 1.0:
@@ -766,7 +774,7 @@ def process_one(ffmpeg: str, item: dict) -> dict:
     # 验证测量：处理后复测响度 + 首尾静音（单次 ffmpeg 跑双 filter，均为分析类 filter 不改音频）
     verify_rc, verify_stderr = run_ffmpeg(ffmpeg, [
         "-i", str(out_path),
-        "-af", f"volumedetect,silencedetect=noise={SILENCE_THRESHOLD_DB}dB:d={HEAD_TAIL_SILENCE_D}",
+        "-af", f"volumedetect,silencedetect=noise={silence_threshold_db:g}dB:d={HEAD_TAIL_SILENCE_D}",
         "-f", "null", "-",
     ])
     duration = parse_duration_seconds(verify_stderr) if verify_rc == 0 else None

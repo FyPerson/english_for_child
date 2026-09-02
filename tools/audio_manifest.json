@@ -402,42 +402,60 @@
    "text": "Nat naps.",
    "type": "sentence",
    "group": "F",
-   "file": "sent_nat_naps.mp3"
+   "file": "sent_nat_naps.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "I pat Nat.",
    "text": "I pat Nat.",
    "type": "sentence",
    "group": "F",
-   "file": "sent_i_pat_nat.mp3"
+   "file": "sent_i_pat_nat.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "I see Nat.",
    "text": "I see Nat.",
    "type": "sentence",
    "group": "G",
-   "file": "sent_i_see_nat.mp3"
+   "file": "sent_i_see_nat.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "Sit, Nat!",
    "text": "Sit, Nat!",
    "type": "sentence",
    "group": "G",
-   "file": "sent_sit_nat.mp3"
+   "file": "sent_sit_nat.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "Nat sat.",
    "text": "Nat sat.",
    "type": "sentence",
    "group": "G",
-   "file": "sent_nat_sat.mp3"
+   "file": "sent_nat_sat.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "Nap, Nat, nap!",
    "text": "Nap, Nat, nap!",
    "type": "sentence",
    "group": "G",
-   "file": "sent_nap_nat_nap.mp3"
+   "file": "sent_nap_nat_nap.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
   },
   {
    "key": "at the door",
