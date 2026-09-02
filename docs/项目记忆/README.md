@@ -140,3 +140,5 @@ source_of_truth: self（导航与现状快照的权威；具体做法以各专�
 去掉工具专用元数据、**逐条核对并更正了已过期的事实**。
 
 原记忆仍留在本机 Claude 的记忆目录里作为它自己的工作记忆；**仓库内这份是交接用的权威版本**。
+
+**文档头部惯例（供 tidy-docs 当项目实例读）**：本仓库文档 frontmatter 用中文键——`状态`（对应全局规范的 status）、`source_of_truth`、`日期`（created）、`适用`、`修订`；审查记录（`docs/codex审查记录/*.md`）按约定不带 frontmatter；被新版取代的过程版本移入 `docs/_archive/` 并把 `状态` 改为 `superseded`、`source_of_truth` 指向定稿版。
