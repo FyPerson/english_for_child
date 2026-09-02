@@ -1,0 +1,1097 @@
+{
+ "voice": "en-US-JennyNeural",
+ "rate": {
+  "word": "-20%",
+  "sentence": "-10%",
+  "phrase": "-10%"
+ },
+ "format": "mp3 24kHz 48kbps mono (edge-tts default)",
+ "week": 3,
+ "frozen": "2026-09-02 第三周 132 条 = week03.html 十个静态提取源的引用键并集（含 unreachable_keys 里前两周音素卡的 demo 例词，暂无播放入口）",
+ "expected_items": 132,
+ "reserved_blacklist": [
+  "gut",
+  "bud",
+  "fin",
+  "lob",
+  "fib"
+ ],
+ "source_specs": {
+  "sounds_demo": {
+   "anchors": 18,
+   "keys": 54,
+   "unique": 48
+  },
+  "days_words": {
+   "anchors": 6,
+   "keys": 37,
+   "unique": 37
+  },
+  "days_sight": {
+   "anchors": 1,
+   "keys": 1,
+   "unique": 1
+  },
+  "days_sentences": {
+   "anchors": 0,
+   "keys": 0,
+   "unique": 0
+  },
+  "wall_hint": {
+   "anchors": 1,
+   "keys": 0,
+   "unique": 0
+  },
+  "book_lines": {
+   "anchors": 1,
+   "keys": 6,
+   "unique": 6
+  },
+  "g1_rounds": {
+   "anchors": 1,
+   "keys": 16,
+   "unique": 14
+  },
+  "g3_pairs": {
+   "anchors": 1,
+   "keys": 6,
+   "unique": 6
+  },
+  "g4_words": {
+   "anchors": 1,
+   "keys": 8,
+   "unique": 8
+  },
+  "g5_whitelist": {
+   "anchors": 1,
+   "keys": 111,
+   "unique": 111
+  }
+ },
+ "g1_round_keys": [
+  "g",
+  "u"
+ ],
+ "g5_whitelist_group": "A",
+ "unreferenced_keys": [],
+ "unreachable_keys": [
+  "ant",
+  "apple",
+  "dad",
+  "igloo",
+  "nose",
+  "snake",
+  "sock"
+ ],
+ "unreachable_note": "前两周十三个音素卡的 demo 例词：sounds_demo 提取源仍会提取到它们，但第三周页面只给本周六个新音渲染例词播放入口，这些键在运行时没有可达的播放按钮。按第二周 M-3 的裁定如实登记、不删不改提取器；其中大部分复用前两周已生成的 raw 文件，不新增生成成本。",
+ "items": [
+  {
+   "key": "an",
+   "text": "an",
+   "type": "word",
+   "group": "A",
+   "file": "an.mp3"
+  },
+  {
+   "key": "at",
+   "text": "at",
+   "type": "word",
+   "group": "A",
+   "file": "at.mp3"
+  },
+  {
+   "key": "in",
+   "text": "in",
+   "type": "word",
+   "group": "A",
+   "file": "in.mp3"
+  },
+  {
+   "key": "it",
+   "text": "it",
+   "type": "word",
+   "group": "A",
+   "file": "it.mp3",
+   "manual_trim": {
+    "start": 0.18,
+    "end": 0.66
+   }
+  },
+  {
+   "key": "nap",
+   "text": "nap",
+   "type": "word",
+   "group": "A",
+   "file": "nap.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
+  },
+  {
+   "key": "nip",
+   "text": "nip",
+   "type": "word",
+   "group": "A",
+   "file": "nip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
+  },
+  {
+   "key": "pan",
+   "text": "pan",
+   "type": "word",
+   "group": "A",
+   "file": "pan.mp3"
+  },
+  {
+   "key": "pat",
+   "text": "pat",
+   "type": "word",
+   "group": "A",
+   "file": "pat.mp3"
+  },
+  {
+   "key": "pin",
+   "text": "pin",
+   "type": "word",
+   "group": "A",
+   "file": "pin.mp3"
+  },
+  {
+   "key": "pit",
+   "text": "pit",
+   "type": "word",
+   "group": "A",
+   "file": "pit.mp3"
+  },
+  {
+   "key": "sat",
+   "text": "sat",
+   "type": "word",
+   "group": "A",
+   "file": "sat.mp3"
+  },
+  {
+   "key": "sip",
+   "text": "sip",
+   "type": "word",
+   "group": "A",
+   "file": "sip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.9
+   }
+  },
+  {
+   "key": "sit",
+   "text": "sit",
+   "type": "word",
+   "group": "A",
+   "file": "sit.mp3"
+  },
+  {
+   "key": "snap",
+   "text": "snap",
+   "type": "word",
+   "group": "A",
+   "file": "snap.mp3",
+   "manual_trim": {
+    "start": 0.18,
+    "end": 1.0
+   }
+  },
+  {
+   "key": "spin",
+   "text": "spin",
+   "type": "word",
+   "group": "A",
+   "file": "spin.mp3"
+  },
+  {
+   "key": "tap",
+   "text": "tap",
+   "type": "word",
+   "group": "A",
+   "file": "tap.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
+  },
+  {
+   "key": "tin",
+   "text": "tin",
+   "type": "word",
+   "group": "A",
+   "file": "tin.mp3"
+  },
+  {
+   "key": "tip",
+   "text": "tip",
+   "type": "word",
+   "group": "A",
+   "file": "tip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
+  },
+  {
+   "key": "cat",
+   "text": "cat",
+   "type": "word",
+   "group": "A",
+   "file": "cat.mp3"
+  },
+  {
+   "key": "cap",
+   "text": "cap",
+   "type": "word",
+   "group": "A",
+   "file": "cap.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
+  },
+  {
+   "key": "can",
+   "text": "can",
+   "type": "word",
+   "group": "A",
+   "file": "can.mp3"
+  },
+  {
+   "key": "kit",
+   "text": "kit",
+   "type": "word",
+   "group": "A",
+   "file": "kit.mp3"
+  },
+  {
+   "key": "set",
+   "text": "set",
+   "type": "word",
+   "group": "A",
+   "file": "set.mp3"
+  },
+  {
+   "key": "ten",
+   "text": "ten",
+   "type": "word",
+   "group": "A",
+   "file": "ten.mp3"
+  },
+  {
+   "key": "net",
+   "text": "net",
+   "type": "word",
+   "group": "A",
+   "file": "net.mp3"
+  },
+  {
+   "key": "pen",
+   "text": "pen",
+   "type": "word",
+   "group": "A",
+   "file": "pen.mp3"
+  },
+  {
+   "key": "pet",
+   "text": "pet",
+   "type": "word",
+   "group": "A",
+   "file": "pet.mp3"
+  },
+  {
+   "key": "hat",
+   "text": "hat",
+   "type": "word",
+   "group": "A",
+   "file": "hat.mp3"
+  },
+  {
+   "key": "hen",
+   "text": "hen",
+   "type": "word",
+   "group": "A",
+   "file": "hen.mp3"
+  },
+  {
+   "key": "hit",
+   "text": "hit",
+   "type": "word",
+   "group": "A",
+   "file": "hit.mp3"
+  },
+  {
+   "key": "hip",
+   "text": "hip",
+   "type": "word",
+   "group": "A",
+   "file": "hip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
+  },
+  {
+   "key": "rat",
+   "text": "rat",
+   "type": "word",
+   "group": "A",
+   "file": "rat.mp3"
+  },
+  {
+   "key": "ran",
+   "text": "ran",
+   "type": "word",
+   "group": "A",
+   "file": "ran.mp3"
+  },
+  {
+   "key": "rip",
+   "text": "rip",
+   "type": "word",
+   "group": "A",
+   "file": "rip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
+  },
+  {
+   "key": "rim",
+   "text": "rim",
+   "type": "word",
+   "group": "A",
+   "file": "rim.mp3"
+  },
+  {
+   "key": "rest",
+   "text": "rest",
+   "type": "word",
+   "group": "A",
+   "file": "rest.mp3"
+  },
+  {
+   "key": "mat",
+   "text": "mat",
+   "type": "word",
+   "group": "A",
+   "file": "mat.mp3"
+  },
+  {
+   "key": "man",
+   "text": "man",
+   "type": "word",
+   "group": "A",
+   "file": "man.mp3"
+  },
+  {
+   "key": "map",
+   "text": "map",
+   "type": "word",
+   "group": "A",
+   "file": "map.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
+  },
+  {
+   "key": "met",
+   "text": "met",
+   "type": "word",
+   "group": "A",
+   "file": "met.mp3"
+  },
+  {
+   "key": "men",
+   "text": "men",
+   "type": "word",
+   "group": "A",
+   "file": "men.mp3"
+  },
+  {
+   "key": "ham",
+   "text": "ham",
+   "type": "word",
+   "group": "A",
+   "file": "ham.mp3",
+   "tempo": 0.85
+  },
+  {
+   "key": "him",
+   "text": "him",
+   "type": "word",
+   "group": "A",
+   "file": "him.mp3",
+   "tempo": 0.85
+  },
+  {
+   "key": "dip",
+   "text": "dip",
+   "type": "word",
+   "group": "A",
+   "file": "dip.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
+  },
+  {
+   "key": "dim",
+   "text": "dim",
+   "type": "word",
+   "group": "A",
+   "file": "dim.mp3"
+  },
+  {
+   "key": "den",
+   "text": "den",
+   "type": "word",
+   "group": "A",
+   "file": "den.mp3"
+  },
+  {
+   "key": "sad",
+   "text": "sad",
+   "type": "word",
+   "group": "A",
+   "file": "sad.mp3"
+  },
+  {
+   "key": "mad",
+   "text": "mad",
+   "type": "word",
+   "group": "A",
+   "file": "mad.mp3"
+  },
+  {
+   "key": "red",
+   "text": "red",
+   "type": "word",
+   "group": "A",
+   "file": "red.mp3"
+  },
+  {
+   "key": "sand",
+   "text": "sand",
+   "type": "word",
+   "group": "A",
+   "file": "sand.mp3"
+  },
+  {
+   "key": "get",
+   "text": "get",
+   "type": "word",
+   "group": "A",
+   "file": "get.mp3"
+  },
+  {
+   "key": "gap",
+   "text": "gap",
+   "type": "word",
+   "group": "A",
+   "file": "gap.mp3"
+  },
+  {
+   "key": "pig",
+   "text": "pig",
+   "type": "word",
+   "group": "A",
+   "file": "pig.mp3",
+   "manual_trim": {
+    "start": 0.19,
+    "end": 0.79
+   }
+  },
+  {
+   "key": "dig",
+   "text": "dig",
+   "type": "word",
+   "group": "A",
+   "file": "dig.mp3"
+  },
+  {
+   "key": "peg",
+   "text": "peg",
+   "type": "word",
+   "group": "A",
+   "file": "peg.mp3"
+  },
+  {
+   "key": "rag",
+   "text": "rag",
+   "type": "word",
+   "group": "A",
+   "file": "rag.mp3"
+  },
+  {
+   "key": "tag",
+   "text": "tag",
+   "type": "word",
+   "group": "A",
+   "file": "tag.mp3"
+  },
+  {
+   "key": "got",
+   "text": "got",
+   "type": "word",
+   "group": "A",
+   "file": "got.mp3"
+  },
+  {
+   "key": "dot",
+   "text": "dot",
+   "type": "word",
+   "group": "A",
+   "file": "dot.mp3"
+  },
+  {
+   "key": "not",
+   "text": "not",
+   "type": "word",
+   "group": "A",
+   "file": "not.mp3"
+  },
+  {
+   "key": "lot",
+   "text": "lot",
+   "type": "word",
+   "group": "A",
+   "file": "lot.mp3"
+  },
+  {
+   "key": "dog",
+   "text": "dog",
+   "type": "word",
+   "group": "A",
+   "file": "dog.mp3"
+  },
+  {
+   "key": "hot",
+   "text": "hot",
+   "type": "word",
+   "group": "A",
+   "file": "hot.mp3"
+  },
+  {
+   "key": "pot",
+   "text": "pot",
+   "type": "word",
+   "group": "A",
+   "file": "pot.mp3"
+  },
+  {
+   "key": "top",
+   "text": "top",
+   "type": "word",
+   "group": "A",
+   "file": "top.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.82
+   }
+  },
+  {
+   "key": "mop",
+   "text": "mop",
+   "type": "word",
+   "group": "A",
+   "file": "mop.mp3"
+  },
+  {
+   "key": "cot",
+   "text": "cot",
+   "type": "word",
+   "group": "A",
+   "file": "cot.mp3"
+  },
+  {
+   "key": "on",
+   "text": "on",
+   "type": "word",
+   "group": "A",
+   "file": "on.mp3"
+  },
+  {
+   "key": "cup",
+   "text": "cup",
+   "type": "word",
+   "group": "A",
+   "file": "cup.mp3",
+   "manual_trim": {
+    "start": 0.2,
+    "end": 0.8
+   }
+  },
+  {
+   "key": "sun",
+   "text": "sun",
+   "type": "word",
+   "group": "A",
+   "file": "sun.mp3"
+  },
+  {
+   "key": "mud",
+   "text": "mud",
+   "type": "word",
+   "group": "A",
+   "file": "mud.mp3"
+  },
+  {
+   "key": "hug",
+   "text": "hug",
+   "type": "word",
+   "group": "A",
+   "file": "hug.mp3"
+  },
+  {
+   "key": "run",
+   "text": "run",
+   "type": "word",
+   "group": "A",
+   "file": "run.mp3"
+  },
+  {
+   "key": "nut",
+   "text": "nut",
+   "type": "word",
+   "group": "A",
+   "file": "nut.mp3"
+  },
+  {
+   "key": "hut",
+   "text": "hut",
+   "type": "word",
+   "group": "A",
+   "file": "hut.mp3"
+  },
+  {
+   "key": "cut",
+   "text": "cut",
+   "type": "word",
+   "group": "A",
+   "file": "cut.mp3"
+  },
+  {
+   "key": "mug",
+   "text": "mug",
+   "type": "word",
+   "group": "A",
+   "file": "mug.mp3"
+  },
+  {
+   "key": "rug",
+   "text": "rug",
+   "type": "word",
+   "group": "A",
+   "file": "rug.mp3"
+  },
+  {
+   "key": "dug",
+   "text": "dug",
+   "type": "word",
+   "group": "A",
+   "file": "dug.mp3"
+  },
+  {
+   "key": "gum",
+   "text": "gum",
+   "type": "word",
+   "group": "A",
+   "file": "gum.mp3"
+  },
+  {
+   "key": "up",
+   "text": "up",
+   "type": "word",
+   "group": "A",
+   "file": "up.mp3"
+  },
+  {
+   "key": "us",
+   "text": "us",
+   "type": "word",
+   "group": "A",
+   "file": "us.mp3"
+  },
+  {
+   "key": "leg",
+   "text": "leg",
+   "type": "word",
+   "group": "A",
+   "file": "leg.mp3"
+  },
+  {
+   "key": "lip",
+   "text": "lip",
+   "type": "word",
+   "group": "A",
+   "file": "lip.mp3"
+  },
+  {
+   "key": "log",
+   "text": "log",
+   "type": "word",
+   "group": "A",
+   "file": "log.mp3"
+  },
+  {
+   "key": "lap",
+   "text": "lap",
+   "type": "word",
+   "group": "A",
+   "file": "lap.mp3"
+  },
+  {
+   "key": "let",
+   "text": "let",
+   "type": "word",
+   "group": "A",
+   "file": "let.mp3"
+  },
+  {
+   "key": "lid",
+   "text": "lid",
+   "type": "word",
+   "group": "A",
+   "file": "lid.mp3"
+  },
+  {
+   "key": "hog",
+   "text": "hog",
+   "type": "word",
+   "group": "A",
+   "file": "hog.mp3"
+  },
+  {
+   "key": "fan",
+   "text": "fan",
+   "type": "word",
+   "group": "A",
+   "file": "fan.mp3"
+  },
+  {
+   "key": "fun",
+   "text": "fun",
+   "type": "word",
+   "group": "A",
+   "file": "fun.mp3"
+  },
+  {
+   "key": "fog",
+   "text": "fog",
+   "type": "word",
+   "group": "A",
+   "file": "fog.mp3"
+  },
+  {
+   "key": "fig",
+   "text": "fig",
+   "type": "word",
+   "group": "A",
+   "file": "fig.mp3"
+  },
+  {
+   "key": "fit",
+   "text": "fit",
+   "type": "word",
+   "group": "A",
+   "file": "fit.mp3"
+  },
+  {
+   "key": "fed",
+   "text": "fed",
+   "type": "word",
+   "group": "A",
+   "file": "fed.mp3"
+  },
+  {
+   "key": "frog",
+   "text": "frog",
+   "type": "word",
+   "group": "A",
+   "file": "frog.mp3"
+  },
+  {
+   "key": "flag",
+   "text": "flag",
+   "type": "word",
+   "group": "A",
+   "file": "flag.mp3"
+  },
+  {
+   "key": "bag",
+   "text": "bag",
+   "type": "word",
+   "group": "A",
+   "file": "bag.mp3"
+  },
+  {
+   "key": "bed",
+   "text": "bed",
+   "type": "word",
+   "group": "A",
+   "file": "bed.mp3"
+  },
+  {
+   "key": "bug",
+   "text": "bug",
+   "type": "word",
+   "group": "A",
+   "file": "bug.mp3"
+  },
+  {
+   "key": "big",
+   "text": "big",
+   "type": "word",
+   "group": "A",
+   "file": "big.mp3"
+  },
+  {
+   "key": "bus",
+   "text": "bus",
+   "type": "word",
+   "group": "A",
+   "file": "bus.mp3"
+  },
+  {
+   "key": "tub",
+   "text": "tub",
+   "type": "word",
+   "group": "A",
+   "file": "tub.mp3"
+  },
+  {
+   "key": "bun",
+   "text": "bun",
+   "type": "word",
+   "group": "A",
+   "file": "bun.mp3"
+  },
+  {
+   "key": "bin",
+   "text": "bin",
+   "type": "word",
+   "group": "A",
+   "file": "bin.mp3"
+  },
+  {
+   "key": "bit",
+   "text": "bit",
+   "type": "word",
+   "group": "A",
+   "file": "bit.mp3"
+  },
+  {
+   "key": "but",
+   "text": "but",
+   "type": "word",
+   "group": "A",
+   "file": "but.mp3"
+  },
+  {
+   "key": "rub",
+   "text": "rub",
+   "type": "word",
+   "group": "A",
+   "file": "rub.mp3"
+  },
+  {
+   "key": "cab",
+   "text": "cab",
+   "type": "word",
+   "group": "A",
+   "file": "cab.mp3"
+  },
+  {
+   "key": "golf",
+   "text": "golf",
+   "type": "word",
+   "group": "A",
+   "file": "golf.mp3"
+  },
+  {
+   "key": "and",
+   "text": "and",
+   "type": "word",
+   "group": "A",
+   "file": "and.mp3"
+  },
+  {
+   "key": "to",
+   "text": "to",
+   "type": "word",
+   "group": "C",
+   "file": "to.mp3"
+  },
+  {
+   "key": "fish",
+   "text": "fish",
+   "type": "word",
+   "group": "D",
+   "file": "fish.mp3"
+  },
+  {
+   "key": "snake",
+   "text": "snake",
+   "type": "word",
+   "group": "E",
+   "file": "snake.mp3"
+  },
+  {
+   "key": "sock",
+   "text": "sock",
+   "type": "word",
+   "group": "E",
+   "file": "sock.mp3",
+   "manual_trim": {
+    "start": 0.19,
+    "end": 0.95
+   }
+  },
+  {
+   "key": "ant",
+   "text": "ant",
+   "type": "word",
+   "group": "E",
+   "file": "ant.mp3"
+  },
+  {
+   "key": "apple",
+   "text": "apple",
+   "type": "word",
+   "group": "E",
+   "file": "apple.mp3"
+  },
+  {
+   "key": "igloo",
+   "text": "igloo",
+   "type": "word",
+   "group": "E",
+   "file": "igloo.mp3"
+  },
+  {
+   "key": "nose",
+   "text": "nose",
+   "type": "word",
+   "group": "E",
+   "file": "nose.mp3"
+  },
+  {
+   "key": "dad",
+   "text": "dad",
+   "type": "word",
+   "group": "E",
+   "file": "dad.mp3"
+  },
+  {
+   "key": "goat",
+   "text": "goat",
+   "type": "word",
+   "group": "E",
+   "file": "goat.mp3"
+  },
+  {
+   "key": "octopus",
+   "text": "octopus",
+   "type": "word",
+   "group": "E",
+   "file": "octopus.mp3"
+  },
+  {
+   "key": "umbrella",
+   "text": "umbrella",
+   "type": "word",
+   "group": "E",
+   "file": "umbrella.mp3"
+  },
+  {
+   "key": "lollipop",
+   "text": "lollipop",
+   "type": "word",
+   "group": "E",
+   "file": "lollipop.mp3"
+  },
+  {
+   "key": "leaf",
+   "text": "leaf",
+   "type": "word",
+   "group": "E",
+   "file": "leaf.mp3"
+  },
+  {
+   "key": "ball",
+   "text": "ball",
+   "type": "word",
+   "group": "E",
+   "file": "ball.mp3"
+  },
+  {
+   "key": "The dog is big.",
+   "text": "The dog is big.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_the_dog_is_big.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
+  },
+  {
+   "key": "The dog dug in the mud.",
+   "text": "The dog dug in the mud.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_the_dog_dug_in_the_mud.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
+  },
+  {
+   "key": "Dan got a rag.",
+   "text": "Dan got a rag.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_dan_got_a_rag.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
+  },
+  {
+   "key": "The dog ran to the log.",
+   "text": "The dog ran to the log.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_the_dog_ran_to_the_log.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
+  },
+  {
+   "key": "The cat sat on the log.",
+   "text": "The cat sat on the log.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_the_cat_sat_on_the_log.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
+  },
+  {
+   "key": "Dan can hug the big dog.",
+   "text": "Dan can hug the big dog.",
+   "type": "sentence",
+   "group": "F",
+   "file": "sent_dan_can_hug_the_big_dog.mp3",
+   "voice": "en-US-EmmaNeural",
+   "rate": "-30%",
+   "silence_threshold_db": -60
+  }
+ ]
+}
