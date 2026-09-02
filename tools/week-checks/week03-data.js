@@ -10,7 +10,7 @@
 const META = {
   week: 3,
   storageKey: 'soundblocks-w3-v1',
-  rackG4: 'dolfhubgma',                 // G4 点单积木架：八张订单词的字母并集，每字母 1 块（10 块）
+  rackG4: 'aouhmdglfb',                 // G4 点单积木架：八张订单词的字母并集，每字母 1 块（10 块），按教学顺序排（分组渲染后位置跨周不挪）
   rackG5: 'satipnckehrmdgoulfb',        // G5 造词积木架：三周全部 19 个字母，每字母 1 块；渲染按元音 / 辅音分组
   wallLetters: 'goulfb',                // 首页积木点亮墙显示本周新字母
   flashCapacity: { flash_words:12, flash_sounds:19 },   // 计时闪卡成绩上限 = 本周计时闪卡实际条数（第五天 12 词、第六天 19 音）
