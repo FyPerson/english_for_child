@@ -23,7 +23,7 @@
 
 产物边界（M4，S2 预筛裁定）：assets/audio_processed/ 是**可重建缓存**，不是交付物——
 删掉整个目录重跑一次 `python tools/build_audio.py --no-inject` 即可从 raw 完全重建；
-本脚本唯一的真正输出是 week01-v3.html（原子写出，见 atomic_write）。配合 H1 修复
+本脚本唯一的真正输出是 week01.html（原子写出，见 atomic_write）。配合 H1 修复
 （process_one 编码前 unlink 旧 processed 文件），杜绝"这次 ffmpeg 实际失败，但目录里
 还留着上一次成功跑的同名旧文件，自检误判通过"的陈旧缓存复用风险。
 """
@@ -50,7 +50,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "tools" / "audio_manifest.json"
 RAW_DIR = ROOT / "assets" / "audio_raw"          # 禁区：只读
 PROCESSED_DIR = ROOT / "assets" / "audio_processed"
-TARGET_HTML = ROOT / "week01-v3.html"
+TARGET_HTML = ROOT / "week01.html"
 
 # ---------------- 后处理参数（规格 §1，S2 spec 草稿第 3 条冻结） ----------------
 SILENCE_THRESHOLD_DB = -40          # 裁静音阈值
@@ -165,7 +165,7 @@ def check2_blacklist_manifest(manifest: dict) -> tuple[bool, str]:
 
 
 # ======================================================================
-# 自检③④ 提取源注册表 —— 对 week01-v3.html 数据字面量层提取运行时键
+# 自检③④ 提取源注册表 —— 对 week01.html 数据字面量层提取运行时键
 # 每个源：(名称, 正则/提取函数)；任一源提取结果为空 = 失败（防正则静默失效）
 # 现有源：SOUNDS[*].demo / DAYS words|sight|sentences 块 items / WALL_HINT /
 #   BOOK.pages[].line / G1_ROUNDS（S3：G1 声音抓抓乐两轮 pos/neg 题库）/
@@ -402,7 +402,7 @@ UNREFERENCED_KEYS = frozenset({"Nat", "naps"})
 # 同步 build_audio.py。这样写对未来的 G6/G7... 天然生效，不需要再手改正则。
 # ======================================================================
 GXX_CONST_RE = re.compile(r"\bconst\s+(G\d+_[A-Z][A-Z0-9_]*)\s*=")
-# 放宽正则后第一次实测跑出个假阳性：G1_THEME（week01-v3.html 里 G1 每轮卡片的
+# 放宽正则后第一次实测跑出个假阳性：G1_THEME（week01.html 里 G1 每轮卡片的
 # 标题/图标/口令 UI 展示配置，形如 {title, icon, cmd}，不含任何词/音素，不是
 # 题库常量）——历史上字符类从没含过数字 1，这条常量从来没被扫描到过，不是
 # 这次新引入的问题，只是换成"广撒网+白名单"写法后第一次显形。跟三个真题库
@@ -885,7 +885,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-inject", action="store_true", help="只跑处理+自检①-⑥，不注入/不改动目标 HTML")
     ap.add_argument("--manifest", help="词表清单路径（默认 tools/audio_manifest.json，第一周）")
-    ap.add_argument("--target", help="注入目标 HTML（默认 week01-v3.html）")
+    ap.add_argument("--target", help="注入目标 HTML（默认 week01.html）")
     args = ap.parse_args()
 
     global MANIFEST_PATH, TARGET_HTML

@@ -5,7 +5,7 @@
 CC BY-NC 4.0，降噪裁剪后手贴 base64），没有留下脚本，源文件也不在仓库。
 本脚本把那次的处理规格固化下来，让后续周次可复现、可重跑。
 
-规格来源 = 反推第一周 week01-v3.html 已内嵌的六段实测值：
+规格来源 = 反推第一周 week01.html 已内嵌的六段实测值：
     44100 Hz / mono / libmp3lame 64k / 峰值 −3 dBFS / 时长 0.31–0.73 s
 （注意与单词音不同：build_audio.py 用 24000 Hz / 48k，音素要听清发音细节所以规格更高。）
 
@@ -20,7 +20,7 @@ CC BY-NC 4.0，降噪裁剪后手贴 base64），没有留下脚本，源文件�
     python tools/build_phonemes.py --target week02.html --src assets/phonemes/week02
 
     # 把目标 HTML 里已内嵌的音素音导出成文件（第一周源文件已丢失，用这个取回）
-    python tools/build_phonemes.py --target week01-v3.html --extract-to assets/phonemes/week01
+    python tools/build_phonemes.py --target week01.html --extract-to assets/phonemes/week01
 
 源目录约定：文件名 = 音素键，扩展名随意（凡 ffmpeg 能解码即可）。
     assets/phonemes/week02/c.wav   → 注入 PHONEME_AUDIO.c

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""week01-v3.html → week02.html 换数据层移植。
+"""week01.html → week02.html 换数据层移植。
 
 严格按 docs/声音积木周课件设计规范_20260831_v1.0.md §5.1 的 22 项清单执行。
 每一处替换都断言锚点唯一命中，漏一处即报错退出，不产出半成品。
@@ -12,7 +12,7 @@ import w2data as D
 import w2days as DY
 
 ROOT = Path(__file__).resolve().parent.parent.parent   # 从脚本自身位置推导仓库根，不写死盘符
-SRC = ROOT / "week01-v3.html"
+SRC = ROOT / "week01.html"
 DST = ROOT / "week02.html"
 
 text = SRC.read_text(encoding="utf-8")

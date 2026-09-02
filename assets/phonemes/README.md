@@ -57,11 +57,11 @@ TTS 合成和"从单词里切一刀"都极易得到 `kuh`、`duh` 这种**带 sc
 原文件分别是 `K.wav`、`Eh.wav`、`Hh.wav`、`Rr.wav`、`Mm.wav`、`D.wav`。
 试听流是 MP3 派生文件，不是作者上传的原始 WAV；用于课件前仍需人耳确认没有 schwa 尾音。
 
-**署名义务**：课件页脚必须保留出处链接。第一周的写法见 `week01-v3.html` 的
+**署名义务**：课件页脚必须保留出处链接。第一周的写法见 `week01.html` 的
 `.foot__credits`，换周时不要漏掉这一段。**非商业授权** —— 这套课件不得用于商业分发。
 
 > 第一周的原始 wav 已丢失，本目录的 mp3 是 2026-09-01 用
-> `python tools/build_phonemes.py --target week01-v3.html --extract-to assets/phonemes`
+> `python tools/build_phonemes.py --target week01.html --extract-to assets/phonemes`
 > 从已内嵌的 base64 无损取回的（六段逐个 sha256 比对，与页面内字节完全一致）。
 > 以后不要再让源文件只存在于 HTML 里。
 
