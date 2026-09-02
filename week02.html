@@ -629,6 +629,24 @@ td .en{font-size:17px; font-weight:700}
   font-family:var(--dis); font-size:14px; padding:7px 10px; border-radius:10px;
   border:1px solid var(--line-2); background:var(--surface); color:var(--ink);
 }
+/* 家长设置（2026-09-02 用户拍板）：页脚入口与"本周从头再来"都要长按 1.5 秒，防孩子误点。
+   .hold-fill 是 bindLongPress 的按住进度条（[data-longpress-fill]），与游戏里的家长确认同一手势。 */
+.parent-gate{
+  position:relative; overflow:hidden; display:inline-flex; align-items:center; margin-left:8px;
+  padding:5px 12px; border-radius:10px; border:1px dashed var(--line-2); background:var(--surface);
+  color:var(--ink-3); font:inherit; font-size:12.5px; cursor:pointer;
+  user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+}
+.parent-gate:hover{color:var(--ink)}
+.hold-fill{position:absolute; inset:0; background:rgba(127,127,127,.22); transform:scaleX(0); transform-origin:left}
+.hold-label{position:relative; z-index:1}
+.parent-panel{
+  margin-top:12px; padding:14px 16px; border:1px solid var(--line-2); border-radius:14px;
+  background:var(--surface); color:var(--ink-2); display:grid; gap:12px; max-width:560px; text-align:left;
+}
+.parent-panel__row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+.parent-panel__note{font-size:12.5px; color:var(--ink-3); line-height:1.6; flex-basis:100%}
+.parent-panel__danger{position:relative; overflow:hidden}
 </style>
 
 
@@ -1791,6 +1809,71 @@ function formatDateZh(s){
 }
 
 /* ==================================================================
+   家长设置面板（2026-09-02 用户拍板：重置包含清进度；长按开门）。
+   页脚入口须长按 1.5 秒才打开——复用 bindLongPress，与 G2/G4/G5 的家长确认同一手势，
+   孩子单击没有任何反应。面板里：
+   · 改开课日期：单击确认即可（后果轻，只影响首页"今天"角标，规格 §5 末条不锁不跳转）；
+   · 本周从头再来：按钮本身再长按 1.5 秒才生效（不可逆）。做法是删掉本周的 localStorage
+     键后整页重载，回到全新状态：打卡、游戏确认与纪录、开课日期一并清空，首页重新出现
+     开课日期提示条让家长设新日期。不逐字段清，避免漏掉 games 里的某个子表。
+   明暗主题键（soundblocks-theme）跨周共用，不动。
+   ================================================================== */
+function parentPanelSummary(){
+  const days = Object.keys(state.days || {}).filter(n => dayDone(+n)).length;
+  const checks = Object.values(state.days || {}).reduce((a, d) => a + Object.values((d && d.checks) || {}).filter(Boolean).length, 0);
+  const cf = (state.games && state.games.confirms) || {};
+  const confirms = Object.keys(cf).filter(w => cf[w] && Object.values(cf[w]).some(Boolean)).length;
+  return `${days} 天完成、${checks} 项打卡、${confirms} 个已确认的词`;
+}
+function openParentPanel(){
+  const panel = document.querySelector('[data-parent-panel]');
+  const gate = document.querySelector('[data-parent-gate]');
+  if(!panel) return;
+  if(panel._resetCancel) panel._resetCancel();   // 审 20 M-1：重开前先收掉上一次的重置长按计时
+  panel.hidden = false;
+  if(gate) gate.setAttribute('aria-expanded', 'true');
+  panel.innerHTML = `<div class="parent-panel" role="group" aria-label="家长设置">
+      <div class="parent-panel__row">
+        <span>开课日期（Day 1 对应的日历日）</span>
+        <input type="date" class="startdate-input" aria-label="Day1 开课日期" value="${isValidDateStr(state.startDate) ? state.startDate : ''}">
+        <button class="btn btn--ok" data-parent-act="setdate">确认</button>
+        <span class="startdate-hint" style="display:none;font-size:12px;color:var(--vowel)">先选个日期哦</span>
+      </div>
+      <div class="parent-panel__row">
+        <button class="btn btn--ghost parent-panel__danger" type="button" data-parent-reset aria-label="本周从头再来：按住 1.5 秒确认，清除后无法恢复">
+          <span class="hold-fill" data-longpress-fill></span>
+          <span class="hold-label">本周从头再来 · 按住 1.5 秒</span>
+        </button>
+        <span class="parent-panel__note">会清掉这台设备上本周的全部进度：${parentPanelSummary()}，以及开课日期。<b>清除后无法恢复。</b>清完页面会刷新，首页会重新请你设置开课日期。</span>
+      </div>
+      <div class="parent-panel__row"><button class="linklike" data-parent-act="close">收起</button></div>
+    </div>`;
+  const reset = panel.querySelector('[data-parent-reset]');
+  panel._resetCancel = reset ? bindLongPress(reset, resetWeekAndReload, 1500) : null;
+  const inp = panel.querySelector('input[type="date"]');
+  if(inp) inp.focus();
+}
+function closeParentPanel(panel, refocus){
+  if(!panel) return;
+  if(panel._resetCancel){ panel._resetCancel(); panel._resetCancel = null; }   // 审 20 M-1
+  panel.hidden = true;
+  panel.innerHTML = '';
+  const gate = document.querySelector('[data-parent-gate]');
+  if(gate){ gate.setAttribute('aria-expanded', 'false'); if(refocus) gate.focus(); }
+}
+function resetWeekAndReload(){
+  // 审 20 H-2：删完读回确认，真的没了才刷新；删不掉就留在面板说清楚，绝不把失败伪装成成功
+  let gone = false;
+  try{ localStorage.removeItem(KEY); gone = (localStorage.getItem(KEY) === null); }catch(e){ gone = false; }
+  if(!gone){
+    const note = document.querySelector('[data-parent-panel] .parent-panel__note');
+    if(note) note.innerHTML = '<b>未能清除本周进度</b>（浏览器不允许改动这个页面的存储）。请再按一次；仍不行就换个浏览器打开这个文件再试。';
+    return;
+  }
+  location.reload();
+}
+
+/* ==================================================================
    state.games —— schema 整体建立 + 读取清洗（规格 §6.1/§6.2，S3 落地）。
    容器类字段只接受非 null、非数组的普通对象，否则整体重建默认（不动 state.days）；
    字段级按范围清洗，数组/对象整体替换不深合并，不做 schemaVersion。
@@ -2324,6 +2407,10 @@ function clearPageTimers(){
   pageTimers = [];
   AudioBus.stopAll();   // 切页清理：stopAll 合法调用方②（内含 hideAudioFailure）
   dismissCelebration();   // 切页也收掉挂在 body 上的庆祝覆盖层，防止残留到新页面
+  // 审 20 复审 R-5：整页重绘（renderHome / renderDay / renderWall 都先经过这里）前显式收掉
+  // 家长面板里的重置长按，不只靠 pageTimers 的隐式清理
+  const pp = document.querySelector('[data-parent-panel]');
+  if(pp && pp._resetCancel){ pp._resetCancel(); pp._resetCancel = null; }
 }
 
 function renderHome(){
@@ -2451,17 +2538,21 @@ function renderHome(){
       <p>还是那条原则：按「能立刻组出真词」排，不按字母表排。加上这七块字母积木所代表的六个新音之后，可拼的词从二十多个跳到六十多个——cat、hat、hen、ten、map、man、red、sand……<b>孩子这一周会第一次感觉到「我能读的东西突然变多了」。</b></p>
       <p>这一周还有两件事是第一次遇到：<b>一个声音有两种写法</b>（c 和 k 都发 /k/），以及<b>四个音的词</b>（rest、sand）。前者让他知道英语的字母和声音不是一一对应；后者把拼读的长度从三个音推到四个音。两件都是往后走绕不开的台阶，早遇到比晚遇到好。</p>
       <p class="foot__credits">音素示范音来自 Freesound 用户 margo_heston 的 <a href="https://freesound.org/people/margo_heston/packs/12249/" target="_blank" rel="noopener noreferrer">English Phonemes</a> 音包（<a href="https://creativecommons.org/licenses/by-nc/4.0/deed.zh" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a>，已降噪并裁剪），本页仅供家庭与课堂免费使用，请勿用于商业用途。字体 Andika、Baloo 2 以 OFL 许可内嵌。</p>
-      <p class="foot__credits" style="margin-top:10px">
+      <div class="foot__credits" style="margin-top:10px">
         开课日期：${state.startDate ? `已设 ${formatDateZh(state.startDate)}` : '未设置'}
-        <span data-startdate-ctl style="display:inline-flex;gap:8px;align-items:center;margin-left:6px">
-          <button class="linklike" data-startdate-act="reveal">修改</button>
-          ${state.startDate ? `<button class="linklike" data-startdate-act="clear">清除</button>` : ''}
-        </span>
-      </p>
+        <button class="parent-gate" type="button" data-parent-gate aria-label="家长设置：按住 1.5 秒打开" aria-expanded="false" aria-controls="parentPanel">
+          <span class="hold-fill" data-longpress-fill></span>
+          <span class="hold-label">家长设置 · 按住 1.5 秒</span>
+        </button>
+        <div id="parentPanel" data-parent-panel hidden></div>
+      </div>
     </footer>
   </div>`;
   renderDots(0);
   window.scrollTo(0,0);
+  // 家长设置入口：长按才开（单击无反应），面板内容见 openParentPanel()
+  const gate = document.querySelector('[data-parent-gate]');
+  if(gate) bindLongPress(gate, openParentPanel, 1500);
 }
 
 function taughtWords(){
@@ -2651,16 +2742,19 @@ function updateFinish(n){
    ================================================================== */
 function bindLongPress(el, fn, ms){
   ms = ms || 1000;
-  let timer = null;
+  let timer = null, startX = 0, startY = 0;
+  const MOVE_TOL = 12;   // 审 20 H-1：按住期间位移超过它就当成滚动 / 拖动，取消计时
   const fill = el.querySelector('[data-longpress-fill]') || el;
+  // 审 20 复审 R-1：所有长按目标统一禁掉文本选择与触屏长按呼出（写在原语里，不依赖各自的 CSS）
+  el.style.userSelect = 'none'; el.style.webkitUserSelect = 'none'; el.style.webkitTouchCallout = 'none';
   function arm(){
     fill.style.transition = 'none';
     fill.style.transform = 'scaleX(0)';
     void fill.offsetWidth;   // 强制回流，确保下次按下重新触发过渡（不是复用同一次动画）
   }
-  function start(e){
-    if(e && e.cancelable) e.preventDefault();
+  function begin(x, y){
     if(timer) return;   // 已经在计时，重复 down（如触屏又派生 mousedown）不重开
+    startX = x; startY = y;
     fill.style.transition = `transform ${ms}ms linear`;
     fill.style.transform = 'scaleX(1)';
     // D3：用 laterOnce 纳入 pageTimers——切页/切天时 clearPageTimers() 会把这个
@@ -2672,13 +2766,53 @@ function bindLongPress(el, fn, ms){
     clearTimeout(timer); timer = null;
     arm();
   }
+  // 鼠标：只认主键（右键 / 中键按住不算数）；preventDefault 防长按选中文字与拖拽
+  function onMouseDown(e){
+    if(e.button !== 0) return;
+    e.preventDefault();
+    // 审 20 复审 R-4：preventDefault 挡掉了按钮的默认聚焦，手动补回——鼠标按过之后键盘路径仍可用
+    if(typeof el.focus === 'function') el.focus({preventScroll:true});
+    begin(e.clientX, e.clientY);
+  }
+  // 触摸：不再 preventDefault——让浏览器照常滚动，滚动手势由 touchmove 的位移判断取消计时；
+  // 长按弹出的系统菜单由下面的 contextmenu 拦截（审 20 H-1）
+  function onTouchStart(e){
+    const t = e.touches && e.touches[0];
+    if(!t) return;
+    begin(t.clientX, t.clientY);
+  }
+  function onTouchMove(e){
+    if(!timer) return;
+    const t = e.touches && e.touches[0];
+    if(!t) return;
+    if(Math.abs(t.clientX - startX) > MOVE_TOL || Math.abs(t.clientY - startY) > MOVE_TOL) cancel();
+  }
+  // 键盘：Enter / 空格按住同样要满 ms 才触发，与鼠标同一门槛（审 20 M-2，规范 §10 键盘可达）；
+  // 忽略自动重复；preventDefault 挡住 Enter 的 click 与空格的滚页
+  function onKeyDown(e){
+    if(e.repeat) return;
+    if(e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    begin(0, 0);
+  }
+  function onKeyUp(e){
+    if(e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    cancel();
+  }
   arm();
-  el.addEventListener('mousedown', start);
+  el.addEventListener('mousedown', onMouseDown);
   el.addEventListener('mouseup', cancel);
   el.addEventListener('mouseleave', cancel);
-  el.addEventListener('touchstart', start, {passive:false});
+  el.addEventListener('touchstart', onTouchStart, {passive:true});
+  el.addEventListener('touchmove', onTouchMove, {passive:true});
   el.addEventListener('touchend', cancel);
   el.addEventListener('touchcancel', cancel);
+  el.addEventListener('keydown', onKeyDown);
+  el.addEventListener('keyup', onKeyUp);
+  el.addEventListener('blur', cancel);
+  el.addEventListener('contextmenu', e => e.preventDefault());
+  el.addEventListener('selectstart', e => e.preventDefault());
   return cancel;   // E2：调用方可拿到 cancel 自己在需要的时机（如折叠清理）主动收掉长按
 }
 
@@ -3956,16 +4090,16 @@ document.addEventListener('click', e=>{
     return;
   }
 
-  // 开课日期（规格 §5 末条）：首页顶部提示条 + 页脚常设入口共用同一套委托，
-  // 两处都用 [data-startdate-ctl] 包一层容器，"设置/修改"把该容器 innerHTML
-  // 换成 input+确认；"确认"从同一个容器里找那个 input 读值。不锁不跳转，
-  // 全部落地为 renderHome() 整页重绘（跟 data-goto 的整页重绘同一惯例）。
+  // 开课日期（规格 §5 末条）：首页顶部一次性提示条用 [data-startdate-ctl] 包一层容器，
+  // "设置"把该容器 innerHTML 换成 input+确认；"确认"从同一个容器里找那个 input 读值。
+  // 页脚的常设入口已并入家长设置面板（长按打开，见 openParentPanel / [data-parent-act]）。
+  // 不锁不跳转，全部落地为 renderHome() 整页重绘（跟 data-goto 的整页重绘同一惯例）。
   const sdAct = e.target.closest('[data-startdate-act]');
   if(sdAct){
     const kind = sdAct.dataset.startdateAct;
     if(kind === 'reveal'){
       const ctl = sdAct.closest('[data-startdate-ctl]');
-      ctl.innerHTML = `<input type="date" class="startdate-input" aria-label="Day1 开课日期" value="${state.startDate||''}">
+      ctl.innerHTML = `<input type="date" class="startdate-input" aria-label="Day1 开课日期" value="${isValidDateStr(state.startDate) ? state.startDate : ''}">
         <button class="btn btn--ok" data-startdate-act="confirm">确认</button>
         <span class="startdate-hint" style="display:none;font-size:12px;color:var(--vowel)">先选个日期哦</span>`;
       const inp = ctl.querySelector('input[type="date"]');
@@ -3983,7 +4117,19 @@ document.addEventListener('click', e=>{
       return;
     }
     if(kind === 'skip'){ state.startDatePromptDismissed = true; save(); renderHome(); return; }
-    if(kind === 'clear'){ delete state.startDate; save(); renderHome(); return; }
+  }
+  // 家长设置面板里的单击动作（面板本身要长按才打开，见 openParentPanel）
+  const pAct = e.target.closest('[data-parent-act]');
+  if(pAct){
+    const panel = pAct.closest('[data-parent-panel]');
+    const kind = pAct.dataset.parentAct;
+    if(kind === 'setdate'){
+      const val = panel.querySelector('input[type="date"]').value;
+      if(isValidDateStr(val)){ state.startDate = val; save(); closeParentPanel(panel, false); renderHome(); }
+      else{ const hint = panel.querySelector('.startdate-hint'); if(hint) hint.style.display = 'inline'; }
+      return;
+    }
+    if(kind === 'close'){ closeParentPanel(panel, true); return; }
   }
 });
 

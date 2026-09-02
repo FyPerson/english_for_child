@@ -395,6 +395,55 @@ with sync_playwright() as p:
         ok(tiles_in, "375px 下有 G5 积木超出视口")
         ok(pg.evaluate(NO_HSCROLL), "375px 第 7 天解锁 G5 后出现横向滚动")
 
+    # ---------- ⑬ 家长设置：长按开门、单击无反应、改开课日期、本周从头再来 ----------
+    # 2026-09-02 用户拍板：重置包含清进度；入口与重置都长按 1.5 秒（复用 bindLongPress）
+    def hold(sel, ms):
+        el = pg.locator(sel).first
+        el.scroll_into_view_if_needed()      # 页脚在首屏之外；mouse 事件只落在视口内，先滚到可见
+        box = el.bounding_box()
+        pg.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        pg.mouse.down(); pg.wait_for_timeout(ms); pg.mouse.up(); pg.wait_for_timeout(400)
+
+    pg.set_viewport_size({"width": 1280, "height": 900})
+    pg.goto(URL); pg.wait_for_timeout(400)
+    pg.evaluate("localStorage.clear()")
+    pg.goto(URL); pg.wait_for_timeout(500)
+    ok(pg.locator('[data-startdate-act="clear"]').count() == 0, "页脚仍有一键「清除」开课日期的按钮")
+    gate = pg.locator("[data-parent-gate]")
+    ok(gate.count() == 1, "页脚缺家长设置入口")
+    panel = pg.locator("[data-parent-panel]")
+    gate.click(); pg.wait_for_timeout(400)
+    ok(panel.evaluate("e=>e.hidden") is True and panel.inner_html().strip() == "", "单击家长设置入口就打开了面板（应需长按 1.5 秒）")
+    hold("[data-parent-gate]", 800)
+    ok(panel.evaluate("e=>e.hidden") is True, "按住 0.8 秒就打开了面板（应需 1.5 秒）")
+    hold("[data-parent-gate]", 1800)
+    ok(panel.evaluate("e=>e.hidden") is False and panel.locator('input[type="date"]').count() == 1
+       and panel.locator("[data-parent-reset]").count() == 1, "长按 1.8 秒后面板没打开或缺日期框 / 重置按钮")
+    # 改开课日期：单击确认即可
+    panel.locator('input[type="date"]').fill("2026-09-14")
+    panel.locator('[data-parent-act="setdate"]').click(); pg.wait_for_timeout(400)
+    saved = pg.evaluate("(()=>{try{return JSON.parse(localStorage.getItem('%s')).startDate}catch(e){return null}})()" % STORE_KEY)
+    ok(saved == "2026-09-14", f"面板里设置开课日期后 localStorage 没存对（{saved}）")
+    ok("9月14日" in pg.locator("footer").inner_text(), "页脚没有显示新设的开课日期")
+    ok(pg.locator("[data-parent-panel]").evaluate("e=>e.hidden") is True, "设置日期后面板没有收起")
+    # 制造一点进度，再长按重置：本周的 localStorage 键应被删掉、页面刷新回到全新状态
+    open_day(pg, 1)
+    first_check = pg.locator("[data-check]").first
+    first_check.click(); pg.wait_for_timeout(300)
+    ok(pg.evaluate("localStorage.getItem('%s') !== null" % STORE_KEY), "勾打卡后 localStorage 里没有本周状态")
+    pg.goto(URL); pg.wait_for_timeout(500)
+    hold("[data-parent-gate]", 1800)
+    ok(pg.locator("[data-parent-reset]").count() == 1, "重置前面板没打开")
+    ok("打卡" in pg.locator("[data-parent-panel]").inner_text(), "面板没有写清会清掉什么")
+    pg.locator("[data-parent-reset]").first.click(); pg.wait_for_timeout(400)
+    ok(pg.evaluate("localStorage.getItem('%s') !== null" % STORE_KEY), "单击「本周从头再来」就清空了进度（应需长按）")
+    with pg.expect_navigation(wait_until="load", timeout=10000):   # 审 20 M-3：等真实重载，不靠固定等待
+        hold("[data-parent-reset]", 1800)
+    pg.wait_for_timeout(500)
+    ok(pg.evaluate("localStorage.getItem('%s')" % STORE_KEY) is None, "长按重置后本周 localStorage 键没有被删掉")
+    ok(pg.locator('[data-startdate-act="reveal"]').count() >= 1, "重置刷新后首页没有重新出现开课日期提示条")
+    # 鼠标 / 键盘 / 触屏三种输入、右键、滑出、删存储失败、主题保留等完整用例在 smoke_parent_panel.py（三周通用）
+
     ok(not errors, "控制台报错：" + "; ".join(errors[:5]))
     br.close()
 
