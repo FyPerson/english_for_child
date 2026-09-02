@@ -5,10 +5,13 @@
 
 | 文件 | 作用 | 跑法 |
 |---|---|---|
-| `check_data.js` | 数据层一致性 **360 项**。**与周次无关**——跨周会变的量（已教字母集、词卡墙词数、认读词、积木架、点亮墙字母）全部由数据推导或从 `META` 读，第三周原样可用 | `node tools/week-checks/check_data.js <周课件HTML 或 数据层JS>` |
+| `check_data.js` | 数据层一致性（项数随数据规模变：第二周 377 项、第三周 511 项）。**与周次无关**——跨周会变的量（已教字母集、词卡墙词数、认读词、积木架、点亮墙字母）全部由数据推导或从 `META` 读，第三周原样可用 | `node tools/week-checks/check_data.js <周课件HTML 或 数据层JS>` |
 | `smoke_w2_browser.py` | 浏览器冒烟 **97 项**：逐天展开无 undefined / 缺素材降级（配对式断言）/ 关键组件 / 词卡墙 / 明暗主题 / 窄屏 / G3·G4·G5 结算+落盘+刷新恢复 | `python tools/week-checks/smoke_w2_browser.py [目标HTML]` |
 | `week02-data.js` | 第二周数据层（由 `tools/extract_data_layer.py` 抽出）。**给外部模型当范例**，也是 `check_data.js` 的独立输入样本 | 见 `docs/第三周数据层交接_*.md` |
 | `port.py` + `w2data.py` + `w2days.py` | 第一周 → 第二周的换数据层移植脚本，77 项锚点替换全部断言唯一命中 | 已执行完毕，留档备查 |
+| `week03-data.js` | 第三周数据层（Claude 撰写，2026-09-02；codex 首审归档 19 后修订）。校验器 511 项 | `node tools/week-checks/check_data.js tools/week-checks/week03-data.js` |
+| `port_w3.py` | 第二周 → 第三周换数据层移植 + 里程碑 0（积木架分组固定位），73 处锚点替换断言唯一命中，数据层常量从 `week03-data.js` 切片注入不手抄。**残留检查在写出前、命中即失败**（禁止表 + 允许表，codex 19 号 M-7）。**不能直接复用于第四周**：源 / 目标 / 旧值 / 大段文案锚点都写死为第二周，且里程碑 1 会改引擎与校验器——W4 按本脚本的结构重写一份 | `python tools/week-checks/port_w3.py`（可重复执行，结果逐字节一致） |
+| `smoke_w3_browser.py` | 第三周浏览器冒烟 **140 项**：① 首页 ② 逐天 ③ 新声音区 ④ 换头造词 ⑤ 两扇门 / 裸读 / 小书（含"小书不得偷带 -s"） ⑥ 里程碑 0 分组积木架 ⑦ G3·G4·G5 结算 + 落盘 + 刷新恢复（含 G4 撤回、G5 清空） ⑧ 六个无录音新音逐一元素类型 + 全站哑巴按钮 ⑨ 词卡墙 37 词 / 0 保留词 / 缺图降级 ⑩ 缺素材容器 ⑪ 庆祝层无图 ⑫ 375px 无横向滚动 | `python tools/week-checks/smoke_w3_browser.py [目标HTML]` |
 
 ## check_data.js 吃两种输入
 
@@ -17,7 +20,7 @@ node tools/week-checks/check_data.js week02.html                       # 装配�
 node tools/week-checks/check_data.js tools/week-checks/week02-data.js  # 独立数据层
 ```
 
-两种输入结果一致（实测都是 360 项）。**后一种是给外部模型用的**：GPT 写完第三周数据层，
+两种输入结果一致（第二周实测都是 377 项，第三周都是 511 项）。**后一种是给外部模型用的**：GPT 写完第三周数据层，
 直接跑这个就知道合不合格，不必先装配进 3800 行的 HTML。
 
 ## 相关工具（在 tools/ 下）

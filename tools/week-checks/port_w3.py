@@ -127,7 +127,7 @@ sub("const RACK_LETTERS = 'atpncehmrd'.split('');   // 10 块，每字母 1 块�
 sub("const RACK_LETTERS = 'satipnckehrmd'.split('');   // 13 块，两周全部字母，每字母 1 块——白名单已排除叠字母词",
     "const RACK_LETTERS = 'satipnckehrmdgoulfb'.split('');   // 19 块，三周全部字母按教学顺序累计，每字母 1 块——白名单已排除叠字母词；渲染按元音 / 辅音分组",
     "#13 RACK_LETTERS G5")
-sub("   (两周 13 个字母各 1 块)+2/3/4 槽切换", "   (三周 19 个字母各 1 块，按元音 / 辅音分组固定位)+2/3/4 槽切换", "G5 说明注释")
+sub("解锁后：12 块积木\n   (两周 13 个字母各 1 块)+2/3/4 槽切换", "解锁后：19 块积木\n   (三周 19 个字母各 1 块，按元音 / 辅音分组固定位)+2/3/4 槽切换", "G5 说明注释")
 
 # ═════════════════════════════════════════ #1 / #13b 存储键与闪卡上限
 sub("const KEY = 'soundblocks-w2-v1';", "const KEY = 'soundblocks-w3-v1';", "#1 KEY")
@@ -153,7 +153,7 @@ cut("const WORD_ILL = {", "\n};", """const WORD_ILL = {
 };""", "#18 WORD_ILL")
 _m = re.findall(r"const CELEBRATE_NAT = '[^'\n]*';[^\n]*\n", text)   # 整行匹配：行尾带 embed_assets 的注释，不能用 "';\n" 当结束锚（会吃进 illSrc）
 assert len(_m) == 1, f"[#19 CELEBRATE_NAT] 期望 1 行，实际 {len(_m)}"
-text = text.replace(_m[0], "const CELEBRATE_NAT = '';   /* 第三周庆祝主角图（那只大狗）待生成，见插画文档；由 tools/embed_assets.py 注入，勿手改 */\n")
+text = text.replace(_m[0], "const CELEBRATE_NAT = '';   /* 第三周庆祝主角图（那只大狗）待生成，见插画文档。常量名沿用引擎约定（embed_assets.py 的注入锚），由它注入，勿手改 */\n")
 done.append("#19 CELEBRATE_NAT")
 
 # ═════════════════════════════════════════ #20 音素音注释（录音未获取，走守卫）
@@ -198,8 +198,8 @@ sub('<p class="hero__eyebrow">第 2 周 · 共 40 周</p>', '<p class="hero__eye
 sub("<h1>七块新积木，<br>读完第二本书</h1>", "<h1>五块红积木到齐，<br>读完第三本书</h1>", "#15 hero 标题")
 cut('<p class="hero__lede">', '</p>',
     '<p class="hero__lede">这一周加入六块新字母积木：<b class="en">g o u l f b</b>。其中 <b class="en">o</b> 和 <b class="en">u</b> 是两块新的红积木——'
-    '<b>到第三天，五块红积木就到齐了</b>，以后每个词里都得有它们中的一块。十九块积木能拼的词一下子过百，'
-    '<b>第四天孩子会自己读出从没见过的词，第五天第一次从后往前接出四个音的词，第六天读完第三本书。</b></p>',
+    '<b>到第三天，五块红积木就到齐了</b>，现在拼的每个词里都至少有它们中的一块。十九块积木能拼的词一下子过百，'
+    '<b>第四天孩子会自己读出从没见过的词，第五天用从后往前接的老办法拼出四个音的词，第六天读完第三本书。</b></p>',
     "#15 hero 导语")
 sub("${'ckehrmd'.split('').map(c=>{", "${'goulfb'.split('').map(c=>{", "#15 点亮墙字母")
 sub('<button class="tile tile--c" data-say="cat" style="width:auto;padding:0 22px;font-size:34px">cat</button>',
@@ -242,13 +242,13 @@ cut('<details class="fold">\n        <summary>三 · 这一周会比上一周难
           <p class="lead">两块新的红积木让能拼的词从六十多个跳到一百多个，<b>第四天开始孩子会碰到没教过的词并自己读出来</b>——那正是这套方法要的效果，不是意外。另外两处要留神：<b>o 和 u 靠耳朵分</b>（第三天的关键训练），<b>b 和 d 靠字形分</b>（第六天）。</p>
           <p class="lead">判断标准不变：<b>看第七天的周检，不看每天的情绪。</b>某一天特别不顺，不代表这一周没学会；反过来，每天都很顺但周检读不出来，那才是真的要回头。</p>
           <div class="pnote"><span class="pnote__ico">${ART.bulb}</span><div class="pnote__b">
-            每天最后都有一个打卡清单，第七天有一次周检。<b>那就是你要的尺子。</b>孩子学没学会，不用猜。周检不到 4 个：先重做第六天，再用你自己编的 5 个三字母词测一次；还不到 4 个，这周从头再来。
+            每天最后都有一个打卡清单，第七天有一次周检。<b>那就是你要的尺子。</b>孩子学没学会，不用猜。周检读对 4 到 5 个进新课；2 到 3 个补救两天（重做第六天，再用你自编的 5 个三字母词复测，复测够 4 个才进新课）；0 到 1 个、或复测仍不到 4 个，这周从头再来。自编词的规矩写在第七天周检旁边。
           </div></div>
         </div>
       </details>''', "#15 家长三件事 三")
 
 sub('凡是带喇叭图标的<b>字母积木、单词和句子</b>，点一下就读。本周课程实际使用到的录音都已内置，插画也已全部嵌入，<b>断网后仍可完整使用</b>。',
-    '凡是带喇叭图标的<b>字母积木、单词和句子</b>，点一下就读。本周的单词与句子录音已内置；六个新音的真人示范音和插画尚未就位，页面会自动降级（没有听音按钮、词卡显示"单词 + 中文"），<b>断网后仍可完整使用</b>。',
+    '凡是带喇叭图标的<b>字母积木、单词和句子</b>，点一下就读。前两周的单词录音已内置；<b>本周新词与小书句子的录音、六个新音的真人示范音和插画都还没就位</b>，页面会自动降级（新词和句子暂由系统朗读兜底、新音没有听音按钮、词卡显示"单词 + 中文"），断网后仍可使用。',
     "#15 发音功能说明 1")
 cut('<b>单个音素使用真人教学录音，不用合成语音冒充。</b>第一周六个音和本周六个新音均已内置', '</div></div>',
     '<b>单个音素使用真人教学录音，不用合成语音冒充。</b>前两周十三块积木的录音已内置（出处见页脚），点字母积木即可听；本周六块新积木暂无录音，由你按口令示范。\n          </div></div>',
@@ -263,13 +263,24 @@ cut('      <p><strong>为什么第二周是 c k e h r m d。</strong></p>', '<p 
 sub('孩子这两周<b>一个都没练过</b>——它们只由学过的十三个音组成',
     '孩子这三周<b>一个都没练过</b>——它们只由学过的十九个音组成', "#15 周检说明")
 
-# ═════════════════════════════════════════ 残留检查与写出
-leftover = [ln for ln in text.split("\n")
-            if re.search(r"第二周|第 2 周|两周|十三个|13 个字母|ckehrmd|soundblocks-w2", ln)
-            and "base64" not in ln and "week02.html" not in ln and "第二周教学词" not in ln]
-DST.open("w", encoding="utf-8", newline="").write(text)
-print(f"完成 {len(done)} 处替换 → {DST.name}（{len(text)/1024:.0f} KB）")
+# ═════════════════════════════════════════ 残留检查（写出前；命中即失败，不产出半成品）
+# 禁止表：这些串只属于第二周，出现即串周（codex 首审 M-7：残留检查从"写出后警告"改为"写出前致命"）。
+FORBIDDEN = re.compile(r"第 2 周|soundblocks-w2|'ckehrmd'|第二本书|七块新积木|第二周教学词|第二周是 c k e h r m d|第二周 · 更多积木")
+# 宽扫描：可能是串周、也可能是合法的历史回顾；命中后再对允许表，不在允许表里的才算残留。
+BROAD = re.compile(r"第二周|两周|十三个|13 个字母|ckehrmd")
+# 允许表：合法的"前两周 / 上周"回顾与一音多形注释。新增合法叙述时在这里登记，不要放宽 BROAD。
+ALLOWED = re.compile(r"前两周|两周下来|第二周 c 和 k|第二周 c/k|第二周七块|第二周即如此|十三个音一张张过|satipnckehrmdgoulfb|三周学过")
+leftover = []
+for ln in text.split("\n"):
+    if "base64" in ln or "week02.html" in ln:
+        continue
+    # 复审 R-3：不按整行放行——先把允许短语从这一行剔掉，剩余文本再跑宽扫描，同行里藏着的真残留照样命中
+    if FORBIDDEN.search(ln) or BROAD.search(ALLOWED.sub("", ln)):
+        leftover.append(ln.strip()[:150])
 if leftover:
-    print("⚠ 疑似残留（人工核）：")
+    print(f"✗ 发现 {len(leftover)} 行疑似第二周残留，未写出 {DST.name}：")
     for ln in leftover[:20]:
-        print("   ", ln.strip()[:150])
+        print("   ", ln)
+    sys.exit(1)
+DST.open("w", encoding="utf-8", newline="").write(text)
+print(f"完成 {len(done)} 处替换 → {DST.name}（{len(text)/1024:.0f} KB）；残留检查 0 命中")
