@@ -907,7 +907,7 @@ const WORD_ILL = {
   /* 本周 36 张词卡插画（let 为抽象词不出图）待生成，art 键与 W 里的键一一对应。
      缺图时词卡自动降级成"单词 + 中文"（hasIll 守卫），教学不受影响。 */
 };
-const CELEBRATE_NAT = '';   /* 第三周庆祝主角图（那只大狗）待生成，见插画文档；由 tools/embed_assets.py 注入，勿手改 */
+const CELEBRATE_NAT = '';   /* 第三周庆祝主角图（那只大狗）待生成，见插画文档。常量名沿用引擎约定（embed_assets.py 的注入锚），由它注入，勿手改 */
 function illSrc(key){
   return (WALL_ILL && WALL_ILL[key]) || (PHONEME_ILL && PHONEME_ILL[key]) || (BOOK_IMG && BOOK_IMG[key]) || (WORD_ILL && WORD_ILL[key]) || '';
 }
@@ -1304,7 +1304,7 @@ const SOUNDS = {
      warn:'不要念成「呢」。/n/ 可以持续，但停下时不要再补一个元音。',
      demo:[['nose','鼻子'],['net','网'],['nap','小睡']]},
 
-  /* ---- 第二周七个音 ---- */
+  /* ---- 第二周七块字母、六个音（c 与 k 同音） ---- */
   c:{L:'c', ipa:'/k/', type:'c', art:'camera', mem:'咔嚓相机 k-k-k', audioKey:'c',
      cue:'舌头后面轻轻堵住，再突然放开，像按下快门：<span class="en">k、k、k</span>。',
      challenge:'拖不长的音', try:'一只手摸着喉咙，短短地发三次 /k/，再故意想把它拖长试试。',
@@ -1357,7 +1357,7 @@ const SOUNDS = {
      warn:'不要念成中文「哥」——那多了一个元音尾巴。在词尾（dog、bag）尤其要收干净：舌头放开就停，不要补「哥」。',
      demo:[['goat','山羊'],['gum','口香糖'],['bag','袋子']]},
   o:{L:'o', ipa:'/ɑ/', type:'v', art:'doctor', mem:'看医生张大嘴 o-o-o',
-     cue:'像给医生看喉咙那样，嘴巴张得大大的、圆圆的，短短地发：<span class="en">o、o、o</span>。',
+     cue:'像给医生看喉咙那样，嘴巴上下张大、嘴唇放松不收圆，短短地发：<span class="en">o、o、o</span>。',
      challenge:'四块红积木', try:'对着镜子依次说 /æ/、/e/、/ɪ/、/ɑ/，每次一个短音，看嘴巴哪一次张得最大。',
      pass:'/ɑ/ 是四个里嘴张得最大的，声音短，不往「喔」或「奥」滑。',
      how:'下巴充分打开，舌头放低放后，嘴唇不用圆。这是美式发音里的 /ɑ/，和「啊」接近但更靠后、更短。',
@@ -1372,7 +1372,7 @@ const SOUNDS = {
      demo:[['umbrella','雨伞'],['sun','太阳'],['cup','杯子']]},
   l:{L:'l', ipa:'/l/', type:'c', art:'lollipop', mem:'舔棒棒糖 llllll',
      cue:'舌尖轻轻贴在上牙后面，声音从舌头两边流出来，可以拖长：<span class="en">llllll</span>，像在舔棒棒糖。',
-     challenge:'舌尖贴住', try:'拖长 /l/ 的时候，让孩子用手指轻轻碰一下自己的舌尖——它应该一直贴在上牙后面。',
+     challenge:'舌尖贴住', try:'让孩子拖长 /l/，中途试着把舌尖挪开——声音立刻变样，说明刚才是贴住的。你听声音能不能拖长、摸喉咙有没有振动来判断。',
      pass:'舌尖贴在上牙后面不动，声音能拖长，喉咙振动。',
      how:'舌尖抵住上齿龈，舌头两侧留出通道让气流和声音通过，声带振动。和 /n/ 的位置一样，区别是气从舌头两边走，不走鼻子。',
      warn:'不要念成中文「了」（多了元音尾巴），也不要和 /r/ 混：/l/ 舌尖<b>贴住</b>，/r/ 舌尖<b>悬空</b>。词尾的 l 让孩子把舌尖真正顶上去再停。',
@@ -1430,7 +1430,7 @@ const W = {
   hog:{zh:'肥猪',art:null},    mug:{zh:'马克杯',art:null},  rug:{zh:'地毯',art:null},    dug:{zh:'挖了',art:null},    rag:{zh:'抹布',art:null},
   tag:{zh:'标签',art:null},    lot:{zh:'很多',art:null},    fed:{zh:'喂了',art:null},    gum:{zh:'口香糖',art:null},  bun:{zh:'小圆面包',art:null},
   bin:{zh:'垃圾桶',art:null},  bit:{zh:'一点点',art:null},  but:{zh:'但是',art:null},    rub:{zh:'揉一揉',art:null},  cab:{zh:'出租车',art:null},
-  hugs:{zh:'抱住',art:null},   on:{zh:'在……上',art:null},   up:{zh:'向上',art:null},     us:{zh:'我们',art:null},     and:{zh:'和',art:null},
+  on:{zh:'在……上',art:null},   up:{zh:'向上',art:null},     us:{zh:'我们',art:null},     and:{zh:'和',art:null},
 
   /* ---- 认读词：不能拼、要整体记 ---- */
   the:{zh:'这个 / 那个',art:null},  is:{zh:'是',art:null},  to:{zh:'到……去',art:null},
@@ -1443,7 +1443,7 @@ const W = {
 };
 
 const WALL_HINT = {
-  /* 第三周 36 个教学词全是可独立成义的实词，不需要词组提示，留空。 */
+  /* 第三周 37 个教学词（36 张插画，let 无图）全是可独立成义的实词，不需要词组提示，留空。 */
 };
 
 /* ==================================================================
@@ -1457,7 +1457,7 @@ const BOOK = {
     {line:'Dan got a rag.',           art:'danRag',  zh:'丹拿来一块抹布。'},
     {line:'The dog ran to the log.',  art:'dogLog',  zh:'狗跑到木头那儿去了。'},
     {line:'The cat sat on the log.',  art:'catLog',  zh:'猫坐在木头上。'},
-    {line:'Dan hugs the big dog.',    art:'danHug',  zh:'丹抱住了那只大狗。'}
+    {line:'Dan can hug the big dog.', art:'danHug',  zh:'丹可以抱一抱那只大狗。'}
   ]
 };
 
@@ -1504,7 +1504,7 @@ const G5_WHITELIST = [
   'an','at','in','it','nap','nip','pan','pat','pin','pit','sat','sip','sit','snap','spin','tap','tin','tip',
   'cat','cap','can','kit','set','ten','net','pen','pet','hat','hen','hit','hip','rat','ran','rip','rim',
   'rest','mat','man','map','met','men','ham','him','dip','dim','den','sad','mad','red','sand',
-  /* 第三周新增 46 词（无叠字母，全在 W 里，不含保留词） */
+  /* 第三周新增 61 词，累计 111（无叠字母，全在 W 里，不含保留词） */
   'get','gap','pig','dig','peg','rag','tag','got','dot','not','lot',
   'dog','hot','pot','top','mop','cot','on',
   'cup','sun','mud','hug','run','nut','hut','cut','mug','rug','dug','gum','up','us',
@@ -1597,7 +1597,7 @@ const DAYS = [
     {t:'新声音 /ʌ/', min:7, blocks:[
       {b:'sound', s:'u'},
       {b:'lead', html:'<strong>认字形：</strong>u 像一个小杯子，开口朝上。空中写 5 遍，本子上写 5 个。'},
-      {b:'note', tone:'bulb', html:'<b>五块红积木到齐了。</b>a、e、i、o、u——以后每个词里都得有它们中的至少一块。让孩子把五张红卡排成一排，自己念一遍。'}
+      {b:'note', tone:'bulb', html:'<b>五块红积木到齐了。</b>a、e、i、o、u——现在拼的每个词里都至少有它们中的一块。让孩子把五张红卡排成一排，自己念一遍。'}
     ]},
     {t:'拼读练习', min:8, blocks:[
       {b:'blend', words:['cup','sun','mud','hug','run','nut']},
@@ -1662,7 +1662,7 @@ const DAYS = [
       {b:'lead', html:'<strong>认字形：</strong>f 是一根竖棍，头顶弯个钩，腰上加一横。空中写 5 遍，本子上写 5 个。'}
     ]},
     {t:'拼读 + 挑战', min:9, blocks:[
-      {b:'lead', html:'先拼五个三音词，最后两个 <span class="en"><b>frog</b></span>、<span class="en"><b>flag</b></span> 是<b>四个音、难点在开头</b>——用第一周 snap 的老办法：先拼后面的 <span class="en">rog</span>、<span class="en">lag</span>，读出来，再在前面加一个 /f/。'},
+      {b:'lead', html:'先拼五个三音词，最后两个 <span class="en"><b>frog</b></span>、<span class="en"><b>flag</b></span> 是<b>四个音、难点在开头</b>——用第一周 snap 的老办法：先拼后面的 <span class="en">rog</span>、<span class="en">lag</span>（这不是词，只是一段声音），读出来，再在前面加一个 /f/。'},
       {b:'blend', words:['fan','fun','fog','fig','fit','frog','flag']},
       {b:'words', items:['fan','fun','fog','fig','fit','frog','flag']},
       {b:'note', tone:'warn', html:'别和上周 rest、sand 的拆法弄混：<b>难点在开头，从后往前接；难点在结尾，先拼三个再补一个。</b>frog 和 flag 是前者。'}
@@ -1713,7 +1713,7 @@ const DAYS = [
         '<b>第二遍</b> — 孩子自己指、自己读，卡住的词你只提示第一个音，不要直接说答案。',
         '<b>第三遍</b> — 孩子独立读，你在旁边录像。这一遍不要打断，读错也不纠。'
       ]},
-      {b:'note', tone:'bulb', html:'开读前再提醒一次：句子开头和名字用了<b>大写字母</b>——<span class="en"><b>T</b></span> 和 <span class="en">t</span>、<span class="en"><b>D</b></span> 和 <span class="en">d</span> 是同一块积木穿了大外套，<b>读音完全一样</b>。<span class="en"><b>hugs</b></span> 结尾的 s 读得像 /z/，让他先拼出 hug，再轻轻带上 s。'},
+      {b:'note', tone:'bulb', html:'开读前再提醒一次：句子开头和名字用了<b>大写字母</b>——<span class="en"><b>T</b></span> 和 <span class="en">t</span>、<span class="en"><b>D</b></span> 和 <span class="en">d</span> 是同一块积木穿了大外套，<b>读音完全一样</b>。'},
       {b:'book'},
       {b:'note', tone:'bulb', html:'这本书里能拼的词，全部只用三周学过的十九个音；<span class="en">to</span> 是今天刚记住的认读词，<span class="en">the / is / a</span> 是前两周的。<b>第三本没有一个字靠猜的书。</b>'}
     ]},
@@ -1740,7 +1740,7 @@ const DAYS = [
       {b:'note', tone:'warn', html:'拍错很正常，<b>不需要你评判对错</b>——气球晃一下就过去了，游戏自己会记分。'}
     ]},
     {t:'游戏二：造词工坊', min:12, blocks:[
-      {b:'lead', html:'积木架这周变成了两排：<b>上面一排红的是元音，下面两排青的是辅音</b>，新学的字母排在最后。点积木拼词，摆满自动看看是不是真词——<b>猜的词也要读出来</b>。拼出真词后长按确认：是他自己读出来的吗？'},
+      {b:'lead', html:'积木架这周分成了两区：<b>上面红色的是元音区，下面青色的是辅音区</b>，新学的字母排在各区最后。点积木拼词，摆满自动看看是不是真词——<b>猜的词也要读出来</b>。拼出真词后长按确认：是他自己读出来的吗？'},
       {b:'g5'},
       {b:'note', tone:'ok', html:'这个游戏要做完今天最后的「周检」才会打开。真词和瞎拼的组合，屏幕提示是一模一样的「读读看」，不直接告诉他对错，让他自己去读、自己判断。'}
     ]},
@@ -1750,7 +1750,7 @@ const DAYS = [
       {b:'note', tone:'bulb', html:'这周的订单全是 g 结尾或 g 开头的词，摆的时候注意听结尾那一下——摆错没关系，积木会晃一下让他重摆。'}
     ]},
     {t:'游戏四：声音寻宝', min:10, blocks:[
-      {b:'lead', html:'在家里找东西，找到开头是这些音的就大喊出来。限时 10 分钟，看能找到几样。'},
+      {b:'lead', html:'在家里找东西：<b>辅音听开头，红积木（元音）听肚子里</b>，找到了就大喊出来。限时 10 分钟，看能找到几样。下面的英文词是给你看的，孩子只听你说、不看不拼。'},
       {b:'table', head:['要找的音','家里可能有的'], rows:[
         ['<b class="en">/g/</b>','glass 玻璃杯 · game 游戏 · glue 胶水 · gift 礼物'],
         ['<b class="en">/ɑ/</b>','box 盒子 · sock 袜子 · clock 钟 · doll 娃娃（肚子里藏着它）'],
@@ -1763,6 +1763,7 @@ const DAYS = [
     ]},
     {t:'周检 · 5 分钟', min:5, blocks:[
       {b:'exam'},
+      {b:'note', tone:'bulb', html:'读对 4 到 5 个，下周进新课。读对 2 到 3 个，补救两天：第一天按原时长重做第六天；第二天快闪 10 分钟后立刻复测。本周课件没有预置备用词，复测词由你自编——<b>家长自编 5 个 CVC 词（辅音-元音-辅音的三字母真词），只用已教字位，打开词卡墙对照确认不在墙上</b>；复测读对 4 个或更多进新课，不到 4 个整周重做；补救的两天各记 1 个非推进日。读对 0 到 1 个，直接整周重做，记 7 个非推进日。'},
       {b:'checks', items:[
         ['做了周检，记下了读对几个','这一条是给你自己的，不做就没有尺子'],
         ['已经决定下周怎么走','4 到 5 个进新课 / 2 到 3 个复习两天再测 / 0 到 1 个整周重做']
@@ -2373,7 +2374,7 @@ function renderHome(){
     <section class="hero">
       <p class="hero__eyebrow">第 3 周 · 共 40 周</p>
       <h1>五块红积木到齐，<br>读完第三本书</h1>
-      <p class="hero__lede">这一周加入六块新字母积木：<b class="en">g o u l f b</b>。其中 <b class="en">o</b> 和 <b class="en">u</b> 是两块新的红积木——<b>到第三天，五块红积木就到齐了</b>，以后每个词里都得有它们中的一块。十九块积木能拼的词一下子过百，<b>第四天孩子会自己读出从没见过的词，第五天第一次从后往前接出四个音的词，第六天读完第三本书。</b></p>
+      <p class="hero__lede">这一周加入六块新字母积木：<b class="en">g o u l f b</b>。其中 <b class="en">o</b> 和 <b class="en">u</b> 是两块新的红积木——<b>到第三天，五块红积木就到齐了</b>，现在拼的每个词里都至少有它们中的一块。十九块积木能拼的词一下子过百，<b>第四天孩子会自己读出从没见过的词，第五天用从后往前接的老办法拼出四个音的词，第六天读完第三本书。</b></p>
       <div class="tiles-demo">
         ${'goulfb'.split('').map(c=>{
           const lit = dayDone(FIRST_TEACH_DAY[c]);   // 积木点亮墙：不存状态，现算首教日是否已完成
@@ -2456,7 +2457,7 @@ function renderHome(){
           <p class="lead">两块新的红积木让能拼的词从六十多个跳到一百多个，<b>第四天开始孩子会碰到没教过的词并自己读出来</b>——那正是这套方法要的效果，不是意外。另外两处要留神：<b>o 和 u 靠耳朵分</b>（第三天的关键训练），<b>b 和 d 靠字形分</b>（第六天）。</p>
           <p class="lead">判断标准不变：<b>看第七天的周检，不看每天的情绪。</b>某一天特别不顺，不代表这一周没学会；反过来，每天都很顺但周检读不出来，那才是真的要回头。</p>
           <div class="pnote"><span class="pnote__ico">${ART.bulb}</span><div class="pnote__b">
-            每天最后都有一个打卡清单，第七天有一次周检。<b>那就是你要的尺子。</b>孩子学没学会，不用猜。周检不到 4 个：先重做第六天，再用你自己编的 5 个三字母词测一次；还不到 4 个，这周从头再来。
+            每天最后都有一个打卡清单，第七天有一次周检。<b>那就是你要的尺子。</b>孩子学没学会，不用猜。周检读对 4 到 5 个进新课；2 到 3 个补救两天（重做第六天，再用你自编的 5 个三字母词复测，复测够 4 个才进新课）；0 到 1 个、或复测仍不到 4 个，这周从头再来。自编词的规矩写在第七天周检旁边。
           </div></div>
         </div>
       </details>
@@ -2464,7 +2465,7 @@ function renderHome(){
       <details class="fold">
         <summary>关于这个页面的发音功能</summary>
         <div class="fold__body">
-          <p class="lead">凡是带喇叭图标的<b>字母积木、单词和句子</b>，点一下就读。本周的单词与句子录音已内置；六个新音的真人示范音和插画尚未就位，页面会自动降级（没有听音按钮、词卡显示"单词 + 中文"），<b>断网后仍可完整使用</b>。</p>
+          <p class="lead">凡是带喇叭图标的<b>字母积木、单词和句子</b>，点一下就读。前两周的单词录音已内置；<b>本周新词与小书句子的录音、六个新音的真人示范音和插画都还没就位</b>，页面会自动降级（新词和句子暂由系统朗读兜底、新音没有听音按钮、词卡显示"单词 + 中文"），断网后仍可使用。</p>
           <div class="pnote pnote--ok"><span class="pnote__ico">${ART.tick}</span><div class="pnote__b">
             <b>单个音素使用真人教学录音，不用合成语音冒充。</b>前两周十三块积木的录音已内置（出处见页脚），点字母积木即可听；本周六块新积木暂无录音，由你按口令示范。
           </div></div>
@@ -3320,7 +3321,7 @@ function initG4(){
 /* ==================================================================
    G5 造词工坊（Day7「游戏二：积木造词」替换，v1.3 §4.5 + §2.5 入口1/5 +
    §3.1 程序锁）：解锁条件=examRecorded(day)（周检 checks[0] 勾选，见该函数
-   定义处）；锁定=卡片盖灰+期待式文案，无倒计时无进度。解锁后：12 块积木
+   定义处）；锁定=卡片盖灰+期待式文案，无倒计时无进度。解锁后：19 块积木
    (三周 19 个字母各 1 块，按元音 / 辅音分组固定位)+2/3/4 槽切换（默认3）+清空重来；点积木入下一空槽、点槽内积木
    撤回；摆满槽自动判——真词（⊆G5_WHITELIST 且不是保留词）→中性提示+长按
    确认 confirms.g5（可撤销，战利品墙自动点亮，靠已有 derivedTrophies()，
