@@ -1,0 +1,42 @@
+{
+  "_meta": {
+    "week": 3,
+    "说明": "第三周新音的来源与切点。tools/prep_phonemes.py 按本表下载试听流（sha256 校验）、降噪、裁段，产出 WAV 交给 tools/build_phonemes.py 规格化并注入。切点由频谱图与 10ms 帧能量包络定（2026-09-03）；codex 首审（归档 21）后 l 的降噪降为 10 dB、b 退为候选不注入。人耳听检由用户完成。",
+    "降噪": "STFT 频谱门限：取试听流开头 noise_sample_end 秒为底噪样本，逐频点阈值 = 均值 + 1.5 倍标准差，低于阈值的时频点衰减 nr_db 分贝。guard 是分带能量护栏：降噪后该频带在段内损失超过 max_loss_db 即失败。",
+    "试听流": "cdn.freesound.org 的 -hq.mp3 预览（MP3 派生，非作者原始 WAV），与第二周取音方式相同。sha256 / bytes 为 2026-09-03 下载实测。",
+    "听检后怎么改": "g 若听起来像 k：start 改 0.68（含爆破前的浊化嗡音）。u 若听起来像央元音：同音包没有第二个 /ʌ/ 候选，只能用户自录覆盖 u.mp3。l 若发闷：nr_db 再降或设 0。"
+  },
+  "g": {
+    "source": {"title": "G.wav", "author": "margo_heston", "sound_id": 193279, "page": "https://freesound.org/people/margo_heston/sounds/193279/", "preview": "https://cdn.freesound.org/previews/193/193279_3597275-hq.mp3", "sha256": "59c16713de1b53242b28f90f1f140e89f2e3e94f7198e379fa1b84a4d0a65f41", "bytes": 45705, "license": "CC BY-NC 4.0", "desc": "hard \"g\" sound"},
+    "start": 0.80, "end": 1.01, "noise_sample_end": 0.12, "nr_db": 25, "fade_in_ms": 5, "fade_out_ms": 30,
+    "note": "0.68-0.80s 是爆破前的浊化嗡音，不取；从爆破起切，释放段本身浊化（爆破后 10ms 起有低频谐波），与第二周 d.mp3 同型，与 c.mp3 的送气噪声对比明显（codex 21 审 H-1 核实）。听检若像 k，start 改 0.68"
+  },
+  "o": {
+    "source": {"title": "Ahh.wav", "author": "margo_heston", "sound_id": 193264, "page": "https://freesound.org/people/margo_heston/sounds/193264/", "preview": "https://cdn.freesound.org/previews/193/193264_3597275-hq.mp3", "sha256": "0717861a4e6b52676f638e136fa865dec44f7463475accba56da2fe7d67d5358", "bytes": 30262, "license": "CC BY-NC 4.0", "desc": "dark \"a\" sound"},
+    "start": 0.55, "end": 1.03, "noise_sample_end": 0.12, "nr_db": 25, "fade_in_ms": 5, "fade_out_ms": 50,
+    "note": "页面 o 的 ipa 是 /ɑ/（dog/hot 的美音短 o）。同作者 Aah.wav 是短 a /æ/（第一周 a 已用，频谱 F2≈1.9kHz 对上），Ahh.wav F2≈1.3kHz 才是 /ɑ/；Aww.wav 是 schwa，Ohh.wav 是长 o，Au.wav 是 tall 的 /ɔ/，都不对"
+  },
+  "u": {
+    "source": {"title": "Uh.wav", "author": "margo_heston", "sound_id": 193318, "page": "https://freesound.org/people/margo_heston/sounds/193318/", "preview": "https://cdn.freesound.org/previews/193/193318_3597275-hq.mp3", "sha256": "1b9783560d84c9e66293846316a995a24b78f7cfeb846b6378330127b19b11ce", "bytes": 35639, "license": "CC BY-NC 4.0", "desc": "\"uh\" as in \"Uhhh, no.\""},
+    "start": 0.61, "end": 0.92, "noise_sample_end": 0.12, "nr_db": 20, "fade_in_ms": 5, "fade_out_ms": 40,
+    "note": "0.87s 后是嘎裂声尾巴，切掉大半。成品 F1≈700Hz、F2≈1400Hz、重读 0.31s，偏 /ʌ/ 而非央元音（codex 21 审 M-3）；机器不能定论，靠听检"
+  },
+  "l": {
+    "source": {"title": "Ll.wav", "author": "margo_heston", "sound_id": 193282, "page": "https://freesound.org/people/margo_heston/sounds/193282/", "preview": "https://cdn.freesound.org/previews/193/193282_3597275-hq.mp3", "sha256": "e1267641fc27e1ccef6b4c489274a3857f618aa7ab5aafb38c5e0d87fd0dc364", "bytes": 43408, "license": "CC BY-NC 4.0", "desc": "/l/"},
+    "start": 0.64, "end": 1.22, "noise_sample_end": 0.12, "nr_db": 10, "fade_in_ms": 10, "fade_out_ms": 40,
+    "guard": {"band": [1500, 4000], "max_loss_db": 9},
+    "note": "1.37-1.69s 有一段 -27dB 的口腔杂音，不取。该段 1.5-4kHz（/l/ 的 F3 区）只高出底噪 13dB，nr 25 时被削 12.6dB，降到 nr 10 后为 7.3dB（自查 S-1）；guard 9dB 防回归，听检若发闷再降"
+  },
+  "f": {
+    "source": {"title": "Ff.wav", "author": "margo_heston", "sound_id": 193270, "page": "https://freesound.org/people/margo_heston/sounds/193270/", "preview": "https://cdn.freesound.org/previews/193/193270_3597275-hq.mp3", "sha256": "ca6f8110f7af4e1a448f58b4eb4440d548a92c889bffcda8dc50b692f7582e6d", "bytes": 39861, "license": "CC BY-NC 4.0", "desc": "/f/"},
+    "start": 0.64, "end": 1.05, "noise_sample_end": 0.12, "nr_db": 12, "fade_in_ms": 10, "fade_out_ms": 40,
+    "guard": {"band": [1500, 8000], "max_loss_db": 3},
+    "note": "擦音信噪比只有 10-15dB，降噪压轻。实测 12dB 门限下 1.5-4kHz 损失 0.4dB、4-8kHz 0.1dB，摩擦成分无损（codex 21 审 M-2）；guard 3dB 防回归"
+  },
+  "b": {
+    "inject": false,
+    "source": {"title": "[b] - Voiced bilabial plosive.wav", "author": "ipapronunciations", "sound_id": 640377, "page": "https://freesound.org/people/ipapronunciations/sounds/640377/", "preview": "https://cdn.freesound.org/previews/640/640377_14110264-hq.mp3", "sha256": "778dd97a631dc343753d130e7764b0766749b6cab5493360271bd0dcff3a9c9c", "bytes": 59597, "license": "CC0 1.0", "desc": "A person who pronounces the voiced bilabial plosive, [b]. [ba aba]."},
+    "start": 0.29, "end": 0.41, "noise_sample_end": 0.12, "nr_db": 10, "fade_in_ms": 0, "fade_out_ms": 60, "fade_out_to_db": -25,
+    "note": "候选，不注入（codex 21 审 C-1，用户 2026-09-03 拍板）。margo_heston 的音包 43 段里没有 /b/。此段从 ipapronunciations 的 \"ba\" 切出预浊音 + 爆破 + 约 60ms 元音起始并淡出到 -25dB——是 README 明文警告的\"从音节切一刀\"路径，元音尾压不到零，且换了发音人。页面 b 按铁律 8 不给听音按钮。听检通过再注入：python tools/prep_phonemes.py --spec 本文件 --out tmp/b_only --key b --include-candidates，再 python tools/build_phonemes.py --target week03.html --src tmp/b_only/candidates；不通过则用户自录 b 覆盖"
+  }
+}
