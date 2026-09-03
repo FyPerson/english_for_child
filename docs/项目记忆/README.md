@@ -71,7 +71,7 @@ source_of_truth: self（导航与现状快照的权威；具体做法以各专�
    Dan 与猫沿用第二周定妆图，只有大狗要先定妆
 2. `docs/三方分工与交接规范_20260902_v1.1.md` §3.1（副机命令清单）、§4.1（配图包与开场提示词）、§4.3（回传验收）
 3. `tools/audio_manifest_w3.json` + `assets/phonemes/README.md` + `tools/phoneme_sources_w3.json` —— 本周 132 条词句录音的清单（已注入、待用户听检）；
-   五个新音 g o u l f 的真人示范音已注入（2026-09-03，codex 归档 21），b 只有候选、未注入（§4 第 1 条）
+   六个新音的真人示范音已注入（2026-09-03，codex 归档 21–24；b 曾是候选、现已注入，仍有元音尾风险，见 §4 第 1 条）
 
 ### B. 开始第三周时先读
 
@@ -117,14 +117,21 @@ source_of_truth: self（导航与现状快照的权威；具体做法以各专�
 
 按优先级：
 
-1. **第三周音素示范音：g o u l f 已注入，b 未注入**（2026-09-03，codex 归档 21）。五段取自 Freesound · margo_heston
+1. **第三周音素示范音六段已注入**（2026-09-03，codex 归档 21–23）。g o u l f 取自 Freesound · margo_heston
    「English Phonemes」音包的 HQ 试听流（取法与第二周相同），来源、切点、降噪参数、sha256 全在 `tools/phoneme_sources_w3.json`，
    `python tools/prep_phonemes.py --spec tools/phoneme_sources_w3.json --out tmp/phonemes_stage --clean` 可复跑，
-   再交 `tools/build_phonemes.py` 注入。**该音包没有 B**；替代来源（ipapronunciations，CC0）切自音节 "ba"、带元音起始，
-   按铁律 8 不给听音按钮，候选在 `assets/phonemes/candidates/b.wav`。**待用户听检**（含 b 候选）：b 合格则按
-   `assets/phonemes/README.md`「候选目录」注入，不合格则自录覆盖；g 若像 k 把 spec 里 start 改 0.68；
-   u 若像央元音只能自录（同音包无第二个 /ʌ/）。前两周十二段也还没听检过，一并听
-2. **第三周 132 条单词与句子录音已注入但用户未听检**。听检发现问题走三方分工 §3.2 / §4.2 回炉（只改 manifest 参数，不改脚本）
+   再交 `tools/build_phonemes.py` 注入。**b 是例外**：该音包没有 B，替代来源（ipapronunciations，CC0）切自音节 "ba"、
+   带一点元音尾，codex 判触及硬约束先退为候选，用户听页面后拍板提升注入。课上要盯：孩子若跟着念成 "buh"，
+   退回一条命令 `python tools/build_phonemes.py --target week03.html --remove b`（再把 b.mp3 移进 candidates/、
+   清单 `inject` 改 false），或自录覆盖；光改 inject 不会删已内嵌的键。
+   g 若像 k 把 spec 里 start 改 0.68；u 若像央元音只能自录（同音包无第二个 /ʌ/）。前两周十二段也还没听检过
+2. **第三周 132 条单词与句子录音已注入但用户未听检**。听检发现问题走三方分工 §3.2 / §4.2 回炉（只改 manifest 参数，不改脚本）。
+   2026-09-03 用户听出 b/g 结尾词尾音不清，根因是规范 §6.1 的"反向裁静音切掉词尾爆破"：给 71 个塞音结尾词
+   （b g 22 + t d p 49）逐条加 `silence_threshold_db: -60`（另 16 个带 manual_trim，优先于阈值；塞音结尾已无默认 -40 条目）。
+   **分两类看**（codex 归档 25 M-1）：87 个塞音结尾词里 49 个原始音有释放爆破，-60 后成品末尾比爆破峰晚 41–76 ms；
+   38 个没有释放（**34 个 t 结尾词全部**，加 tub rub fed bed），-60 只多留了自然衰减，t 的尾音清不清是 Jenny 声线不除阻，
+   裁剪救不了。**听检验收项（codex 归档 24 M-5 / 25 M-1）**：有释放的词，正常音量下能否听出"闭塞→爆破"（爆破峰中位 -28 dBFS、
+   比元音低 17 dB）；无释放的词，词尾辅音能否辨认。听不清的下一步是 manual_trim 或换更清楚的声线（规范 §6 第 6 条）
 3. ~~第三周 G5 积木数量需要先拍板~~ **已决**（2026-09-02 用户拍板"分组固定位架"，即里程碑 0；
    第三周 19 块按元音 / 辅音分组、组内教学顺序、辅音组最多 7 块一行，已落地并过审）
 4. **"冒烟全绿" ≠ 铁律 6 已验证**。`smoke_w2_browser.py` 与 `smoke_w3_browser.py` 都只覆盖了 G3/G4/G5 的

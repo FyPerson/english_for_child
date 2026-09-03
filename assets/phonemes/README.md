@@ -1,7 +1,7 @@
 ---
 状态: active（音素示范音资源包；跨周累积，逐周补齐）
 source_of_truth: self（音频文件本身是真相源；页面里的 base64 是它的派生物）
-日期: 2026-09-03（第三周 g o u l f 五段注入，b 候选未注入）
+日期: 2026-09-03（第三周六段已注入；b 曾是候选、现已注入，仍有元音尾风险，见下）
 ---
 
 # 音素示范音资源包
@@ -42,7 +42,7 @@ TTS 合成和"从单词里切一刀"都极易得到 `kuh`、`duh` 这种**带 sc
 | `u.mp3` | u | /ʌ/ | 第三周 | Freesound · margo_heston · `Uh.wav` |
 | `l.mp3` | l | /l/ | 第三周 | Freesound · margo_heston · `Ll.wav` |
 | `f.mp3` | f | /f/ | 第三周 | Freesound · margo_heston · `Ff.wav` |
-| — | b | /b/ | 第三周·**未注入** | 无合格来源；候选 `candidates/b.wav`（ipapronunciations · CC0 · 切自 "ba"），听检通过再注入，见下 |
+| `b.mp3` | b | /b/ | 第三周 | Freesound · **ipapronunciations** · `[b] - Voiced bilabial plosive.wav`（CC0；切自 "ba"，用户 2026-09-03 听页面后拍板注入，见下） |
 
 **别名**：第二周的 `k` 不单独录音，页面通过 `SOUNDS.k.audioKey = 'c'` 复用 `c.mp3`。
 别名音**不要**在本目录放同名文件，`build_phonemes.py` 会拒绝。
@@ -68,16 +68,18 @@ TTS 合成和"从单词里切一刀"都极易得到 `kuh`、`duh` 这种**带 sc
 （例如 o 为何取 `Ahh.wav` 不取 `Aah.wav`）也记在那个清单里。五段来自 margo_heston：
 `G.wav`、`Ahh.wav`、`Uh.wav`、`Ll.wav`、`Ff.wav`。
 
-**/b/ 没有注入**：margo_heston 的音包 43 段里没有 B（有 Pp、D、G、K）。唯一找到的真人替代来源是 Freesound 用户
+**/b/ 是来源例外**：margo_heston 的音包 43 段里没有 B（有 Pp、D、G、K）。唯一找到的真人替代来源是 Freesound 用户
 **ipapronunciations** 的[「IPA Pulmonic Consonants」音包](https://freesound.org/people/ipapronunciations/packs/35572/)
 （[sound 640377](https://freesound.org/people/ipapronunciations/sounds/640377/)，CC0 1.0，内容是 "ba, aba"），
 只能从 "ba" 里切出预浊音 + 爆破 + 约 60 ms 元音起始——正是上文说的"从单词里切一刀"，元音尾压不到零，
-还换了发音人。codex 审（`docs/codex审查记录/21-第三周音素音.md` C-1）判为触及硬约束，2026-09-03 拍板：
-**不注入，页面 b 按铁律 8 显示家长口令**；这段切音留在 `candidates/b.wav` 供听检。
+还换了发音人。codex 审（`docs/codex审查记录/21-第三周音素音.md` C-1）判为触及硬约束，先退为候选不注入；
+**2026-09-03 用户听页面后拍板提升注入**（页面 b 没有声音比带一点元音尾更影响本周教学）。这是十八段里唯一
+非 margo_heston 的一段，也是最需要课上盯着孩子模仿效果的一段：若孩子跟着念成 "buh"，按下面「候选目录」
+的退回三步（一条 `--remove b` 命令）退回家长口令，或自录一段 /b/ 覆盖 `b.mp3`。
 
 ## 候选目录 `candidates/`
 
-放"取到了但没过关"的切音，**`build_phonemes.py` 只扫本目录顶层文件，不会扫到子目录**，所以放这里不会被注入。
+放"取到了但没过关"的切音（目前为空；b 曾在此，2026-09-03 提升后删除），**`build_phonemes.py` 只扫本目录顶层文件，不会扫到子目录**，所以放这里不会被注入。
 听检通过要注入时，用一个**只含这一个候选**的临时目录（`--clean` 会先清空该目录的顶层与 `candidates/`，
 `prep_phonemes.py` 结束时还会把两处里不是本次生成的 `.wav` 当残留报错，防止旧候选混进注入）：
 
@@ -88,6 +90,16 @@ python tools/build_phonemes.py --target week03.html --src tmp/b_only/candidates
 ```
 
 不通过就自录一段 /b/（文件名 `b.wav`），走同一条注入命令。
+
+**退回**（已注入的音在课上发现教歪了）：注入是合并语义，把源文件拿走或把清单里 `inject` 改 false
+**都不会删掉已内嵌的键**，必须显式删：
+
+```bash
+python tools/build_phonemes.py --target week03.html --remove b        # 只删 PHONEME_AUDIO 里的 b，页面 b 回到家长口令
+# 再把 b.mp3 移进 candidates/、清单里 inject 改 false，防止下次注入又合并回来
+```
+
+`--remove` 与 `--src` 互斥、键必须已内嵌、支持 `--dry-run`。
 
 **署名义务**：课件页脚必须保留出处链接。第一周的写法见 `week01.html` 的
 `.foot__credits`，换周时不要漏掉这一段。**非商业授权** —— 这套课件不得用于商业分发。
@@ -113,7 +125,7 @@ python tools/build_phonemes.py --target week03.html --src tmp/b_only/candidates
 
 注意与**单词音**规格不同：单词音走 `tools/build_audio.py`，是 24000 Hz / 48k。
 音素音要听清发音细节，所以规格更高。第一周六段约 24 KB；第二周补齐后十二段约 43.5 KB，
-第三周补到十七段约 60.5 KB（b 未注入），内嵌代价仍很小。
+第三周补齐后十八段约 61.9 KB，内嵌代价仍很小。
 
 ## 怎么加新音素
 

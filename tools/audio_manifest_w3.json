@@ -97,7 +97,8 @@
    "text": "at",
    "type": "word",
    "group": "A",
-   "file": "at.mp3"
+   "file": "at.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "in",
@@ -151,7 +152,8 @@
    "text": "pat",
    "type": "word",
    "group": "A",
-   "file": "pat.mp3"
+   "file": "pat.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "pin",
@@ -165,14 +167,16 @@
    "text": "pit",
    "type": "word",
    "group": "A",
-   "file": "pit.mp3"
+   "file": "pit.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "sat",
    "text": "sat",
    "type": "word",
    "group": "A",
-   "file": "sat.mp3"
+   "file": "sat.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "sip",
@@ -190,7 +194,8 @@
    "text": "sit",
    "type": "word",
    "group": "A",
-   "file": "sit.mp3"
+   "file": "sit.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "snap",
@@ -244,7 +249,8 @@
    "text": "cat",
    "type": "word",
    "group": "A",
-   "file": "cat.mp3"
+   "file": "cat.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "cap",
@@ -269,14 +275,16 @@
    "text": "kit",
    "type": "word",
    "group": "A",
-   "file": "kit.mp3"
+   "file": "kit.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "set",
    "text": "set",
    "type": "word",
    "group": "A",
-   "file": "set.mp3"
+   "file": "set.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "ten",
@@ -290,7 +298,8 @@
    "text": "net",
    "type": "word",
    "group": "A",
-   "file": "net.mp3"
+   "file": "net.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "pen",
@@ -304,14 +313,16 @@
    "text": "pet",
    "type": "word",
    "group": "A",
-   "file": "pet.mp3"
+   "file": "pet.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "hat",
    "text": "hat",
    "type": "word",
    "group": "A",
-   "file": "hat.mp3"
+   "file": "hat.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "hen",
@@ -325,7 +336,8 @@
    "text": "hit",
    "type": "word",
    "group": "A",
-   "file": "hit.mp3"
+   "file": "hit.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "hip",
@@ -343,7 +355,8 @@
    "text": "rat",
    "type": "word",
    "group": "A",
-   "file": "rat.mp3"
+   "file": "rat.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "ran",
@@ -375,14 +388,16 @@
    "text": "rest",
    "type": "word",
    "group": "A",
-   "file": "rest.mp3"
+   "file": "rest.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "mat",
    "text": "mat",
    "type": "word",
    "group": "A",
-   "file": "mat.mp3"
+   "file": "mat.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "man",
@@ -407,7 +422,8 @@
    "text": "met",
    "type": "word",
    "group": "A",
-   "file": "met.mp3"
+   "file": "met.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "men",
@@ -462,42 +478,48 @@
    "text": "sad",
    "type": "word",
    "group": "A",
-   "file": "sad.mp3"
+   "file": "sad.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "mad",
    "text": "mad",
    "type": "word",
    "group": "A",
-   "file": "mad.mp3"
+   "file": "mad.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "red",
    "text": "red",
    "type": "word",
    "group": "A",
-   "file": "red.mp3"
+   "file": "red.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "sand",
    "text": "sand",
    "type": "word",
    "group": "A",
-   "file": "sand.mp3"
+   "file": "sand.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "get",
    "text": "get",
    "type": "word",
    "group": "A",
-   "file": "get.mp3"
+   "file": "get.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "gap",
    "text": "gap",
    "type": "word",
    "group": "A",
-   "file": "gap.mp3"
+   "file": "gap.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "pig",
@@ -515,77 +537,88 @@
    "text": "dig",
    "type": "word",
    "group": "A",
-   "file": "dig.mp3"
+   "file": "dig.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "peg",
    "text": "peg",
    "type": "word",
    "group": "A",
-   "file": "peg.mp3"
+   "file": "peg.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "rag",
    "text": "rag",
    "type": "word",
    "group": "A",
-   "file": "rag.mp3"
+   "file": "rag.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "tag",
    "text": "tag",
    "type": "word",
    "group": "A",
-   "file": "tag.mp3"
+   "file": "tag.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "got",
    "text": "got",
    "type": "word",
    "group": "A",
-   "file": "got.mp3"
+   "file": "got.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "dot",
    "text": "dot",
    "type": "word",
    "group": "A",
-   "file": "dot.mp3"
+   "file": "dot.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "not",
    "text": "not",
    "type": "word",
    "group": "A",
-   "file": "not.mp3"
+   "file": "not.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "lot",
    "text": "lot",
    "type": "word",
    "group": "A",
-   "file": "lot.mp3"
+   "file": "lot.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "dog",
    "text": "dog",
    "type": "word",
    "group": "A",
-   "file": "dog.mp3"
+   "file": "dog.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "hot",
    "text": "hot",
    "type": "word",
    "group": "A",
-   "file": "hot.mp3"
+   "file": "hot.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "pot",
    "text": "pot",
    "type": "word",
    "group": "A",
-   "file": "pot.mp3"
+   "file": "pot.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "top",
@@ -603,14 +636,16 @@
    "text": "mop",
    "type": "word",
    "group": "A",
-   "file": "mop.mp3"
+   "file": "mop.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "cot",
    "text": "cot",
    "type": "word",
    "group": "A",
-   "file": "cot.mp3"
+   "file": "cot.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "on",
@@ -642,14 +677,16 @@
    "text": "mud",
    "type": "word",
    "group": "A",
-   "file": "mud.mp3"
+   "file": "mud.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "hug",
    "text": "hug",
    "type": "word",
    "group": "A",
-   "file": "hug.mp3"
+   "file": "hug.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "run",
@@ -663,42 +700,48 @@
    "text": "nut",
    "type": "word",
    "group": "A",
-   "file": "nut.mp3"
+   "file": "nut.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "hut",
    "text": "hut",
    "type": "word",
    "group": "A",
-   "file": "hut.mp3"
+   "file": "hut.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "cut",
    "text": "cut",
    "type": "word",
    "group": "A",
-   "file": "cut.mp3"
+   "file": "cut.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "mug",
    "text": "mug",
    "type": "word",
    "group": "A",
-   "file": "mug.mp3"
+   "file": "mug.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "rug",
    "text": "rug",
    "type": "word",
    "group": "A",
-   "file": "rug.mp3"
+   "file": "rug.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "dug",
    "text": "dug",
    "type": "word",
    "group": "A",
-   "file": "dug.mp3"
+   "file": "dug.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "gum",
@@ -712,7 +755,8 @@
    "text": "up",
    "type": "word",
    "group": "A",
-   "file": "up.mp3"
+   "file": "up.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "us",
@@ -726,49 +770,56 @@
    "text": "leg",
    "type": "word",
    "group": "A",
-   "file": "leg.mp3"
+   "file": "leg.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "lip",
    "text": "lip",
    "type": "word",
    "group": "A",
-   "file": "lip.mp3"
+   "file": "lip.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "log",
    "text": "log",
    "type": "word",
    "group": "A",
-   "file": "log.mp3"
+   "file": "log.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "lap",
    "text": "lap",
    "type": "word",
    "group": "A",
-   "file": "lap.mp3"
+   "file": "lap.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "let",
    "text": "let",
    "type": "word",
    "group": "A",
-   "file": "let.mp3"
+   "file": "let.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "lid",
    "text": "lid",
    "type": "word",
    "group": "A",
-   "file": "lid.mp3"
+   "file": "lid.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "hog",
    "text": "hog",
    "type": "word",
    "group": "A",
-   "file": "hog.mp3"
+   "file": "hog.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "fan",
@@ -789,70 +840,80 @@
    "text": "fog",
    "type": "word",
    "group": "A",
-   "file": "fog.mp3"
+   "file": "fog.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "fig",
    "text": "fig",
    "type": "word",
    "group": "A",
-   "file": "fig.mp3"
+   "file": "fig.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "fit",
    "text": "fit",
    "type": "word",
    "group": "A",
-   "file": "fit.mp3"
+   "file": "fit.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "fed",
    "text": "fed",
    "type": "word",
    "group": "A",
-   "file": "fed.mp3"
+   "file": "fed.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "frog",
    "text": "frog",
    "type": "word",
    "group": "A",
-   "file": "frog.mp3"
+   "file": "frog.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "flag",
    "text": "flag",
    "type": "word",
    "group": "A",
-   "file": "flag.mp3"
+   "file": "flag.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "bag",
    "text": "bag",
    "type": "word",
    "group": "A",
-   "file": "bag.mp3"
+   "file": "bag.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "bed",
    "text": "bed",
    "type": "word",
    "group": "A",
-   "file": "bed.mp3"
+   "file": "bed.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "bug",
    "text": "bug",
    "type": "word",
    "group": "A",
-   "file": "bug.mp3"
+   "file": "bug.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "big",
    "text": "big",
    "type": "word",
    "group": "A",
-   "file": "big.mp3"
+   "file": "big.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "bus",
@@ -866,7 +927,8 @@
    "text": "tub",
    "type": "word",
    "group": "A",
-   "file": "tub.mp3"
+   "file": "tub.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "bun",
@@ -887,28 +949,32 @@
    "text": "bit",
    "type": "word",
    "group": "A",
-   "file": "bit.mp3"
+   "file": "bit.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "but",
    "text": "but",
    "type": "word",
    "group": "A",
-   "file": "but.mp3"
+   "file": "but.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "rub",
    "text": "rub",
    "type": "word",
    "group": "A",
-   "file": "rub.mp3"
+   "file": "rub.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "cab",
    "text": "cab",
    "type": "word",
    "group": "A",
-   "file": "cab.mp3"
+   "file": "cab.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "golf",
@@ -922,7 +988,8 @@
    "text": "and",
    "type": "word",
    "group": "A",
-   "file": "and.mp3"
+   "file": "and.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "to",
@@ -961,7 +1028,8 @@
    "text": "ant",
    "type": "word",
    "group": "E",
-   "file": "ant.mp3"
+   "file": "ant.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "apple",
@@ -989,14 +1057,16 @@
    "text": "dad",
    "type": "word",
    "group": "E",
-   "file": "dad.mp3"
+   "file": "dad.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "goat",
    "text": "goat",
    "type": "word",
    "group": "E",
-   "file": "goat.mp3"
+   "file": "goat.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "octopus",
@@ -1017,7 +1087,8 @@
    "text": "lollipop",
    "type": "word",
    "group": "E",
-   "file": "lollipop.mp3"
+   "file": "lollipop.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "leaf",
