@@ -22,6 +22,9 @@ CC BY-NC 4.0，降噪裁剪后手贴 base64），没有留下脚本，源文件�
     # 把目标 HTML 里已内嵌的音素音导出成文件（第一周源文件已丢失，用这个取回）
     python tools/build_phonemes.py --target week01.html --extract-to assets/phonemes/week01
 
+    # 从目标 HTML 删掉某个音素音（注入是合并语义，光把源文件拿走不会删已内嵌的键）
+    python tools/build_phonemes.py --target week03.html --remove b [--dry-run]
+
 源目录约定：文件名 = 音素键，扩展名随意（凡 ffmpeg 能解码即可）。
     assets/phonemes/week02/c.wav   → 注入 PHONEME_AUDIO.c
     assets/phonemes/week02/e.mp3   → 注入 PHONEME_AUDIO.e
@@ -330,11 +333,48 @@ def do_extract(target: Path, out_dir: Path) -> int:
     return 0
 
 
+def do_remove(target: Path, keys: list[str], dry_run: bool) -> int:
+    """从 PHONEME_AUDIO 删键（codex 24 审 H-3：退回候选音必须是一条能直接跑的命令）。
+
+    只碰 PHONEME_AUDIO 块，别的一个字节不动；键必须已内嵌，不然多半是打错了；
+    与 --src 互斥——删和注入分开写盘，出了事好回溯。删完页面按铁律 8 不再给该音听音按钮；
+    记得把 assets/phonemes/<键>.mp3 移出源目录，否则下次注入又合并回来。
+    """
+    keys = list(dict.fromkeys(keys))          # 去重保序
+    html = read_target(target)
+    m = locate_phoneme_block(html, target)
+    existing = parse_existing(m.group(2))
+    missing = [k for k in keys if k not in existing]
+    if missing:
+        raise SystemExit(f"--remove：这些键不在 {target.name} 的 PHONEME_AUDIO 里：{' '.join(missing)}\n"
+                         f"  已内嵌：{' '.join(existing) or '（空）'}")
+    remaining = {k: v for k, v in existing.items() if k not in keys}
+    order = [k for k in existing if k in remaining]
+    new_block = m.group(1) + render_block(remaining, order) + m.group(3)
+    new_html = html[:m.start()] + new_block + html[m.end():]
+    declared, alias = parse_sounds(html)
+    need = {k for k in declared if k not in alias}
+    print(f"删除 {len(keys)}：{' '.join(keys)}")
+    print(f"剩余 {len(remaining)} 段：{' '.join(order) or '（空）'}；音素音覆盖 {len(set(remaining) & need)}/{len(need)}")
+    print("按铁律 8，被删的音在页面上不再有听音按钮；把 assets/phonemes/<键>.mp3 移出源目录（如移进 candidates/），"
+          "否则下次注入又合并回来")
+    if dry_run:
+        print("\n--dry-run：未写盘")
+        return 0
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(new_html, encoding="utf-8", newline="")
+    tmp.replace(target)
+    print(f"\n已写入 {target}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="音素示范音处理与注入")
     ap.add_argument("--target", required=True, help="目标周课件 HTML")
     ap.add_argument("--src", help="源音频目录（文件名 = 音素键）")
     ap.add_argument("--extract-to", help="把目标 HTML 已内嵌的音素音导出到该目录，然后退出")
+    ap.add_argument("--remove", action="append", metavar="键",
+                    help="从目标 HTML 的 PHONEME_AUDIO 删掉该键（可重复）；与 --src / --extract-to 互斥")
     ap.add_argument("--dry-run", action="store_true", help="只报告，不写目标 HTML")
     ap.add_argument("--force-reprocess", action="store_true",
                     help="连已合规的文件也强制重跑处理链（会有代际损失，一般别用）")
@@ -345,6 +385,11 @@ def main() -> int:
     if not target.is_absolute():
         target = root / target
     print(f"目标：{target}")
+
+    if args.remove:
+        if args.src or args.extract_to:
+            raise SystemExit("--remove 不能与 --src / --extract-to 同用：删键是独立操作，不和注入混在一次写盘里")
+        return do_remove(target, args.remove, args.dry_run)
 
     if args.extract_to:
         out = Path(args.extract_to)
