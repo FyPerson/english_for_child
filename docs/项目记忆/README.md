@@ -70,8 +70,8 @@ source_of_truth: self（导航与现状快照的权威；具体做法以各专�
 1. **`docs/插画生成提示词_第三周_20260902_v1.0.md`** —— 50 张图的提示词（6 助记 + 36 词卡 + 6 小书 + 1 庆祝 + 1 狗定妆），
    Dan 与猫沿用第二周定妆图，只有大狗要先定妆
 2. `docs/三方分工与交接规范_20260902_v1.1.md` §3.1（副机命令清单）、§4.1（配图包与开场提示词）、§4.3（回传验收）
-3. `tools/audio_manifest_w3.json` + `assets/phonemes/README.md` —— 本周 132 条词句录音的清单（已注入、待用户听检）；
-   六个新音的真人示范音待采集（§4 第 1 条）
+3. `tools/audio_manifest_w3.json` + `assets/phonemes/README.md` + `tools/phoneme_sources_w3.json` —— 本周 132 条词句录音的清单（已注入、待用户听检）；
+   五个新音 g o u l f 的真人示范音已注入（2026-09-03，codex 归档 21），b 只有候选、未注入（§4 第 1 条）
 
 ### B. 开始第三周时先读
 
@@ -117,10 +117,13 @@ source_of_truth: self（导航与现状快照的权威；具体做法以各专�
 
 按优先级：
 
-1. **第三周六个新音的真人示范音还没有**（g o u l f b）。来源是 Freesound · margo_heston「English Phonemes」音包
-   （CC BY-NC 4.0），源文件不在仓库，需要用户登录 Freesound 重新下载对应的 `G.wav / O.wav / U.wav / L.wav / F.wav / B.wav`
-   放到 `assets/phonemes/week03/`（文件名 = 音素键，如 `g.wav`），再跑 `python tools/build_phonemes.py --target week03.html --src assets/phonemes/week03`。
-   注入前页面按铁律 8 降级为家长口令示范，可用但不是终态。**录 /ɑ/ 前先确认音包口音**：本周口令写的是美式 /ɑ/（嘴唇不收圆），英式音包的短 o 是圆唇 /ɒ/，两者只能留一个
+1. **第三周音素示范音：g o u l f 已注入，b 未注入**（2026-09-03，codex 归档 21）。五段取自 Freesound · margo_heston
+   「English Phonemes」音包的 HQ 试听流（取法与第二周相同），来源、切点、降噪参数、sha256 全在 `tools/phoneme_sources_w3.json`，
+   `python tools/prep_phonemes.py --spec tools/phoneme_sources_w3.json --out tmp/phonemes_stage --clean` 可复跑，
+   再交 `tools/build_phonemes.py` 注入。**该音包没有 B**；替代来源（ipapronunciations，CC0）切自音节 "ba"、带元音起始，
+   按铁律 8 不给听音按钮，候选在 `assets/phonemes/candidates/b.wav`。**待用户听检**（含 b 候选）：b 合格则按
+   `assets/phonemes/README.md`「候选目录」注入，不合格则自录覆盖；g 若像 k 把 spec 里 start 改 0.68；
+   u 若像央元音只能自录（同音包无第二个 /ʌ/）。前两周十二段也还没听检过，一并听
 2. **第三周 132 条单词与句子录音已注入但用户未听检**。听检发现问题走三方分工 §3.2 / §4.2 回炉（只改 manifest 参数，不改脚本）
 3. ~~第三周 G5 积木数量需要先拍板~~ **已决**（2026-09-02 用户拍板"分组固定位架"，即里程碑 0；
    第三周 19 块按元音 / 辅音分组、组内教学顺序、辅音组最多 7 块一行，已落地并过审）

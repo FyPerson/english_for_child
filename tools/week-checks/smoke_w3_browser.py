@@ -215,7 +215,7 @@ with sync_playwright() as p:
     pg.goto(URL); pg.wait_for_timeout(300)
     pg.evaluate("localStorage.clear()")
     pg.goto(URL); pg.wait_for_timeout(500)
-    # 导航后页内的音频桩已失效；第三周 G3 的六个词还没有录音（走 TTS 兜底），无头浏览器里 TTS 不会
+    # 导航后页内的音频桩已失效；第三周 G3 的六个词已有录音（WORD_AUDIO 含 hot/hut/cot/cut/not/nut），但无头浏览器不出声、不会
     # 触发 ended，门永远不启用——重新打桩让播放立即结束（G3 / G4 都走 WordAudio.play）
     pg.evaluate("()=>{ WordAudio.play = key => Promise.resolve({status:'ended'}); }")
     # G3 两扇门（第三周在第 3 天）：10 题走完 → doors.best 落盘
