@@ -1,7 +1,7 @@
 ---
 状态: active（音素示范音资源包；跨周累积，逐周补齐）
 source_of_truth: self（音频文件本身是真相源；页面里的 base64 是它的派生物）
-日期: 2026-09-03（第三周六段已注入；b 曾是候选、现已注入，仍有元音尾风险，见下）
+日期: 2026-09-04（第三周六段已注入；b 已改用 TESSA A1 独立示范并经用户听检确认）
 ---
 
 # 音素示范音资源包
@@ -42,7 +42,7 @@ TTS 合成和"从单词里切一刀"都极易得到 `kuh`、`duh` 这种**带 sc
 | `u.mp3` | u | /ʌ/ | 第三周 | Freesound · margo_heston · `Uh.wav` |
 | `l.mp3` | l | /l/ | 第三周 | Freesound · margo_heston · `Ll.wav` |
 | `f.mp3` | f | /f/ | 第三周 | Freesound · margo_heston · `Ff.wav` |
-| `b.mp3` | b | /b/ | 第三周 | Freesound · **ipapronunciations** · `[b] - Voiced bilabial plosive.wav`（CC0；切自 "ba"，用户 2026-09-03 听页面后拍板注入，见下） |
+| `b.mp3` | b | /b/ | 第三周 | TESSA / The Open University · `Teaching with Phonics Audio A1`（CC BY-NC-SA 4.0；第六次独立示范，用户 2026-09-04 听检确认） |
 
 **别名**：第二周的 `k` 不单独录音，页面通过 `SOUNDS.k.audioKey = 'c'` 复用 `c.mp3`。
 别名音**不要**在本目录放同名文件，`build_phonemes.py` 会拒绝。
@@ -68,14 +68,16 @@ TTS 合成和"从单词里切一刀"都极易得到 `kuh`、`duh` 这种**带 sc
 （例如 o 为何取 `Ahh.wav` 不取 `Aah.wav`）也记在那个清单里。五段来自 margo_heston：
 `G.wav`、`Ahh.wav`、`Uh.wav`、`Ll.wav`、`Ff.wav`。
 
-**/b/ 是来源例外**：margo_heston 的音包 43 段里没有 B（有 Pp、D、G、K）。唯一找到的真人替代来源是 Freesound 用户
-**ipapronunciations** 的[「IPA Pulmonic Consonants」音包](https://freesound.org/people/ipapronunciations/packs/35572/)
-（[sound 640377](https://freesound.org/people/ipapronunciations/sounds/640377/)，CC0 1.0，内容是 "ba, aba"），
-只能从 "ba" 里切出预浊音 + 爆破 + 约 60 ms 元音起始——正是上文说的"从单词里切一刀"，元音尾压不到零，
-还换了发音人。codex 审（`docs/codex审查记录/21-第三周音素音.md` C-1）判为触及硬约束，先退为候选不注入；
-**2026-09-03 用户听页面后拍板提升注入**（页面 b 没有声音比带一点元音尾更影响本周教学）。这是十八段里唯一
-非 margo_heston 的一段，也是最需要课上盯着孩子模仿效果的一段：若孩子跟着念成 "buh"，按下面「候选目录」
-的退回三步（一条 `--remove b` 命令）退回家长口令，或自录一段 /b/ 覆盖 `b.mp3`。
+**/b/ 是来源例外**：margo_heston 的音包 43 段里没有 B（有 Pp、D、G、K）。先前使用 Freesound 用户
+ipapronunciations 的 `ba, aba` 临时候选，从音节中裁出的版本无论延长还是渐弱都显得不自然。
+2026-09-04 改用 TESSA / The Open University 的
+[Teaching with Phonics Audio A1](https://www.open.edu/openlearncreate/mod/resource/view.php?id=190145)：
+该教学轨包含六次独立 `/b/` 示范，成品取约 82.50–83.40 秒的第六次，保留预浊音、闭塞与自然释放，
+不做降噪；用户试听后确认可用。该素材按 **CC BY-NC-SA 4.0** 使用，剪辑后的 `/b/` 音频按相同许可分享并保留署名。
+完整原轨与校验信息归档在 `source-library/tessa-teaching-with-phonics/`。
+
+这解决了第三周 `/b/` 的临时占位问题，但不会改变整套音源调研结论：目前 18 段仍来自两个体系，
+长期统一 42 音仍应走 `docs/项目记忆/统一音素音源调研_20260904.md` 的替换门禁。
 
 ## 候选目录 `candidates/`
 
@@ -108,6 +110,10 @@ python tools/build_phonemes.py --target week03.html --remove b        # 只删 P
 > `python tools/build_phonemes.py --target week01.html --extract-to assets/phonemes`
 > 从已内嵌的 base64 无损取回的（六段逐个 sha256 比对，与页面内字节完全一致）。
 > 以后不要再让源文件只存在于 HTML 里。
+
+完整的 margo_heston「English Phonemes」音包（43 段公开 HQ MP3 试听源）现归档在
+`source-library/margo_heston-english-phonemes/`，并附带可核验的 `manifest.json`。这些是原始参考音，
+不会被本目录顶层扫描逻辑误注入；详情见 `source-library/README.md`。
 
 ## 技术规格
 

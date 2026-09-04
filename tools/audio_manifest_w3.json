@@ -981,7 +981,8 @@
    "text": "golf",
    "type": "word",
    "group": "A",
-   "file": "golf.mp3"
+   "file": "golf.mp3",
+   "silence_threshold_db": -60
   },
   {
    "key": "and",

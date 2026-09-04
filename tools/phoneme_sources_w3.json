@@ -1,7 +1,7 @@
 {
   "_meta": {
     "week": 3,
-    "说明": "第三周新音的来源与切点。tools/prep_phonemes.py 按本表下载试听流（sha256 校验）、降噪、裁段，产出 WAV 交给 tools/build_phonemes.py 规格化并注入。切点由频谱图与 10ms 帧能量包络定（2026-09-03）；codex 首审（归档 21）后 l 的降噪降为 10 dB、b 退为候选；2026-09-03 用户听页面后拍板把 b 候选提升注入。人耳听检由用户完成。",
+    "说明": "第三周新音的来源与切点。tools/prep_phonemes.py 按本表下载试听流（sha256 校验）、降噪、裁段，产出 WAV 交给 tools/build_phonemes.py 规格化并注入。切点由频谱图与 10ms 帧能量包络定（2026-09-03）；codex 首审（归档 21）后 l 的降噪降为 10 dB。b 先用 Freesound 临时候选，2026-09-04 改为 TESSA A1 教学录音中的第六次孤立示范，并由用户试听确认。人耳听检由用户完成。",
     "降噪": "STFT 频谱门限：取试听流开头 noise_sample_end 秒为底噪样本，逐频点阈值 = 均值 + 1.5 倍标准差，低于阈值的时频点衰减 nr_db 分贝。guard 是分带能量护栏：降噪后该频带在段内损失超过 max_loss_db 即失败。",
     "试听流": "cdn.freesound.org 的 -hq.mp3 预览（MP3 派生，非作者原始 WAV），与第二周取音方式相同。sha256 / bytes 为 2026-09-03 下载实测。",
     "听检后怎么改": "g 若听起来像 k：start 改 0.68（含爆破前的浊化嗡音）。u 若听起来像央元音：同音包没有第二个 /ʌ/ 候选，只能用户自录覆盖 u.mp3。l 若发闷：nr_db 再降或设 0。"
@@ -35,8 +35,8 @@
   },
   "b": {
     "inject": true,
-    "source": {"title": "[b] - Voiced bilabial plosive.wav", "author": "ipapronunciations", "sound_id": 640377, "page": "https://freesound.org/people/ipapronunciations/sounds/640377/", "preview": "https://cdn.freesound.org/previews/640/640377_14110264-hq.mp3", "sha256": "778dd97a631dc343753d130e7764b0766749b6cab5493360271bd0dcff3a9c9c", "bytes": 59597, "license": "CC0 1.0", "desc": "A person who pronounces the voiced bilabial plosive, [b]. [ba aba]."},
-    "start": 0.29, "end": 0.41, "noise_sample_end": 0.12, "nr_db": 10, "fade_in_ms": 0, "fade_out_ms": 60, "fade_out_to_db": -25,
-    "note": "已注入（codex 21 审 C-1 判为触及硬约束、先退为候选；用户 2026-09-03 听页面后拍板提升注入，教学效果由听检把关，不合格随时可退回，见句末三步）。margo_heston 的音包 43 段里没有 /b/。此段从 ipapronunciations 的 \"ba\" 切出预浊音 + 爆破 + 约 60ms 元音起始并淡出到 -25dB——是 README 明文警告的\"从音节切一刀\"路径，元音尾压不到零，且换了发音人。课上若发现孩子跟着念成 buh，退回三步：python tools/build_phonemes.py --target week03.html --remove b（只删 PHONEME_AUDIO 里的 b 键）；把 assets/phonemes/b.mp3 移到 assets/phonemes/candidates/；本文件 inject 改 false。注入是合并语义，光改 inject 不会删已内嵌的键。或用户自录 /b/ 覆盖 b.mp3 后重注入"
+    "source": {"title": "Teaching with Phonics Audio A1", "author": "TESSA / The Open University", "sound_id": 190145, "page": "https://www.open.edu/openlearncreate/mod/resource/view.php?id=190145", "preview": "https://www.open.edu/openlearncreate/pluginfile.php/670879/mod_resource/content/4/Teaching_With_Phonics_A1.mp3?forcedownload=1", "sha256": "ae0258abf5694062ded479751ea7bd23aefe8ce2598e3624c6047d96d49b6b7d", "bytes": 3277696, "license": "CC BY-NC-SA 4.0", "desc": "TESSA phonics teaching track A1: single-letter sounds with listen-and-repeat pauses."},
+    "start": 82.50, "end": 83.40, "nr_db": 0, "fade_in_ms": 0, "fade_out_ms": 80,
+    "note": "margo_heston 的音包 43 段里没有 /b/。TESSA A1 在约 60.6、62.4、64.1、75.7、79.3、82.7 秒含六次独立 /b/ 示范；取第六次，裁段保留完整预浊音、闭塞与自然释放，不做降噪。2026-09-04 用户试听 tessa-b-preview.mp3 后确认可用，替换此前从 ipapronunciations 的 \"ba\" 强行裁出的临时占位。完整原轨与校验信息归档在 assets/phonemes/source-library/tessa-teaching-with-phonics/。"
   }
 }
