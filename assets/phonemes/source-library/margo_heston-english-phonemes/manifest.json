@@ -1,0 +1,449 @@
+{
+  "pack": {
+    "id": 12249,
+    "title": "English Phonemes",
+    "author": "margo_heston",
+    "page": "https://freesound.org/people/margo_heston/packs/12249/",
+    "license": "CC BY-NC 4.0",
+    "note": "Public HQ MP3 previews; reference source archive, not page-ready teaching clips."
+  },
+  "retrieved": "2026-09-04",
+  "listing_pages": [
+    "https://freesound.org/search/?f=pack_grouping%3A%2212249_English%20Phonemes%22&g=1&s=Date%20added%20%28newest%20first%29&page=1",
+    "https://freesound.org/search/?f=pack_grouping%3A%2212249_English%20Phonemes%22&g=1&s=Date%20added%20%28newest%20first%29&page=2",
+    "https://freesound.org/search/?f=pack_grouping%3A%2212249_English%20Phonemes%22&g=1&s=Date%20added%20%28newest%20first%29&page=3"
+  ],
+  "count": 43,
+  "files": [
+    {
+      "sound_id": 193262,
+      "title": "Ay.wav",
+      "duration_seconds": 1.64862,
+      "page": "https://freesound.org/people/margo_heston/sounds/193262/",
+      "preview": "https://cdn.freesound.org/previews/193/193262_3597275-hq.mp3",
+      "file": "193262_Ay.mp3",
+      "bytes": 39654,
+      "sha256": "c8f3a61b99293ff1a174b89901e0552f485a78d78dfa7c38693cd906297766ff"
+    },
+    {
+      "sound_id": 193263,
+      "title": "Aww.wav",
+      "duration_seconds": 1.57896,
+      "page": "https://freesound.org/people/margo_heston/sounds/193263/",
+      "preview": "https://cdn.freesound.org/previews/193/193263_3597275-hq.mp3",
+      "file": "193263_Aww.mp3",
+      "bytes": 37724,
+      "sha256": "206be4442ce82b4a9af3d888f128b4e65850240da9e11776056e8b5ef3965645"
+    },
+    {
+      "sound_id": 193264,
+      "title": "Ahh.wav",
+      "duration_seconds": 1.25388,
+      "page": "https://freesound.org/people/margo_heston/sounds/193264/",
+      "preview": "https://cdn.freesound.org/previews/193/193264_3597275-hq.mp3",
+      "file": "193264_Ahh.mp3",
+      "bytes": 30262,
+      "sha256": "0717861a4e6b52676f638e136fa865dec44f7463475accba56da2fe7d67d5358"
+    },
+    {
+      "sound_id": 193265,
+      "title": "Aah.wav",
+      "duration_seconds": 1.78794,
+      "page": "https://freesound.org/people/margo_heston/sounds/193265/",
+      "preview": "https://cdn.freesound.org/previews/193/193265_3597275-hq.mp3",
+      "file": "193265_Aah.mp3",
+      "bytes": 42890,
+      "sha256": "e8b8174df183fa0bfe863c2c35fcb70f4d145147dd19c1b3c0fe31084b456b54"
+    },
+    {
+      "sound_id": 193266,
+      "title": "Eh.wav",
+      "duration_seconds": 1.6254,
+      "page": "https://freesound.org/people/margo_heston/sounds/193266/",
+      "preview": "https://cdn.freesound.org/previews/193/193266_3597275-hq.mp3",
+      "file": "193266_Eh.mp3",
+      "bytes": 39236,
+      "sha256": "66b8e9b75c735fa1547dc4796240c29c25c01efb64341e257792c7fc17a02302"
+    },
+    {
+      "sound_id": 193267,
+      "title": "Ee.wav",
+      "duration_seconds": 1.64862,
+      "page": "https://freesound.org/people/margo_heston/sounds/193267/",
+      "preview": "https://cdn.freesound.org/previews/193/193267_3597275-hq.mp3",
+      "file": "193267_Ee.mp3",
+      "bytes": 39966,
+      "sha256": "b61713f488980fef2e194c7a8929af8309a0ea2aa35e49bc0f3180f06375e558"
+    },
+    {
+      "sound_id": 193268,
+      "title": "D.wav",
+      "duration_seconds": 1.6254,
+      "page": "https://freesound.org/people/margo_heston/sounds/193268/",
+      "preview": "https://cdn.freesound.org/previews/193/193268_3597275-hq.mp3",
+      "file": "193268_D.mp3",
+      "bytes": 39342,
+      "sha256": "02743f16091f7a8b441760b862b50dbf29faf5150501bb2e453885eb9574af7f"
+    },
+    {
+      "sound_id": 193269,
+      "title": "Aye.wav",
+      "duration_seconds": 1.64862,
+      "page": "https://freesound.org/people/margo_heston/sounds/193269/",
+      "preview": "https://cdn.freesound.org/previews/193/193269_3597275-hq.mp3",
+      "file": "193269_Aye.mp3",
+      "bytes": 39652,
+      "sha256": "916efc2c0f968c5496fa37ee7bfdc3c358ccc078a1541915cd2bf7d35ebd1162"
+    },
+    {
+      "sound_id": 193270,
+      "title": "Ff.wav",
+      "duration_seconds": 1.64862,
+      "page": "https://freesound.org/people/margo_heston/sounds/193270/",
+      "preview": "https://cdn.freesound.org/previews/193/193270_3597275-hq.mp3",
+      "file": "193270_Ff.mp3",
+      "bytes": 39861,
+      "sha256": "ca6f8110f7af4e1a448f58b4eb4440d548a92c889bffcda8dc50b692f7582e6d"
+    },
+    {
+      "sound_id": 193271,
+      "title": "Ewe.wav",
+      "duration_seconds": 1.48608,
+      "page": "https://freesound.org/people/margo_heston/sounds/193271/",
+      "preview": "https://cdn.freesound.org/previews/193/193271_3597275-hq.mp3",
+      "file": "193271_Ewe.mp3",
+      "bytes": 35584,
+      "sha256": "92609fce6c3ef03e1e787cae457fad875a449b107ca8b0db58f17ca9dd8a2a34"
+    },
+    {
+      "sound_id": 193272,
+      "title": "Ss.wav",
+      "duration_seconds": 1.43964,
+      "page": "https://freesound.org/people/margo_heston/sounds/193272/",
+      "preview": "https://cdn.freesound.org/previews/193/193272_3597275-hq.mp3",
+      "file": "193272_Ss.mp3",
+      "bytes": 35063,
+      "sha256": "ad5e6c12350f096eb5eb249bd8dfb19816605a6cea6dadcad73588ae52d9fa32"
+    },
+    {
+      "sound_id": 193273,
+      "title": "Tt.wav",
+      "duration_seconds": 1.20744,
+      "page": "https://freesound.org/people/margo_heston/sounds/193273/",
+      "preview": "https://cdn.freesound.org/previews/193/193273_3597275-hq.mp3",
+      "file": "193273_Tt.mp3",
+      "bytes": 29428,
+      "sha256": "fb9d9d668c49c42f143f1bfac8f0b48bf3496dbd951e1cccd9b651ebd32b01d3"
+    },
+    {
+      "sound_id": 193274,
+      "title": "Qu.wav",
+      "duration_seconds": 1.69506,
+      "page": "https://freesound.org/people/margo_heston/sounds/193274/",
+      "preview": "https://cdn.freesound.org/previews/193/193274_3597275-hq.mp3",
+      "file": "193274_Qu.mp3",
+      "bytes": 40905,
+      "sha256": "e49ba5b38cb7f9e80dda44ef1b466b5af371666e1767628e6fcda49c8d4731de"
+    },
+    {
+      "sound_id": 193275,
+      "title": "Rr.wav",
+      "duration_seconds": 1.41642,
+      "page": "https://freesound.org/people/margo_heston/sounds/193275/",
+      "preview": "https://cdn.freesound.org/previews/193/193275_3597275-hq.mp3",
+      "file": "193275_Rr.mp3",
+      "bytes": 33813,
+      "sha256": "2a7c8b43b2b2a1f7bfa1740682802efa5e30ad4849da4b4ef88bd841ca6a7f72"
+    },
+    {
+      "sound_id": 193276,
+      "title": "Jj.wav",
+      "duration_seconds": 1.5093,
+      "page": "https://freesound.org/people/margo_heston/sounds/193276/",
+      "preview": "https://cdn.freesound.org/previews/193/193276_3597275-hq.mp3",
+      "file": "193276_Jj.mp3",
+      "bytes": 36420,
+      "sha256": "88313a6b8b8552ed340ca92d457e98ccef5d0146f73d38dcfe5223bcdb16e924"
+    },
+    {
+      "sound_id": 193277,
+      "title": "Ih.wav",
+      "duration_seconds": 1.55574,
+      "page": "https://freesound.org/people/margo_heston/sounds/193277/",
+      "preview": "https://cdn.freesound.org/previews/193/193277_3597275-hq.mp3",
+      "file": "193277_Ih.mp3",
+      "bytes": 37777,
+      "sha256": "8117261a97dc09e424e66f423764db00733c8242fb8fa907ea218a3f50ffc156"
+    },
+    {
+      "sound_id": 193278,
+      "title": "Hh.wav",
+      "duration_seconds": 1.55574,
+      "page": "https://freesound.org/people/margo_heston/sounds/193278/",
+      "preview": "https://cdn.freesound.org/previews/193/193278_3597275-hq.mp3",
+      "file": "193278_Hh.mp3",
+      "bytes": 37460,
+      "sha256": "b655dc7bca3587a27db917aaaa199d045f37d944492f054bd1894f548792b217"
+    },
+    {
+      "sound_id": 193279,
+      "title": "G.wav",
+      "duration_seconds": 1.90404,
+      "page": "https://freesound.org/people/margo_heston/sounds/193279/",
+      "preview": "https://cdn.freesound.org/previews/193/193279_3597275-hq.mp3",
+      "file": "193279_G.mp3",
+      "bytes": 45705,
+      "sha256": "59c16713de1b53242b28f90f1f140e89f2e3e94f7198e379fa1b84a4d0a65f41"
+    },
+    {
+      "sound_id": 193280,
+      "title": "Nn.wav",
+      "duration_seconds": 1.92726,
+      "page": "https://freesound.org/people/margo_heston/sounds/193280/",
+      "preview": "https://cdn.freesound.org/previews/193/193280_3597275-hq.mp3",
+      "file": "193280_Nn.mp3",
+      "bytes": 45916,
+      "sha256": "4209117cb80040cc8e7b8a720585ca1efaf08c3882a8980a0d589d01dbe7bb57"
+    },
+    {
+      "sound_id": 193281,
+      "title": "Mm.wav",
+      "duration_seconds": 1.7415,
+      "page": "https://freesound.org/people/margo_heston/sounds/193281/",
+      "preview": "https://cdn.freesound.org/previews/193/193281_3597275-hq.mp3",
+      "file": "193281_Mm.mp3",
+      "bytes": 41843,
+      "sha256": "d7a69855f2a5e8bb8114c539e3c4a9e5d058eac299dbab79284bc9da39fadaed"
+    },
+    {
+      "sound_id": 193282,
+      "title": "Ll.wav",
+      "duration_seconds": 1.81116,
+      "page": "https://freesound.org/people/margo_heston/sounds/193282/",
+      "preview": "https://cdn.freesound.org/previews/193/193282_3597275-hq.mp3",
+      "file": "193282_Ll.mp3",
+      "bytes": 43408,
+      "sha256": "e1267641fc27e1ccef6b4c489274a3857f618aa7ab5aafb38c5e0d87fd0dc364"
+    },
+    {
+      "sound_id": 193283,
+      "title": "K.wav",
+      "duration_seconds": 1.41642,
+      "page": "https://freesound.org/people/margo_heston/sounds/193283/",
+      "preview": "https://cdn.freesound.org/previews/193/193283_3597275-hq.mp3",
+      "file": "193283_K.mp3",
+      "bytes": 34436,
+      "sha256": "5a03ca6a3c0a76183adeac1d8a8b764f0e2019fa19db1bc20f33fa3534b6daea"
+    },
+    {
+      "sound_id": 193284,
+      "title": "Pp.wav",
+      "duration_seconds": 1.64862,
+      "page": "https://freesound.org/people/margo_heston/sounds/193284/",
+      "preview": "https://cdn.freesound.org/previews/193/193284_3597275-hq.mp3",
+      "file": "193284_Pp.mp3",
+      "bytes": 39759,
+      "sha256": "106e88bf00e378e99e4a4af56312d3ed1df2ee909587a921d29e80cf0a3fa40d"
+    },
+    {
+      "sound_id": 193285,
+      "title": "Ohh.wav",
+      "duration_seconds": 1.95048,
+      "page": "https://freesound.org/people/margo_heston/sounds/193285/",
+      "preview": "https://cdn.freesound.org/previews/193/193285_3597275-hq.mp3",
+      "file": "193285_Ohh.mp3",
+      "bytes": 46437,
+      "sha256": "5d68f3df9a4f37cb840ecb9996d93368e8f9d4b5c1950e4121a76e0a5ca792eb"
+    },
+    {
+      "sound_id": 193304,
+      "title": "Err.wav",
+      "duration_seconds": 1.43964,
+      "page": "https://freesound.org/people/margo_heston/sounds/193304/",
+      "preview": "https://cdn.freesound.org/previews/193/193304_3597275-hq.mp3",
+      "file": "193304_Err.mp3",
+      "bytes": 33708,
+      "sha256": "8bfd9762cd053e2bf5220b1318325e41484389ce026d325443ff42f4e0957850"
+    },
+    {
+      "sound_id": 193305,
+      "title": "Ch.wav",
+      "duration_seconds": 1.57896,
+      "page": "https://freesound.org/people/margo_heston/sounds/193305/",
+      "preview": "https://cdn.freesound.org/previews/193/193305_3597275-hq.mp3",
+      "file": "193305_Ch.mp3",
+      "bytes": 37308,
+      "sha256": "fc54b956df902b64131c631156c0f512ba8e4bbf14617d79c7a88b30e5f4da36"
+    },
+    {
+      "sound_id": 193306,
+      "title": "Au.wav",
+      "duration_seconds": 1.64862,
+      "page": "https://freesound.org/people/margo_heston/sounds/193306/",
+      "preview": "https://cdn.freesound.org/previews/193/193306_3597275-hq.mp3",
+      "file": "193306_Au.mp3",
+      "bytes": 39242,
+      "sha256": "de2c3d991710f93571169483a91efc249e669ede31c9aca54d109c6e474d2ab1"
+    },
+    {
+      "sound_id": 193307,
+      "title": "Arr.wav",
+      "duration_seconds": 2.322,
+      "page": "https://freesound.org/people/margo_heston/sounds/193307/",
+      "preview": "https://cdn.freesound.org/previews/193/193307_3597275-hq.mp3",
+      "file": "193307_Arr.mp3",
+      "bytes": 54060,
+      "sha256": "f7d65a0278a6d65fe2f0dc7315a339ab04ead4839b45c6af190978388b81fef4"
+    },
+    {
+      "sound_id": 193308,
+      "title": "Oww.wav",
+      "duration_seconds": 1.69506,
+      "page": "https://freesound.org/people/margo_heston/sounds/193308/",
+      "preview": "https://cdn.freesound.org/previews/193/193308_3597275-hq.mp3",
+      "file": "193308_Oww.mp3",
+      "bytes": 40178,
+      "sha256": "e6ef531306d7d325e94e76995c5cc4ec491778458f5bbf6e40884958a5e04849"
+    },
+    {
+      "sound_id": 193309,
+      "title": "Ooo.wav",
+      "duration_seconds": 2.11302,
+      "page": "https://freesound.org/people/margo_heston/sounds/193309/",
+      "preview": "https://cdn.freesound.org/previews/193/193309_3597275-hq.mp3",
+      "file": "193309_Ooo.mp3",
+      "bytes": 49258,
+      "sha256": "681c9c7fb53fa8235ea349d4fd8a2960b008e37d130969e675e1a061faa6dfa1"
+    },
+    {
+      "sound_id": 193310,
+      "title": "Nng.wav",
+      "duration_seconds": 1.69506,
+      "page": "https://freesound.org/people/margo_heston/sounds/193310/",
+      "preview": "https://cdn.freesound.org/previews/193/193310_3597275-hq.mp3",
+      "file": "193310_Nng.mp3",
+      "bytes": 40388,
+      "sha256": "e587116e6fe73924700a9f1aa2c737e9a8789d22d382b8fef33995e791b96471"
+    },
+    {
+      "sound_id": 193311,
+      "title": "Hw.wav",
+      "duration_seconds": 1.41642,
+      "page": "https://freesound.org/people/margo_heston/sounds/193311/",
+      "preview": "https://cdn.freesound.org/previews/193/193311_3597275-hq.mp3",
+      "file": "193311_Hw.mp3",
+      "bytes": 33497,
+      "sha256": "06e4560f21cae6ffb33c0eee21ec5b38d69fa53d11e3e0942301197962b6709e"
+    },
+    {
+      "sound_id": 193312,
+      "title": "Shh.wav",
+      "duration_seconds": 1.99692,
+      "page": "https://freesound.org/people/margo_heston/sounds/193312/",
+      "preview": "https://cdn.freesound.org/previews/193/193312_3597275-hq.mp3",
+      "file": "193312_Shh.mp3",
+      "bytes": 46335,
+      "sha256": "fadc2f4665849c4e17509dcaa78ee214e516d00a5e3c991a558b0d75d7cbd041"
+    },
+    {
+      "sound_id": 193313,
+      "title": "Oy.wav",
+      "duration_seconds": 1.48608,
+      "page": "https://freesound.org/people/margo_heston/sounds/193313/",
+      "preview": "https://cdn.freesound.org/previews/193/193313_3597275-hq.mp3",
+      "file": "193313_Oy.mp3",
+      "bytes": 35273,
+      "sha256": "de92a71c229f20e01fdf3977efe8ae7f95f97ae68277a30914297057730313ed"
+    },
+    {
+      "sound_id": 193318,
+      "title": "Uh.wav",
+      "duration_seconds": 1.5093,
+      "page": "https://freesound.org/people/margo_heston/sounds/193318/",
+      "preview": "https://cdn.freesound.org/previews/193/193318_3597275-hq.mp3",
+      "file": "193318_Uh.mp3",
+      "bytes": 35639,
+      "sha256": "1b9783560d84c9e66293846316a995a24b78f7cfeb846b6378330127b19b11ce"
+    },
+    {
+      "sound_id": 193319,
+      "title": "oo.wav",
+      "duration_seconds": 1.5093,
+      "page": "https://freesound.org/people/margo_heston/sounds/193319/",
+      "preview": "https://cdn.freesound.org/previews/193/193319_3597275-hq.mp3",
+      "file": "193319_oo.mp3",
+      "bytes": 35691,
+      "sha256": "5986d83bc802675295db0ada500b49dbb01a001a593a9d02e70baadabc443430"
+    },
+    {
+      "sound_id": 193320,
+      "title": "Th.wav",
+      "duration_seconds": 1.41642,
+      "page": "https://freesound.org/people/margo_heston/sounds/193320/",
+      "preview": "https://cdn.freesound.org/previews/193/193320_3597275-hq.mp3",
+      "file": "193320_Th.mp3",
+      "bytes": 34021,
+      "sha256": "4041a6ad8c30322395df47eb6d94caade3295e47c166794b934c94972cffb0a0"
+    },
+    {
+      "sound_id": 193321,
+      "title": "Zzz.wav",
+      "duration_seconds": 1.60218,
+      "page": "https://freesound.org/people/margo_heston/sounds/193321/",
+      "preview": "https://cdn.freesound.org/previews/193/193321_3597275-hq.mp3",
+      "file": "193321_Zzz.mp3",
+      "bytes": 38038,
+      "sha256": "539d549c1e5b7d75e257162d7db3343181ef60f6777cd4c05369b787f393e483"
+    },
+    {
+      "sound_id": 193322,
+      "title": "Vvv.wav",
+      "duration_seconds": 1.41642,
+      "page": "https://freesound.org/people/margo_heston/sounds/193322/",
+      "preview": "https://cdn.freesound.org/previews/193/193322_3597275-hq.mp3",
+      "file": "193322_Vvv.mp3",
+      "bytes": 33682,
+      "sha256": "f6810ce1157acf7954c77bd855a09eed7900334a8b4213b3c1e766e72cba03c0"
+    },
+    {
+      "sound_id": 193323,
+      "title": "kss.wav",
+      "duration_seconds": 1.41642,
+      "page": "https://freesound.org/people/margo_heston/sounds/193323/",
+      "preview": "https://cdn.freesound.org/previews/193/193323_3597275-hq.mp3",
+      "file": "193323_kss.mp3",
+      "bytes": 33916,
+      "sha256": "f105459b1698ee75a890683423cb8c3fd2d86116ab519ad57421366097a23bcd"
+    },
+    {
+      "sound_id": 193324,
+      "title": "Yyuh.wav",
+      "duration_seconds": 1.64862,
+      "page": "https://freesound.org/people/margo_heston/sounds/193324/",
+      "preview": "https://cdn.freesound.org/previews/193/193324_3597275-hq.mp3",
+      "file": "193324_Yyuh.mp3",
+      "bytes": 38717,
+      "sha256": "8fad4672349f6c2bdc5c9fce87816e6c1bcdfee1566bc746a55881fcb66a0ad4"
+    },
+    {
+      "sound_id": 193325,
+      "title": "Zh.wav",
+      "duration_seconds": 1.5093,
+      "page": "https://freesound.org/people/margo_heston/sounds/193325/",
+      "preview": "https://cdn.freesound.org/previews/193/193325_3597275-hq.mp3",
+      "file": "193325_Zh.mp3",
+      "bytes": 35586,
+      "sha256": "c926b6fa5c6cd2a70837f555ef52944f6e8a35c4f1e36cffc5a6cbf210e02bfa"
+    },
+    {
+      "sound_id": 193326,
+      "title": "Wuh.wav",
+      "duration_seconds": 1.41642,
+      "page": "https://freesound.org/people/margo_heston/sounds/193326/",
+      "preview": "https://cdn.freesound.org/previews/193/193326_3597275-hq.mp3",
+      "file": "193326_Wuh.mp3",
+      "bytes": 33396,
+      "sha256": "85d67daf261b194d523f3f78cef825794775ca6dae85c2cbf44a60ec1d51b2e8"
+    }
+  ]
+}
