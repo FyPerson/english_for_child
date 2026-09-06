@@ -1,0 +1,22 @@
+.initialpick{
+  border:1px solid var(--cons-line); border-radius:var(--r-l); background:var(--surface);
+  box-shadow:var(--shadow-1); padding:18px; text-align:center;
+}
+.initialpick__body{display:flex; flex-direction:column; align-items:center; gap:14px; min-height:250px; justify-content:center}
+.initialpick__stage{display:flex; align-items:center; justify-content:center; min-height:54px}
+.initialpick__listen{font-size:16px; min-width:150px}
+.initialpick__choices{display:flex; gap:18px; justify-content:center; flex-wrap:wrap}
+.initialpick__letter{
+  width:92px; height:92px; border:3px solid var(--cons-line); border-radius:24px;
+  background:var(--cons-soft); color:var(--cons); font-family:var(--en); font-size:48px; font-weight:700;
+  box-shadow:0 5px 0 var(--cons-line); cursor:pointer; transition:transform .15s, box-shadow .15s, background .15s;
+}
+.initialpick__letter:hover:not(:disabled){transform:translateY(-2px); box-shadow:0 7px 0 var(--cons-line)}
+.initialpick__letter:active:not(:disabled){transform:translateY(3px); box-shadow:0 2px 0 var(--cons-line)}
+.initialpick__letter:disabled{cursor:default; opacity:.78}
+.initialpick__letter--right{background:var(--ok-soft); border-color:var(--ok); color:var(--ok); box-shadow:0 5px 0 var(--ok)}
+.initialpick__letter--wrong{background:var(--vowel-soft); border-color:var(--vowel-line); color:var(--vowel); animation:shake .34s}
+.initialpick__feedback{display:flex; align-items:center; justify-content:center; gap:12px; min-height:76px; font-size:14px; color:var(--ink-2)}
+.initialpick__feedback b{font-family:var(--en); font-size:25px; color:var(--ink)}
+.initialpick__feedback .ill{flex:none}
+.initialpick__progress{font-size:12.5px; color:var(--ink-3); margin:0}

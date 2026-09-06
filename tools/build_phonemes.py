@@ -14,20 +14,20 @@ CC BY-NC 4.0，降噪裁剪后手贴 base64），没有留下脚本，源文件�
 
 用法：
     # 看会做什么，不写盘
-    python tools/build_phonemes.py --target week02.html --src assets/phonemes/week02 --dry-run
+    python tools/build_phonemes.py --target week02.html --src resources/assets/phonemes/week02 --dry-run
 
     # 真的注入
-    python tools/build_phonemes.py --target week02.html --src assets/phonemes/week02
+    python tools/build_phonemes.py --target week02.html --src resources/assets/phonemes/week02
 
     # 把目标 HTML 里已内嵌的音素音导出成文件（第一周源文件已丢失，用这个取回）
-    python tools/build_phonemes.py --target week01.html --extract-to assets/phonemes/week01
+    python tools/build_phonemes.py --target week01.html --extract-to resources/assets/phonemes/week01
 
     # 从目标 HTML 删掉某个音素音（注入是合并语义，光把源文件拿走不会删已内嵌的键）
     python tools/build_phonemes.py --target week03.html --remove b [--dry-run]
 
 源目录约定：文件名 = 音素键，扩展名随意（凡 ffmpeg 能解码即可）。
-    assets/phonemes/week02/c.wav   → 注入 PHONEME_AUDIO.c
-    assets/phonemes/week02/e.mp3   → 注入 PHONEME_AUDIO.e
+    resources/assets/phonemes/week02/c.wav   → 注入 PHONEME_AUDIO.c
+    resources/assets/phonemes/week02/e.mp3   → 注入 PHONEME_AUDIO.e
 别名音（如第二周 k 的 audioKey 指向 c）**不要**单独放文件，脚本会校验并拒绝。
 
 注入是**合并**不是替换：已有的键保留，同名键覆盖。所以第二周只需放六个新音，
@@ -338,7 +338,7 @@ def do_remove(target: Path, keys: list[str], dry_run: bool) -> int:
 
     只碰 PHONEME_AUDIO 块，别的一个字节不动；键必须已内嵌，不然多半是打错了；
     与 --src 互斥——删和注入分开写盘，出了事好回溯。删完页面按铁律 8 不再给该音听音按钮；
-    记得把 assets/phonemes/<键>.mp3 移出源目录，否则下次注入又合并回来。
+    记得把 resources/assets/phonemes/<键>.mp3 移出源目录，否则下次注入又合并回来。
     """
     keys = list(dict.fromkeys(keys))          # 去重保序
     html = read_target(target)
@@ -356,7 +356,7 @@ def do_remove(target: Path, keys: list[str], dry_run: bool) -> int:
     need = {k for k in declared if k not in alias}
     print(f"删除 {len(keys)}：{' '.join(keys)}")
     print(f"剩余 {len(remaining)} 段：{' '.join(order) or '（空）'}；音素音覆盖 {len(set(remaining) & need)}/{len(need)}")
-    print("按铁律 8，被删的音在页面上不再有听音按钮；把 assets/phonemes/<键>.mp3 移出源目录（如移进 candidates/），"
+    print("按铁律 8，被删的音在页面上不再有听音按钮；把 resources/assets/phonemes/<键>.mp3 移出源目录（如移进 candidates/），"
           "否则下次注入又合并回来")
     if dry_run:
         print("\n--dry-run：未写盘")

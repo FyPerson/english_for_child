@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""构建管线：按 tools/audio_manifest.json 对 assets/audio_raw/ 的 56 条 mp3 做
-后处理（裁头尾静音 + 峰值归一），产出 assets/audio_processed/，并在自检全绿后
+"""构建管线：按 resources/manifests/audio_manifest.json 对 resources/assets/audio_raw/ 的 56 条 mp3 做
+后处理（裁头尾静音 + 峰值归一），产出 resources/assets/audio_processed/，并在自检全绿后
 把 WORD_AUDIO 注入目标周课件 HTML。
 
 规格来源：docs/声音积木v3游戏版实施规格_20260829_v1.3.md §1（后处理参数）+ §10
@@ -9,11 +9,11 @@
 
 用法：
   python tools/build_audio.py --no-inject   # 只跑「处理 + 自检①-⑥」，不碰目标 HTML
-  python tools/build_audio.py --manifest tools/audio_manifest_w2.json --target week02.html
+  python tools/build_audio.py --manifest resources/manifests/audio_manifest_w2.json --target week02.html
   python tools/build_audio.py                # 处理 + 自检七项全部 + 注入 + 原子写出
 
 设计要点（对应 S2 spec 草稿 1-6 条）：
-  1. 目录：raw=assets/audio_raw/（只读）→ processed=assets/audio_processed/（新建，可覆盖重跑）
+  1. 目录：raw=resources/assets/audio_raw/（只读）→ processed=resources/assets/audio_processed/（新建，可覆盖重跑）
   2. ffmpeg：imageio_ffmpeg.get_ffmpeg_exe()，不装 pydub
   3. 处理链：每条两遍 ffmpeg（测量 → 处理），处理后再复测验证
   4. 注入锚：/* WORD_AUDIO_INJECT_START */ ... /* WORD_AUDIO_INJECT_END */ 标记对，
@@ -21,7 +21,7 @@
   5. 原子写出：先写 .tmp 再 os.replace；任一自检失败 = 非零退出，不写目标 HTML
   6. 七项自检：见下方 check1..check7，失败即整体非零退出
 
-产物边界（M4，S2 预筛裁定）：assets/audio_processed/ 是**可重建缓存**，不是交付物——
+产物边界（M4，S2 预筛裁定）：resources/assets/audio_processed/ 是**可重建缓存**，不是交付物——
 删掉整个目录重跑一次 `python tools/build_audio.py --no-inject` 即可从 raw 完全重建；
 本脚本唯一的真正输出是 week01.html（原子写出，见 atomic_write）。配合 H1 修复
 （process_one 编码前 unlink 旧 processed 文件），杜绝"这次 ffmpeg 实际失败，但目录里
@@ -47,9 +47,9 @@ for _stream in (sys.stdout, sys.stderr):
 ROOT = Path(__file__).resolve().parent.parent
 # 默认值 = 第一周（保持既有调用方式不变）；--manifest / --target 可覆盖，
 # 这样每加一周不用再改脚本，只加一份 manifest（规范 §11 明确要求）。
-MANIFEST_PATH = ROOT / "tools" / "audio_manifest.json"
-RAW_DIR = ROOT / "assets" / "audio_raw"          # 禁区：只读
-PROCESSED_DIR = ROOT / "assets" / "audio_processed"
+MANIFEST_PATH = ROOT / "resources" / "manifests" / "audio_manifest.json"
+RAW_DIR = ROOT / "resources" / "assets" / "audio_raw"          # 禁区：只读
+PROCESSED_DIR = ROOT / "resources" / "assets" / "audio_processed"
 TARGET_HTML = ROOT / "week01.html"
 
 # ---------------- 后处理参数（规格 §1，S2 spec 草稿第 3 条冻结） ----------------
@@ -884,7 +884,7 @@ def hr(title: str) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-inject", action="store_true", help="只跑处理+自检①-⑥，不注入/不改动目标 HTML")
-    ap.add_argument("--manifest", help="词表清单路径（默认 tools/audio_manifest.json，第一周）")
+    ap.add_argument("--manifest", help="词表清单路径（默认 resources/manifests/audio_manifest.json，第一周）")
     ap.add_argument("--target", help="注入目标 HTML（默认 week01.html）")
     args = ap.parse_args()
 

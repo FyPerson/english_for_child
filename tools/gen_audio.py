@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""按 tools/audio_manifest.json 批量生成 edge-tts 音频（断点续跑：已存在且非空的文件跳过）。
+"""按 resources/manifests/audio_manifest.json 批量生成 edge-tts 音频（断点续跑：已存在且非空的文件跳过）。
 
-用法：python tools/gen_audio.py [--force] [--manifest tools/audio_manifest_w2.json]
-输出：assets/audio_raw/<file>（裁静音/响度归一由 build_audio.py 负责，此处只生成原始 clip）
+用法：python tools/gen_audio.py [--force] [--manifest resources/manifests/audio_manifest_w2.json]
+输出：resources/assets/audio_raw/<file>（裁静音/响度归一由 build_audio.py 负责，此处只生成原始 clip）
 """
 import argparse
 import asyncio
@@ -13,8 +13,8 @@ from pathlib import Path
 import edge_tts
 
 ROOT = Path(__file__).resolve().parent.parent
-MANIFEST = ROOT / "tools" / "audio_manifest.json"   # 可被 --manifest 覆盖
-OUT_DIR = ROOT / "assets" / "audio_raw"
+MANIFEST = ROOT / "resources" / "manifests" / "audio_manifest.json"   # 可被 --manifest 覆盖
+OUT_DIR = ROOT / "resources" / "assets" / "audio_raw"
 CONCURRENCY = 3
 
 
@@ -86,7 +86,7 @@ async def main(force, only_keys=None):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true", help="忽略已有文件全部重新生成")
-    ap.add_argument("--manifest", help="词表清单路径（默认第一周 tools/audio_manifest.json）")
+    ap.add_argument("--manifest", help="词表清单路径（默认第一周 resources/manifests/audio_manifest.json）")
     ap.add_argument("--key", action="append", help="只生成指定 key；可重复传入，适合局部回炉")
     _a = ap.parse_args()
     if _a.manifest:

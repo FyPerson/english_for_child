@@ -3,15 +3,15 @@
 → 淡入淡出 → 分带保留率护栏 → 写 WAV。
 
 产出的 WAV 不是最终资源，要再交给 tools/build_phonemes.py 做裁静音 / 归一 / 编码 / 注入：
-    python tools/prep_phonemes.py  --spec tools/phoneme_sources_w3.json --out tmp/phonemes_stage --clean
+    python tools/prep_phonemes.py  --spec resources/manifests/phoneme_sources_w3.json --out tmp/phonemes_stage --clean
     python tools/build_phonemes.py --target week03.html --src tmp/phonemes_stage
-    # 然后把 tmp/phonemes_build/<键>.mp3 复制进 assets/phonemes/（那才是真相源，见其 README）
+    # 然后把 tmp/phonemes_build/<键>.mp3 复制进 resources/assets/phonemes/（那才是真相源，见其 README）
 
 为什么要有这个脚本：第一周的音素音手工剪完源文件就丢了，第二周的处理过程也没留脚本。
 这里把"从哪段音、哪个切点、什么参数"写进 spec，日后换切点或换来源都能复跑，
 也让 codex / 他人能核对每个音到底取自哪里。
 
-spec 格式见 tools/phoneme_sources_w3.json：顶层 "_meta" 是说明，其余键 = 音素键，每项含
+spec 格式见 resources/manifests/phoneme_sources_w3.json：顶层 "_meta" 是说明，其余键 = 音素键，每项含
     source.preview   试听流 URL（下载到 tmp/phoneme_previews/ 缓存）
     source.sha256 / source.bytes   **必填**：试听流的哈希（64 位十六进制）与字节数（正整数）；
                      下载与缓存命中都校验，对不上就重下、再不对就报错；漏填直接拒绝，不会静默跳过校验
@@ -25,7 +25,7 @@ spec 格式见 tools/phoneme_sources_w3.json：顶层 "_meta" 是说明，其余
                      ——门限降噪对"本身像噪声"的擦音、对信噪比低的频带（如 /l/ 的 F3 区）可能削掉真实成分，
                      只看总峰值和时长发现不了（codex 21 审 M-2 + 自查 S-1）。护栏在写盘前判定，失败不碰已有产物
     inject           可选，默认 true，必须是 JSON 布尔。false = 候选：写到 <out>/candidates/，
-                     build_phonemes.py 不会扫到子目录，不会被注入；人耳听检通过后再单独注入（见 assets/phonemes/README.md）
+                     build_phonemes.py 不会扫到子目录，不会被注入；人耳听检通过后再单独注入（见 resources/assets/phonemes/README.md）
 
 类型模糊的配置一律拒绝（失败关闭）：条目 / source / guard 必须是对象，数值必须是有限非布尔数。
 输出目录顶层与 candidates/ 里凡是本次没生成的 .wav 都视为残留并报错——两者都可能被当作
@@ -365,7 +365,7 @@ def prep_one(ffmpeg: str, key: str, it: dict, out_dir: Path) -> Path:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="从试听流切出音素示范音（交给 build_phonemes.py 规格化）")
-    ap.add_argument("--spec", required=True, help="来源与切点清单 JSON，如 tools/phoneme_sources_w3.json")
+    ap.add_argument("--spec", required=True, help="来源与切点清单 JSON，如 resources/manifests/phoneme_sources_w3.json")
     ap.add_argument("--out", required=True, help="WAV 输出目录，如 tmp/phonemes_stage")
     ap.add_argument("--key", action="append", help="只处理这些键（可重复）")
     ap.add_argument("--clean", action="store_true", help="先清空输出目录里的 .wav（含 candidates/），避免残留混入注入")

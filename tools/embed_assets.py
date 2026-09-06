@@ -7,16 +7,16 @@ HTML、写死了某个会话目录、写死了文件名映射，复用不了；�
 已于 2026-09-01 一并删除（见 git 历史 7f3eb85）。本脚本按目录约定和 art 键自动配对。
 
 用法：
-  python tools/embed_assets.py --target week02.html --assets assets/week02
-  python tools/embed_assets.py --target week02.html --assets assets/week02 --dry-run
-  python tools/embed_assets.py --target week02.html --assets assets/week02 --raw   # 跳过规格化
+  python tools/embed_assets.py --target week02.html --assets resources/assets/week02
+  python tools/embed_assets.py --target week02.html --assets resources/assets/week02 --dry-run
+  python tools/embed_assets.py --target week02.html --assets resources/assets/week02 --raw   # 跳过规格化
 
 目录约定（文件名 = art 键，见 docs/插画生成提示词_第N周_*.md）：
-  assets/week{NN}/phoneme/<键>.png      → PHONEME_ILL   （音素助记图，键取自 SOUNDS[].art）
-  assets/week{NN}/word-cards/<词>.png   → WORD_ILL      （词卡插画，键取自 W[].art）
-  assets/week{NN}/book/<键>.png         → BOOK_IMG      （小书插画，键取自 BOOK.pages[].art）
-  assets/week{NN}/celebrate.png         → CELEBRATE_NAT （庆祝主角图，单张）
-  assets/wall-nat/<键>.png              → WORD_ILL      （复用第一周已有的 Nat 动作原图；本周目录优先）
+  resources/assets/week{NN}/phoneme/<键>.png      → PHONEME_ILL   （音素助记图，键取自 SOUNDS[].art）
+  resources/assets/week{NN}/word-cards/<词>.png   → WORD_ILL      （词卡插画，键取自 W[].art）
+  resources/assets/week{NN}/book/<键>.png         → BOOK_IMG      （小书插画，键取自 BOOK.pages[].art）
+  resources/assets/week{NN}/celebrate.png         → CELEBRATE_NAT （庆祝主角图，单张）
+  resources/assets/wall-nat/<键>.png              → WORD_ILL      （复用第一周已有的 Nat 动作原图；本周目录优先）
   下划线开头的文件一律跳过（角色定妆图等中间产物，不进课件）。
 
 幂等：每次都从目录全量重建这四个常量再整体替换，可以边补图边重跑。
@@ -130,7 +130,7 @@ def render_map(name: str, entries: dict[str, str], note: str) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", required=True, help="周课件 HTML，如 week02.html")
-    ap.add_argument("--assets", required=True, help="本周素材目录，如 assets/week02")
+    ap.add_argument("--assets", required=True, help="本周素材目录，如 resources/assets/week02")
     ap.add_argument("--raw", action="store_true", help="跳过 unify 规格化，按原样内嵌")
     ap.add_argument("--dry-run", action="store_true", help="只报告，不写文件")
     args = ap.parse_args()
@@ -175,7 +175,7 @@ def main() -> int:
     # 第一周已经生成过一套 Nat 动作 PNG。后续周若在 W[].art 里显式引用同名键，
     # 直接复用这批原图；本周 word-cards 目录若有同名素材，仍以本周版本优先。
     # 共享图已经是 192×192 RGBA 的课件成品，因此按原始字节内嵌，不再二次规格化。
-    shared_word_dir = ROOT / "assets" / "wall-nat"
+    shared_word_dir = ROOT / "resources" / "assets" / "wall-nat"
     if shared_word_dir.exists():
         missing_word_keys = sorted(refs["WORD_ILL"] - set(built["WORD_ILL"]))
         reused = []
@@ -251,8 +251,8 @@ def main() -> int:
     os.replace(tmp, target)
     print(f"已原子写出 {target.name}")
     print("下一步：跑一遍自检——"
-          f"node tools/week-checks/check_data.js {target.name} && "
-          f"python tools/week-checks/smoke_w2_browser.py {target.name}")
+          f"node tools/validation/check_data.js {target.name} && "
+          f"python tests/browser/smoke_w2_browser.py {target.name}")
     return 0
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Archive the public HQ previews from margo_heston's English Phonemes pack.
 
-The archive is reference material only.  It lives below assets/phonemes/source-library,
+The archive is reference material only.  It lives below resources/assets/phonemes/source-library,
 so build_phonemes.py (which scans only the top level) will never inject it by accident.
 """
 
@@ -18,7 +18,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "assets" / "phonemes" / "source-library" / "margo_heston-english-phonemes"
+OUT = ROOT / "resources" / "assets" / "phonemes" / "source-library" / "margo_heston-english-phonemes"
 PACK_ID = 12249
 EXPECTED_COUNT = 43
 SEARCH_URL = (

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "weeks": [1, 2, 3, 4],
+  "courseWeeks": [1, 2, 3],
+  "entry": "course.html"
+}

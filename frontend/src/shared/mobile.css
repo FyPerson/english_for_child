@@ -1,0 +1,36 @@
+/* Shared accessibility and touch layout; desktop teaching colors remain unchanged. */
+[hidden]{display:none!important}
+.progress-notice{position:relative;max-width:1060px;margin:16px auto;padding:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;background:var(--surface);color:var(--ink);border:2px solid var(--accent);border-radius:14px}
+.progress-notice>span{flex:1 1 260px}
+.progress-tools{flex-wrap:wrap}
+.progress-tools input[type=file]{display:block;max-width:100%;font:inherit}
+.progress-tools [data-import-status]{flex-basis:100%;overflow-wrap:anywhere}
+button,a,input,summary{touch-action:manipulation}
+button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+@media(max-width:600px),(pointer:coarse){
+  button,.btn,.linklike,summary{min-height:44px}
+  button,.btn,.iconbtn{min-width:44px}
+  .dot{min-width:44px;min-height:44px}
+  .tile--sm{min-width:44px;min-height:48px}
+  input,select,textarea{font-size:16px!important}
+  .parent-panel__row{flex-wrap:wrap;min-width:0}
+  .parent-panel__note{flex-basis:100%}
+  .startdate-input{max-width:100%;min-width:0}
+  .progress-notice{margin:12px}
+}
+.assessment{margin:16px 0;padding:16px;border:1px solid var(--line);border-radius:14px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.assessment>h3,.assessment>p,.assessment>.wcards{flex-basis:100%}
+.assessment label{display:flex;align-items:center;gap:8px;min-height:44px}
+.assessment input[type=number]{width:90px;padding:8px}
+.assessment select{padding:8px;font:inherit}
+.assessment-text{font-size:24px;line-height:1.8;white-space:pre-line}
+@media(max-width:420px){
+  .dots{gap:2px!important;flex-wrap:wrap}
+  .rack__group-tiles{max-width:100%}
+  .book__ctrls,.flash__ctrls{flex-wrap:wrap}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}
+}
+
+<!-- @include shared/initialpick.css -->

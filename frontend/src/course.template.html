@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>声音积木 · __COURSE_TITLE__</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:#f7f4ed;color:#273d38;font-family:system-ui,sans-serif}body{display:grid;grid-template-columns:240px minmax(0,1fr);height:100dvh}
+.sidebar{padding:24px 16px;border-right:1px solid #d6dfd7;background:#fffdf8;overflow:auto}h1{font-size:20px;margin:0 0 10px;line-height:1.5}nav{display:flex;flex-direction:column;gap:12px;margin:24px 0}button{min-height:48px;border:1px solid #bdcfc4;background:white;border-radius:12px;padding:12px 14px;color:inherit;font:inherit;cursor:pointer}nav button{text-align:left}nav strong,nav small{display:block}nav small{font-size:12px;margin-top:6px;line-height:1.5}button[aria-pressed=true]{background:#245c4a;color:white;border-color:#245c4a}button:disabled{background:#f0f0eb;color:#747a73;border-color:#e0e3dc;cursor:not-allowed}button:focus-visible{outline:3px solid #dca140;outline-offset:2px}p{font-size:13px;margin:8px 0 0;line-height:1.6}#courseStatus{font-weight:600}main{min-width:0;min-height:0;display:flex;flex-direction:column}iframe{border:0;width:100%;flex:1;min-height:0;background:#f7f4ed}[hidden]{display:none!important}#weekBlocked{padding:40px;max-width:600px}#navToggle{display:none}noscript{padding:20px}
+@media(max-width:700px){body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}.sidebar{padding:10px 12px;border-right:0;border-bottom:1px solid #d6dfd7;max-height:60dvh}.brand{display:flex;align-items:center;justify-content:space-between;gap:8px}h1{font-size:16px;margin:0}#navToggle{display:block;padding:8px 12px;min-height:44px}nav{display:none;margin:12px 0}.sidebar[data-expanded=true] nav{display:flex}.help{display:none}.sidebar[data-expanded=true] .help{display:block}#courseStatus{font-size:12px}}
+</style></head><body>
+<aside class="sidebar" data-expanded="false"><div class="brand"><h1>声音积木<br>__COURSE_TITLE__</h1><button id="navToggle" aria-expanded="false" aria-controls="weekNav">学习目录</button></div><nav id="weekNav" aria-label="选择学习周次">__COURSE_NAV__</nav>
+<p id="courseStatus" role="status">正在读取学习进度…</p><p class="help">完成当天全部打卡后解锁下一天；完成一整周后解锁下一周。备份与恢复在已解锁周的家长设置中。</p></aside>
+<main><iframe id="lesson" title="第一周课件"></iframe><section id="weekBlocked" hidden><h2>这一周已重新锁定</h2><p>前面的完成记录发生了变化。已有学习记录保留，请从学习目录返回前面尚未完成的周次。</p></section></main><noscript>请启用 JavaScript 后打开课件。</noscript>
+<script id="course-payload" type="application/json">__COURSE_PAYLOAD__</script>
+<script>
+const course = JSON.parse(document.getElementById('course-payload').textContent);
+const frame = document.getElementById('lesson');
+let selectedWeek = 1;
+function completion(){
+  return course.weeks.flatMap(week=>{
+    let data;
+    try{data=JSON.parse(localStorage.getItem(week.key));}catch(e){data=null;}
+    return week.checks.map((keys,i)=>keys.length>0 && keys.every(key=>data?.days?.[i+1]?.checks?.[key]===true));
+  });
+}
+function allowed(week,day){
+  if(!Number.isInteger(week)||week<1||week>course.weeks.length||!Number.isInteger(day)||day<1||day>7) return false;
+  return completion().slice(0,(week-1)*7+day-1).every(Boolean);
+}
+function refresh(){
+  const done=completion();const next=done.findIndex(x=>!x);
+  document.getElementById('courseStatus').textContent=next<0?'本阶段已全部完成！可以回看任意一天。':`已完成 ${done.filter(Boolean).length}/${done.length} 天 · 下一步：第 ${Math.floor(next/7)+1} 周第 ${next%7+1} 天`;
+  document.querySelectorAll('[data-week]').forEach(button=>{
+    const week=+button.dataset.week,unlocked=allowed(week,1),count=done.slice((week-1)*7,week*7).filter(Boolean).length;
+    button.disabled=!unlocked;
+    button.setAttribute('aria-pressed',String(week===selectedWeek));
+    button.querySelector('small').textContent=unlocked?(count===7?'✓ 已完成 · 可复习':`${count}/7 天完成 · ${week===selectedWeek?'正在学习':'可进入'}`):`🔒 完成第 ${week-1} 周后解锁`;
+  });
+  frame.hidden=!allowed(selectedWeek,1);
+  document.getElementById('weekBlocked').hidden=!frame.hidden;
+  if(frame.contentWindow?.courseRefresh) frame.contentWindow.courseRefresh();
+}
+window.CourseGate={allowed,refresh};
+function openWeek(week){
+  if(!allowed(week,1)) return;
+  if(frame.contentWindow?.courseCanLeave && !frame.contentWindow.courseCanLeave()) return;
+  selectedWeek=week;
+  document.querySelectorAll('[data-week]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.week===week)));
+  frame.title=`第 ${week} 周课件`;
+  frame.srcdoc=new TextDecoder().decode(Uint8Array.from(atob(course.weeks[week-1].html),c=>c.charCodeAt(0)));
+  refresh();
+  document.querySelector('.sidebar').dataset.expanded='false';
+  document.getElementById('navToggle').setAttribute('aria-expanded','false');
+}
+document.getElementById('navToggle').onclick=()=>{
+  const sidebar=document.querySelector('.sidebar'),expanded=sidebar.dataset.expanded!=='true';
+  sidebar.dataset.expanded=String(expanded);document.getElementById('navToggle').setAttribute('aria-expanded',String(expanded));
+};
+document.querySelectorAll('[data-week]').forEach(b=>b.onclick=()=>openWeek(+b.dataset.week));
+window.addEventListener('storage',refresh);
+openWeek(1);
+</script></body></html>
