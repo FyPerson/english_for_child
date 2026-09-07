@@ -1,4 +1,4 @@
-# 06 · S1 播放层改造 — Opus 预筛 + codex 审（P0 编码阶段，commit fde43e6/5b68312/+收口）
+# 06 · S1 播放层改造 — Opus 预筛 + codex 审（P0 编码阶段，commit 2eab14b/5ce9612/+收口）
 
 ## 元信息
 
