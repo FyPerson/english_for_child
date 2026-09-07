@@ -53,7 +53,12 @@ function extract(raw) {
       if (typeof v !== 'string') throw new Error(`${name}[${key}]: value is not a string`);
       const m = DATA_URI.exec(v);
       if (!m) throw new Error(`${name}[${key}]: value is not a data URI; single-file form required`);
-      entries.push([key, m[1], crypto.createHash('sha256').update(Buffer.from(m[2], 'base64')).digest('hex')]);
+      const bytes = Buffer.from(m[2], 'base64');
+      // Canonical base64 only: correct length, padding only at the end, and a lossless round trip.
+      if (m[2].length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(m[2]) || bytes.toString('base64') !== m[2]) {
+        throw new Error(`${name}[${key}]: value is not canonical base64`);
+      }
+      entries.push([key, m[1], crypto.createHash('sha256').update(bytes).digest('hex')]);
     };
     if (name === 'CELEBRATE_NAT') {
       if (!STRING_DECL.test(text)) throw new Error(`${name}: must be a single-line string declaration`);
@@ -78,13 +83,36 @@ function extract(raw) {
   return out;
 }
 
-if (require.main === module) {
+const {Worker, isMainThread, parentPort, workerData} = require('worker_threads');
+const CLI_TIMEOUT_MS = 120000;
+
+if (!isMainThread) {
+  // Worker: do the extraction so the main thread can terminate a hung synchronous step.
   try {
-    const raw = fs.readFileSync(process.argv[2], 'utf8');
-    process.stdout.write(JSON.stringify(extract(raw)));
+    parentPort.postMessage({ok: true, json: JSON.stringify(extract(fs.readFileSync(workerData.path, 'utf8')))});
   } catch (error) {
-    console.error('media_declarations: ' + error.message);
-    process.exit(1);
+    parentPort.postMessage({ok: false, message: error.message});
   }
+} else if (require.main === module) {
+  const worker = new Worker(__filename, {workerData: {path: process.argv[2]}});
+  const timer = setTimeout(() => {
+    console.error(`media_declarations: timed out after ${CLI_TIMEOUT_MS} ms`);
+    worker.terminate().finally(() => process.exit(2));
+  }, CLI_TIMEOUT_MS);
+  worker.once('message', result => {
+    clearTimeout(timer);
+    if (result.ok) {
+      process.stdout.write(result.json);
+      process.exitCode = 0;
+    } else {
+      console.error('media_declarations: ' + result.message);
+      process.exitCode = 1;
+    }
+  });
+  worker.once('error', error => {
+    clearTimeout(timer);
+    console.error('media_declarations: ' + error.message);
+    process.exitCode = 1;
+  });
 }
 module.exports = {extract, NAMES};

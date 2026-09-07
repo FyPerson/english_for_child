@@ -141,7 +141,10 @@ def validate(data):
         for field in ('sha256', 'skeletonSha256'):
             if not isinstance(entry[field], str) or not HEX64.match(entry[field]):
                 _fail(f'{name}: {field} must be a 64-hex digest')
-        if sorted(entry['declarationOrder']) != sorted(NAMES) or len(entry['declarationOrder']) != len(NAMES):
+        order = entry['declarationOrder']
+        if not isinstance(order, list) or not all(isinstance(x, str) for x in order):
+            _fail(f'{name}: declarationOrder must be a list of strings')
+        if sorted(order) != sorted(NAMES) or len(order) != len(NAMES):
             _fail(f'{name}: declarationOrder must be a permutation of the seven declarations')
         media = entry['media']
         if not isinstance(media, dict) or set(media) != set(NAMES):
@@ -227,6 +230,9 @@ def check(fixture=FIXTURE, week_paths=None):
         missing = [name for name in COVERED_WEEKS if name not in week_paths]
         if missing:
             raise ValueError('week_paths must cover ' + ', '.join(missing))
+        extra = sorted(set(week_paths) - set(COVERED_WEEKS))
+        if extra:
+            raise ValueError('week_paths has entries the baseline does not cover: ' + ', '.join(extra))
         built = {name: Path(week_paths[name]) for name in COVERED_WEEKS}
         skipped = []
     else:

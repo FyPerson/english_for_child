@@ -96,6 +96,10 @@ class AnalyzeTests(unittest.TestCase):
     def test_crlf_is_rejected(self):
         self.assert_rejected(sample()[0], 'carriage return', newline='\r\n')
 
+    def test_non_canonical_base64_is_rejected(self):
+        for payload in ['AAA', 'AA==AA', 'AAAA=', 'AAA=AAAA']:
+            self.assert_rejected(sample(wall_value=f'data:image/png;base64,{payload}')[0], 'canonical base64')
+
     def test_static_scan_rejects_non_plain_properties(self):
         value = f"'data:image/png;base64,{PNG}'"
         for lines, pattern in [
@@ -168,6 +172,33 @@ class CreateTests(unittest.TestCase):
                 make_fixture(fake_project(temp), fixture, statuses=('', ' M week01.html'))
             self.assertFalse(fixture.exists())
 
+    def test_real_git_repository_detects_a_build_that_rewrites_tracked_products(self):
+        """Same guard, but with a real git repository instead of a mocked status."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = fake_project(temp)
+            git = lambda *a: subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@example.com', *a], cwd=root, check=True, capture_output=True)
+            git('init', '-q'); git('add', '.'); git('commit', '-q', '-m', 'products')
+            fixture = root / 'b.json'
+            config = {'weeks': [1, 2, 3, 4], 'courseWeeks': [1], 'entry': 'course.html'}
+            common = dict(ROOT=root, node_version=lambda: 'v24.0.0', load_config=lambda: config)
+            with patch.multiple(baseline, build=lambda: None, **common):
+                data = baseline.create(fixture=fixture)
+            self.assertEqual(data['sourceCommit'], git('rev-parse', 'HEAD').stdout.decode().strip())
+            self.assertTrue(fixture.exists())
+            fixture.unlink()
+
+            def rewriting_build():
+                write(root, sample(extra='<!-- rebuilt differently -->')[0], 'week03.html')
+            with patch.multiple(baseline, build=rewriting_build, **common):
+                with self.assertRaisesRegex(SystemExit, 'build changed'):
+                    baseline.create(fixture=fixture)
+            self.assertFalse(fixture.exists())
+            git('checkout', '--', 'week03.html')
+            (root / 'stray.txt').write_text('untracked', encoding='utf-8')
+            with patch.multiple(baseline, build=lambda: None, **common):
+                with self.assertRaisesRegex(SystemExit, 'not clean'):
+                    baseline.create(fixture=fixture)
+
 
 class FixtureSchemaTests(unittest.TestCase):
     def valid(self, temp):
@@ -199,6 +230,9 @@ class FixtureSchemaTests(unittest.TestCase):
         self.assert_invalid(dup, 'duplicate key')
         order = json.loads(json.dumps(data)); order['weeks']['week01.html']['declarationOrder'] = baseline.NAMES[:-1]
         self.assert_invalid(order, 'permutation')
+        for bad in ['PHONEME_AUDIO', [1, None, {}], None]:
+            typed = json.loads(json.dumps(data)); typed['weeks']['week01.html']['declarationOrder'] = bad
+            self.assert_invalid(typed, 'list of strings')
         celebrate = json.loads(json.dumps(data)); celebrate['weeks']['week01.html']['media']['CELEBRATE_NAT'] = []
         self.assert_invalid(celebrate, 'CELEBRATE_NAT')
 
@@ -227,6 +261,8 @@ class CheckTests(unittest.TestCase):
             baseline.check(fixture=fixture, week_paths=paths)
             with self.assertRaisesRegex(ValueError, 'week_paths must cover'):
                 baseline.check(fixture=fixture, week_paths={'week01.html': root / 'week01.html'})
+            with self.assertRaisesRegex(ValueError, 'does not cover: week05.html'):
+                baseline.check(fixture=fixture, week_paths=dict(paths, **{'week05.html': root / 'week01.html'}))
             before = (fixture.read_bytes(), os.stat(fixture).st_mtime_ns)
             broken = sample(extra='<!-- week 2 -->', wall_value=f'data:image/png;base64,{PNG}')[0]
             write(root, broken, 'week02.html')
