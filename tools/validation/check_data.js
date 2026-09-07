@@ -1,6 +1,6 @@
 /* 周课件数据层一致性自检 —— 与周次无关，两种输入都吃：
  *
- *   node tools/validation/check_data.js week02.html                  # 装配好的周课件
+ *   node tools/validation/check_data.js build/week02.html            # 装配好的周课件
  *   node tools/validation/check_data.js tests/fixtures/week02-data.js   # 独立数据层
  *
  * 后一种是给外部模型用的：GPT 写完第三周数据层，直接跑这个就知道合不合格，
@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 
 const REPO = path.resolve(__dirname, '..', '..');
-const arg = process.argv[2] || 'week02.html';
+const arg = process.argv[2] || 'build/week02.html';
 const SRC = path.resolve(process.cwd(), arg);
 if (!fs.existsSync(SRC)) {
   console.error(`找不到输入文件：${SRC}\n用法：node ${path.relative(REPO, __filename)} <周课件HTML 或 数据层JS>`);

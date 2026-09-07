@@ -11,7 +11,7 @@ def run():
         page=browser.new_page()
         errors=[]
         page.on('pageerror',lambda e:errors.append(str(e)))
-        page.goto((ROOT/'week04.html').as_uri())
+        page.goto((ROOT/'build'/'week04.html').as_uri())
         pool=page.evaluate('[...RESERVED,...RESERVED_RETEST]')
         for n in range(1,8):
             page.locator(f'.dots [data-goto="{n}"]').click()

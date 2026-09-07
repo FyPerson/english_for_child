@@ -13,7 +13,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 REPO = Path(__file__).resolve().parents[2]
-TARGET = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else REPO / "week03.html"
+TARGET = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else REPO / "build" / "week03.html"
 if not TARGET.exists():
     sys.exit(f"找不到目标文件：{TARGET}")
 print(f"目标文件：{TARGET}")

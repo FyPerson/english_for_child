@@ -39,10 +39,10 @@ console.log('PASS assessment contract: valid fixture and 16 negative cases');
 const fs = require('node:fs'), path = require('node:path');
 const {loadData} = require('../../tools/validation/load_data');
 const root = path.resolve(__dirname, '../..');
-const actual = loadData(fs.readFileSync(path.join(root, 'week04.html'), 'utf8'));
+const actual = loadData(fs.readFileSync(path.join(root, 'build', 'week04.html'), 'utf8'));
 const baseline = [...actual.RESERVED, ...actual.RESERVED_RETEST];
 for (let week = 1; week <= 3; week++) {
-  const previous = loadData(fs.readFileSync(path.join(root, `week0${week}.html`), 'utf8'));
+  const previous = loadData(fs.readFileSync(path.join(root, 'build', `week0${week}.html`), 'utf8'));
   const exposed = new Set(JSON.stringify(previous).toLowerCase().match(/[a-z]+/g));
   assert.deepEqual(baseline.filter(word => exposed.has(word)), [], `W4 baseline exposed in W${week}`);
 }

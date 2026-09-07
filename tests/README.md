@@ -2,7 +2,7 @@
 
 `unit/` 存放构建、目录、媒体和测评契约测试；`browser/` 存放所有浏览器回归；`fixtures/` 存放派生数据快照。构建使用的校验实现位于 `tools/validation/`，旧移植脚本归 `tools/legacy/`。自动截图输出到 `test-results/screenshots/`。
 
-新开发入口统一为 `python tools/project.py check`，以下旧命令继续兼容。生产目录与发布流程见 `docs/development.md`。
+新开发入口统一为 `python tools/project.py check`：先构建到 `build/`，再在临时目录重建一次逐文件比对（可重现构建），然后对照单文件基线，最后跑单元与浏览器套件。生成物不入库，测试一律读 `build/` 下的产物。以下旧命令继续兼容。生产目录与发布流程见 `docs/development.md`。
 
 当前统一入口：Windows 运行 `./tools/check.ps1`，其他环境运行 `python tools/run_checks.py`。需要 Node.js、Python 3.10+ 和 `requirements-dev.txt` 中的 Playwright；浏览器安装命令 `python -m playwright install chromium`。
 

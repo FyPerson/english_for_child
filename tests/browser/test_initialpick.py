@@ -10,7 +10,7 @@ def run():
         for week,day,total in [(1,7,8),(3,1,5)]:
             page=browser.new_page(viewport={'width':390,'height':844},has_touch=True)
             errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-            page.goto((ROOT/f'week{week:02}.html').as_uri())
+            page.goto((ROOT/'build'/f'week{week:02}.html').as_uri())
             page.locator(f'.dots [data-goto="{day}"]').click()
             game=page.locator('[data-initialpick]')
             step=page.locator('.step').filter(has=game)

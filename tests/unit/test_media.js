@@ -2,8 +2,8 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const {loadData,declaration}=require('../../tools/validation/load_data');
 function value(raw,key){const box={};vm.runInNewContext(declaration(raw,key)+'\nresult='+key+';',box);return box.result;}
 const all=[];
-for(const file of fs.readdirSync('.').filter(f=>/^week\d\d\.html$/.test(f)).sort()){
-  const raw=fs.readFileSync(file,'utf8'),d=loadData(raw),audio=value(raw,'WORD_AUDIO'),phonemes=value(raw,'PHONEME_AUDIO');
+for(const file of fs.readdirSync('build').filter(f=>/^week\d\d\.html$/.test(f)).sort()){
+  const raw=fs.readFileSync(`build/${file}`,'utf8'),d=loadData(raw),audio=value(raw,'WORD_AUDIO'),phonemes=value(raw,'PHONEME_AUDIO');
   for(const name of ['PHONEME_AUDIO','WORD_AUDIO','PHONEME_ILL','WORD_ILL','WALL_ILL','BOOK_IMG','CELEBRATE_NAT']){
     const source=fs.readFileSync(`frontend/src/media/${file.replace('.html','')}/${name.toLowerCase()}.js`,'utf8');
     assert.equal(declaration(raw,name),declaration(source,name),`${file}: generated media differs from source ${name}`);

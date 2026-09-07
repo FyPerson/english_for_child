@@ -7,7 +7,7 @@ from playwright.sync_api import sync_playwright
 # M-4：不要写死绝对路径。从脚本自身位置推仓库根（tools/week-checks/ → 上两级），
 # 允许命令行传目标 HTML，并打印最终解析路径——否则换机器时会静默审错文件。
 REPO = Path(__file__).resolve().parents[2]
-TARGET = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else REPO / "week02.html"
+TARGET = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else REPO / "build" / "week02.html"
 if not TARGET.exists():
     sys.exit(f"找不到目标文件：{TARGET}\n用法：python {Path(__file__).name} [目标HTML]")
 print(f"目标文件：{TARGET}")

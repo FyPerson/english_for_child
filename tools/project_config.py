@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+BUILD = ROOT / 'build'   # generated products; not tracked by git
+INDEX_HTML = '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=course.html"><title>声音积木</title><a href="course.html">进入声音积木</a>'
 
 def load_config(path=None):
     data=json.loads((path or ROOT/'project.json').read_text(encoding='utf-8'))

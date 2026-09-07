@@ -13,7 +13,7 @@ def run():
         page=browser.new_page(viewport={'width':1280,'height':900},has_touch=True)
         errors=[]
         page.on('pageerror',lambda e:errors.append(str(e)))
-        page.goto((ROOT/'course.html').as_uri())
+        page.goto((ROOT/'build'/'course.html').as_uri())
         def child():
             page.locator('iframe').content_frame.locator('.daycard').first.wait_for()
             return page.frames[1]
@@ -91,7 +91,7 @@ def run():
         # Website mode reuses the same weekly keys and works without external requests.
         class QuietHandler(SimpleHTTPRequestHandler):
             def log_message(self,*args):pass
-        server=ThreadingHTTPServer(('127.0.0.1',0),partial(QuietHandler,directory=str(ROOT)))
+        server=ThreadingHTTPServer(('127.0.0.1',0),partial(QuietHandler,directory=str(ROOT/'build')))
         Thread(target=server.serve_forever,daemon=True).start()
         try:
             web=browser.new_page()

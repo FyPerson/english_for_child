@@ -6,8 +6,9 @@ declaration order, and per-key media bytes. `build` and `check` only ever read t
 deliberate `--create --force` in its own commit.
 
 Transitional (phase 0 and phase 1 of the engineering plan v1.3 §3.4 ③): the default build form is the single-file
-form, so both commands read the products the default build writes. From phase 0 step 2 they read a
-`--output-dir` temporary directory, and from phase 1b they build explicitly with `--single-file`.
+form, so both commands read the products the default build writes: `--create` reads build/ right after building,
+`--check` reads the products directory given with `--dir` (run_checks passes its reproducible-build temporary
+directory) or build/ by default. From phase 1b both build explicitly with `--single-file`.
 """
 import argparse
 import datetime
@@ -18,7 +19,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from project_config import ROOT, load_config, week_name
+from project_config import ROOT, BUILD, load_config, week_name
 
 NAMES = ['PHONEME_AUDIO', 'WORD_AUDIO', 'PHONEME_ILL', 'WORD_ILL', 'WALL_ILL', 'BOOK_IMG', 'CELEBRATE_NAT']
 MIMES = {'audio/mpeg', 'image/png', 'image/webp'}
@@ -87,7 +88,7 @@ def create(force=False, fixture=FIXTURE):
     missing = [name for name in COVERED_WEEKS if name not in {week_name(n) for n in config['weeks']}]
     if missing:
         raise SystemExit('REFUSED: project.json no longer lists the covered weeks ' + ', '.join(missing))
-    weeks = {name: analyze(ROOT / name) for name in COVERED_WEEKS}
+    weeks = {name: analyze(BUILD / name) for name in COVERED_WEEKS}
     data = {
         'schemaVersion': 1,
         'takenAt': datetime.date.today().isoformat(),
@@ -95,7 +96,7 @@ def create(force=False, fixture=FIXTURE):
         'form': FORM,
         'toolVersions': {'python': platform.python_version(), 'node': node_version(), 'hash': 'sha256'},
         'weeks': weeks,
-        'course': {'sha256': sha256((ROOT / config['entry']).read_bytes())},
+        'course': {'sha256': sha256((BUILD / config['entry']).read_bytes())},
     }
     validate(data)
     fixture.parent.mkdir(parents=True, exist_ok=True)
@@ -223,8 +224,12 @@ def differences(expected, actual):
     return out
 
 
-def check(fixture=FIXTURE, week_paths=None):
-    """Compare built lessons with the fixture. `week_paths` (tests) must map every covered week explicitly."""
+def check(fixture=FIXTURE, week_paths=None, products_dir=None):
+    """Compare built lessons with the fixture.
+
+    `products_dir` is where the products were built (build/ by default; run_checks passes its temporary directory).
+    `week_paths` (tests) must map every covered week explicitly and nothing else.
+    """
     data = load(fixture)
     if week_paths is not None:
         missing = [name for name in COVERED_WEEKS if name not in week_paths]
@@ -241,7 +246,11 @@ def check(fixture=FIXTURE, week_paths=None):
         missing = [name for name in COVERED_WEEKS if name not in listed]
         if missing:
             raise SystemExit('project.json no longer lists the covered weeks ' + ', '.join(missing))
-        built = {name: ROOT / name for name in COVERED_WEEKS}
+        directory = Path(products_dir) if products_dir is not None else BUILD
+        built = {name: directory / name for name in COVERED_WEEKS}
+        absent = [name for name in COVERED_WEEKS if not built[name].is_file()]
+        if absent:
+            raise SystemExit(f'MISSING products in {directory}: ' + ', '.join(absent) + '; run python tools/project.py build')
         skipped = [name for name in listed if name not in COVERED_WEEKS]
     actual = {name: analyze(path) for name, path in built.items()}
     diffs = differences(data['weeks'], actual)
@@ -259,13 +268,16 @@ def main():
     group.add_argument('--check', action='store_true', help='Compare the current build with the baseline fixture')
     ap.add_argument('--force', action='store_true', help='With --create only: overwrite an existing fixture deliberately')
     ap.add_argument('--fixture', type=Path, default=FIXTURE)
+    ap.add_argument('--dir', type=Path, help='With --check: products directory to compare (default build/)')
     args = ap.parse_args()
     if args.force and not args.create:
         ap.error('--force only applies to --create')
+    if args.dir is not None and not args.check:
+        ap.error('--dir only applies to --check')
     if args.create:
         create(force=args.force, fixture=args.fixture)
     else:
-        check(fixture=args.fixture)
+        check(fixture=args.fixture, products_dir=args.dir)
 
 
 if __name__ == '__main__':

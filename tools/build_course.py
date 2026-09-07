@@ -3,7 +3,7 @@ import argparse
 import base64
 import json
 import subprocess
-from project_config import ROOT, load_config, week_name
+from project_config import ROOT, BUILD, load_config, week_name
 
 
 def render_course(lessons):
@@ -32,9 +32,10 @@ def main():
     lessons={week_name(n):expand((ROOT/f'frontend/src/weeks/week{n:02}.template.html').read_text(encoding='utf-8')) for n in config['courseWeeks']}
     result=render_course(lessons)
     validate_script(result)
-    target=ROOT/config['entry']
+    BUILD.mkdir(parents=True,exist_ok=True)
+    target=BUILD/config['entry']
     if args.check:
-        if not target.exists() or target.read_text(encoding='utf-8')!=result:raise SystemExit('OUT OF DATE: course.html; run python tools/project.py build')
+        if not target.exists() or target.read_text(encoding='utf-8')!=result:raise SystemExit('OUT OF DATE: build/course.html; run python tools/project.py build')
     else:
         temp=target.with_suffix('.html.tmp');temp.write_text(result,encoding='utf-8',newline='\n');temp.replace(target)
     print(('CHECKED ' if args.check else 'BUILT ')+str(target))

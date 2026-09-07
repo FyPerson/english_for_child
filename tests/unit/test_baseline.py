@@ -115,16 +115,17 @@ class AnalyzeTests(unittest.TestCase):
 
 
 def fake_project(temp, weeks=(1, 2, 3, 4)):
-    """A temporary ROOT with built sample weeks and a course file."""
+    """A temporary ROOT whose build/ holds sample weeks and a course file."""
     root = Path(temp)
+    (root / 'build').mkdir(exist_ok=True)
     for n in weeks:
-        write(root, sample(extra=f'<!-- week {n} -->')[0], f'week{n:02}.html')
-    write(root, '<html>course</html>', 'course.html')
+        write(root / 'build', sample(extra=f'<!-- week {n} -->')[0], f'week{n:02}.html')
+    write(root / 'build', '<html>course</html>', 'course.html')
     return root
 
 
 def make_fixture(root, fixture, force=False, commit='a' * 40, statuses=('', '')):
-    with patch.object(baseline, 'ROOT', root), patch.object(baseline, 'build') as build, \
+    with patch.object(baseline, 'ROOT', root), patch.object(baseline, 'BUILD', root / 'build'), patch.object(baseline, 'build') as build, \
          patch.object(baseline, 'git', side_effect=[*statuses, commit]), patch.object(baseline, 'node_version', return_value='v24.0.0'), \
          patch.object(baseline, 'load_config', return_value={'weeks': [1, 2, 3, 4], 'courseWeeks': [1], 'entry': 'course.html'}):
         data = baseline.create(force=force, fixture=fixture)
@@ -140,8 +141,8 @@ class CreateTests(unittest.TestCase):
             build.assert_called_once()
             self.assertEqual(set(data['weeks']), set(baseline.COVERED_WEEKS))
             self.assertEqual((data['form'], data['sourceCommit'], data['toolVersions']['node']), ('single-file', 'a' * 40, 'v24.0.0'))
-            self.assertEqual(data['course']['sha256'], SHA((root / 'course.html').read_bytes()).hexdigest())
-            self.assertEqual(data['weeks']['week02.html'], baseline.analyze(root / 'week02.html'))
+            self.assertEqual(data['course']['sha256'], SHA((root / 'build' / 'course.html').read_bytes()).hexdigest())
+            self.assertEqual(data['weeks']['week02.html'], baseline.analyze(root / 'build' / 'week02.html'))
             self.assertEqual(json.loads(fixture.read_text(encoding='utf-8')), data)
             with self.assertRaisesRegex(SystemExit, 'REFUSED'):
                 make_fixture(root, fixture)
@@ -180,7 +181,7 @@ class CreateTests(unittest.TestCase):
             git('init', '-q'); git('add', '.'); git('commit', '-q', '-m', 'products')
             fixture = root / 'b.json'
             config = {'weeks': [1, 2, 3, 4], 'courseWeeks': [1], 'entry': 'course.html'}
-            common = dict(ROOT=root, node_version=lambda: 'v24.0.0', load_config=lambda: config)
+            common = dict(ROOT=root, BUILD=root / 'build', node_version=lambda: 'v24.0.0', load_config=lambda: config)
             with patch.multiple(baseline, build=lambda: None, **common):
                 data = baseline.create(fixture=fixture)
             self.assertEqual(data['sourceCommit'], git('rev-parse', 'HEAD').stdout.decode().strip())
@@ -188,12 +189,12 @@ class CreateTests(unittest.TestCase):
             fixture.unlink()
 
             def rewriting_build():
-                write(root, sample(extra='<!-- rebuilt differently -->')[0], 'week03.html')
+                write(root / 'build', sample(extra='<!-- rebuilt differently -->')[0], 'week03.html')
             with patch.multiple(baseline, build=rewriting_build, **common):
                 with self.assertRaisesRegex(SystemExit, 'build changed'):
                     baseline.create(fixture=fixture)
             self.assertFalse(fixture.exists())
-            git('checkout', '--', 'week03.html')
+            git('checkout', '--', 'build/week03.html')
             (root / 'stray.txt').write_text('untracked', encoding='utf-8')
             with patch.multiple(baseline, build=lambda: None, **common):
                 with self.assertRaisesRegex(SystemExit, 'not clean'):
@@ -257,15 +258,15 @@ class CheckTests(unittest.TestCase):
             root = fake_project(temp)
             fixture = root / 'b.json'
             make_fixture(root, fixture)
-            paths = {name: root / name for name in baseline.COVERED_WEEKS}
+            paths = {name: root / 'build' / name for name in baseline.COVERED_WEEKS}
             baseline.check(fixture=fixture, week_paths=paths)
             with self.assertRaisesRegex(ValueError, 'week_paths must cover'):
-                baseline.check(fixture=fixture, week_paths={'week01.html': root / 'week01.html'})
+                baseline.check(fixture=fixture, week_paths={'week01.html': root / 'build' / 'week01.html'})
             with self.assertRaisesRegex(ValueError, 'does not cover: week05.html'):
-                baseline.check(fixture=fixture, week_paths=dict(paths, **{'week05.html': root / 'week01.html'}))
+                baseline.check(fixture=fixture, week_paths=dict(paths, **{'week05.html': root / 'build' / 'week01.html'}))
             before = (fixture.read_bytes(), os.stat(fixture).st_mtime_ns)
             broken = sample(extra='<!-- week 2 -->', wall_value=f'data:image/png;base64,{PNG}')[0]
-            write(root, broken, 'week02.html')
+            write(root / 'build', broken, 'week02.html')
             with self.assertRaisesRegex(SystemExit, r"week02\.html: WALL_ILL keys differ: added 'nat'"):
                 baseline.check(fixture=fixture, week_paths=paths)
             self.assertEqual((fixture.read_bytes(), os.stat(fixture).st_mtime_ns), before)

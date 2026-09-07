@@ -14,7 +14,7 @@ class QuietHandler(SimpleHTTPRequestHandler):
 
 
 def run():
-    server = ThreadingHTTPServer(('127.0.0.1', 0), partial(QuietHandler, directory=str(ROOT)))
+    server = ThreadingHTTPServer(('127.0.0.1', 0), partial(QuietHandler, directory=str(ROOT/'build')))
     Thread(target=server.serve_forever, daemon=True).start()
     base = f'http://127.0.0.1:{server.server_port}'
     shots = ROOT/'test-results/screenshots/reliability-mobile'
@@ -22,7 +22,7 @@ def run():
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch()
-            for target in sorted(ROOT.glob('week[0-9][0-9].html')):
+            for target in sorted((ROOT/'build').glob('week[0-9][0-9].html')):
                 for width in [320,390,768,1280]:
                     context = browser.new_context(viewport={'width':width,'height':844},has_touch=True,is_mobile=width<768)
                     page=context.new_page()

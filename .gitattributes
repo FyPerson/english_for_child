@@ -45,8 +45,6 @@
 # ---- 语言标注：让 GitHub 的语言统计与 diff 更准 ----
 *.html linguist-detectable
 
-# Build outputs and embedded media are reviewable but not hand-authored engine code.
-/week[0-9][0-9].html linguist-generated=true
-/course.html linguist-generated=true
+# Embedded media declarations are reviewable but not hand-authored engine code. Built lessons live in build/ (ignored).
 /frontend/src/media/**/*.js linguist-generated=true
 /tests/fixtures/week[0-9][0-9]-data.js linguist-generated=true

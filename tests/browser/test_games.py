@@ -35,7 +35,7 @@ def persisted(page):
 def run():
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        for target in sorted(ROOT.glob('week[0-9][0-9].html')):
+        for target in sorted((ROOT/'build').glob('week[0-9][0-9].html')):
             page = browser.new_page()
             page.clock.install(time=1_780_000_000_000)
             page.clock.pause_at(1_780_000_000_000)

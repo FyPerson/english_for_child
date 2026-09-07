@@ -8,20 +8,21 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime
-from project_config import ROOT, load_config, week_name
+from project_config import ROOT, BUILD, load_config, week_name
 
 def run(script,*args):
     subprocess.run([sys.executable,str(ROOT/'tools'/script),*args],cwd=ROOT,check=True)
 
 def release_files(config):
-    return [config['entry'],*[week_name(n) for n in config['weeks']]]
+    return [config['entry'],'index.html',*[week_name(n) for n in config['weeks']]]
 
 def package():
     config=load_config()
     files=release_files(config)
-    # Human-readable directories; content identity remains in the manifest.
-    contents={name:(ROOT/name).read_bytes() for name in files}
-    contents['index.html']='<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=course.html"><title>声音积木</title><a href="course.html">进入声音积木</a>'.encode('utf-8')
+    # Human-readable directories; content identity remains in the manifest. Products come from build/ only.
+    missing=[name for name in files if not (BUILD/name).is_file()]
+    if missing: raise SystemExit('MISSING products in build/: '+', '.join(missing)+'; run python tools/project.py build')
+    contents={name:(BUILD/name).read_bytes() for name in files}
     hashes={name:hashlib.sha256(data).hexdigest() for name,data in contents.items()}
     release_id=hashlib.sha256(json.dumps(hashes,sort_keys=True).encode()).hexdigest()[:16]
     dist=ROOT/'dist'

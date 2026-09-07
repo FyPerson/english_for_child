@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """家长设置面板冒烟（与周次无关，三周课件都能跑）。
-用法：python tests/browser/smoke_parent_panel.py [week01.html week02.html ...]（不传参跑三周）
+用法：python tests/browser/smoke_parent_panel.py [build/week01.html build/week02.html ...]（不传参跑 build/ 下全部周）
 
 2026-09-02 用户拍板：重置包含清进度；入口与重置都长按 1.5 秒（复用 bindLongPress）。
 运行环境是 Windows PC 浏览器：鼠标与键盘是主路径，触屏为兜底——三种输入都测（codex 20 号 H-1 / M-2 / M-3）：
@@ -15,7 +15,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 REPO = Path(__file__).resolve().parents[2]
-targets = [Path(a).resolve() for a in sys.argv[1:]] or sorted(REPO.glob("week[0-9][0-9].html"))
+targets = [Path(a).resolve() for a in sys.argv[1:]] or sorted((REPO / "build").glob("week[0-9][0-9].html"))
 total_fail = 0
 
 
