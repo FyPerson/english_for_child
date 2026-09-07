@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "takenAt": "2026-09-07",
- "sourceCommit": "9eb2ee33aec605b2941570d6e0747e58c99782c9",
+ "sourceCommit": "57b19ebdf789cb0e417964d4daa4c096ae239600",
  "form": "single-file",
  "toolVersions": {
   "python": "3.12.0",
@@ -10,8 +10,8 @@
  },
  "weeks": {
   "week01.html": {
-   "sha256": "8d529ada4683e748b2d28bd613c108a153db45cb80d4464d6420a55957b3ae2e",
-   "skeletonSha256": "263d54d4cd5aadbf6d289540089ddca203da035457a797ca987e320eba78f570",
+   "sha256": "acd7e1b4db3bb0b1c6ed3c1cd1d78444f7cfebb9877002cbfb65bc2338e44ee5",
+   "skeletonSha256": "40d23f7d16ca63d2d1d8e1017b736b60a8dbb6ddf22775405cd0b0e98fef4e32",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -569,8 +569,8 @@
    }
   },
   "week02.html": {
-   "sha256": "535dd907c6e830fdde875e7184edc2617409583c5cfcfc88e4c94a079d281830",
-   "skeletonSha256": "c55be293be000684b01f51136baa32514db431f3bfc36962f894eb7b99d88ff1",
+   "sha256": "15ee18e9ec4df4e84dceabec77c036786c97f61f3db2c5f665aa48d77a532118",
+   "skeletonSha256": "d9aa72e4b19607d6d9c7cf35ebab3cbdae4042b3e4bd5ff7a2ead9a28ab44314",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -1262,8 +1262,8 @@
    }
   },
   "week03.html": {
-   "sha256": "c2b1f33b9947d6f683289d60bc10e43976b651a94618178ee7247333c1b73fe4",
-   "skeletonSha256": "114dfdc05e3f4d639f8be3003c755c001a728ddac591ff777ace66837af65857",
+   "sha256": "183228e947134b44856a90bda5c12a4ff616fdd6c088de4b1cdffb8a96de8e27",
+   "skeletonSha256": "02156561a55b6b3258a27619d08ca02677d394677528ceb1b20350b899b0c75c",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -2360,8 +2360,8 @@
    }
   },
   "week04.html": {
-   "sha256": "81626f862db96c8166d1a17c93b3a353047111ee608efeb4b4315bf97c55a5ed",
-   "skeletonSha256": "93c129edccfd26c4636fa9c1ea81cb4b3caf18eba3515afd8da04976a8206480",
+   "sha256": "e8f81e613f12c66ca72dfb4a12f2058c3b1800888e5961a632ecd8b0db6ebe7d",
+   "skeletonSha256": "1cc69a01f983baeb6e8c2d1421175775bc3688e8f077384aaeb92df2b35a2220",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -3792,12 +3792,12 @@
      [
       "dan",
       "image/png",
-      "41329886594403f3cdd0f2fa22beb76c8d87ebdb3a7841f8772c1dee089a3ff3"
+      "ae2ed269a3a5c0f6bfe3c68f3eb8d368ecc09a9cc96c216a55d41a1ee5dd5cc6"
      ],
      [
       "nat",
       "image/png",
-      "07ab71d39d2b6ee6bfb7f78e57f46b070d7f0a81fc64beff89c732ac717efcda"
+      "2889c85dcab5d8a8f37bde6019c08489caf64a873f58191558c74cc31cb7faa3"
      ],
      [
       "nap",
@@ -3812,7 +3812,7 @@
      [
       "pats",
       "image/png",
-      "6d57fa0602ecb3c6cae9a0f21bfcdea5f11870e5029cde6eb8a37f4333ae928e"
+      "0eaffca099f3c30a158e2c1b4a076344ef9061a1e8a13724b9c242490231df3e"
      ]
     ],
     "WALL_ILL": [
@@ -3950,6 +3950,6 @@
   }
  },
  "course": {
-  "sha256": "8c6a797403451d1612f6a486396ec3789d2c49e7a027b7f8cb4ba7a7f689534d"
+  "sha256": "fbf312c79eca22446fa2a221c782147018402255e6e5c7c90bb74fc3508da9f3"
  }
 }
