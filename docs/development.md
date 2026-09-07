@@ -15,14 +15,14 @@
 | `tests/unit/`、`tests/browser/`、`tests/fixtures/` | 自动测试与派生快照 | 否 |
 | `tools/validation/`、`tools/legacy/` | 构建契约实现与历史移植工具 | 否 |
 | `backend/` | 后端职责说明，当前没有服务实现 | 否 |
-| `resources/manifests/`、`resources/reference/` | 素材清单和候选参考音源 | 否 |
+| `resources/manifests/` | 素材清单与音素来源配置 | 否 |
 | `test-results/` | 自动化截图，不提交 | 否 |
 | `docs/` | 课程设计、工程说明、验收与历史决策 | 否 |
 | `build/` | 构建产物：`course.html`、`index.html`、`weekNN.html`；不提交，`python tools/project.py build` 生成 | 可单独使用 |
 | `dist/<内容版本>/` | 仅包含可公开课件、入口和哈希清单 | 是 |
 | `tmp/`、`.venv/` | 本机实验、依赖与临时结果；Git 忽略 | 否 |
 
-`resources/reference/OpenLearn_Phonics_Audio/` 是候选音源目录，已迁移位置，未替换课件发音。`docs/design/design-doc.html` 是历史设计产物，不进入网站发布目录。
+候选参考音源 OpenLearn 与历史验收截图已于 2026-09-07 移出仓库（清单与 sha256 见 `docs/项目记忆/外部归档清单_20260907.md`），未替换课件发音；音素来源 TESSA 与 margo 两包仍在 `resources/assets/phonemes/source-library/`。`docs/design/design-doc.html` 是历史设计产物，不进入网站发布目录。
 
 素材拆分保持原声明内容不变。每周播放器与部分主题样式仍保留在模板中；当前先稳定生产入口和发布边界，后续可以在播放回归保护下逐步统一，不能宣称已经完全消除重复代码。
 

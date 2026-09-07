@@ -11,7 +11,6 @@ english_for_child/
 ├─ backend/                  后端职责说明；当前没有后端实现
 ├─ resources/
 │  ├─ assets/                原始及处理素材、来源记录
-│  ├─ reference/             候选音源
 │  └─ manifests/             音频清单和处理配置
 ├─ tests/
 │  ├─ unit/                  构建、媒体、契约检查
@@ -22,8 +21,7 @@ english_for_child/
 │  ├─ validation/            构建时的数据读取和契约校验
 │  └─ legacy/                旧周移植脚本，仅供历史参考
 ├─ docs/
-│  ├─ design/                历史设计页面
-│  └─ archive/screenshots/   历史人工验收截图
+│  └─ design/                历史设计页面（历史验收截图已移出仓库，见 docs/项目记忆/外部归档清单_20260907.md）
 ├─ test-results/             自动化截图等临时产物，不提交
 ├─ dist/                     按内容版本隔离的发布包，不提交
 ├─ tmp/                      本机实验与缓存，不提交
@@ -42,7 +40,7 @@ Python 脚本目前只负责构建、处理资源、验证和本机预览，因�
 |---|---|
 | `src/` | `frontend/src/` |
 | `assets/` | `resources/assets/` |
-| `OpenLearn_Phonics_Audio/` | `resources/reference/OpenLearn_Phonics_Audio/` |
+| `OpenLearn_Phonics_Audio/` | 2026-09-07 移出仓库，见 `docs/项目记忆/外部归档清单_20260907.md` |
 | `tools/audio_manifest*.json`、`tools/phoneme_sources_w3.json` | `resources/manifests/` |
 | `tools/week-checks/test_*.py`（浏览器测试） | `tests/browser/` |
 | `tools/week-checks/test_build.py`、JS 测试 | `tests/unit/` |
@@ -51,7 +49,8 @@ Python 脚本目前只负责构建、处理资源、验证和本机预览，因�
 | `tools/week-checks/check_data.js` 等校验实现 | `tools/validation/` |
 | `tools/week-checks/port*.py`、`w2data.py`、`w2days.py` | `tools/legacy/` |
 | `screenshots/reliability-mobile/` | `test-results/screenshots/reliability-mobile/` |
-| 其他旧 `screenshots/` | `docs/archive/screenshots/` |
+| 其他旧 `screenshots/` | 2026-09-07 移出仓库，见 `docs/项目记忆/外部归档清单_20260907.md` |
+| 根目录 `weekNN.html`、`course.html` | `build/`（不提交）；工程健康化实施方案 v1.3 第 0 期 |
 | `design-doc.html` | `docs/design/design-doc.html` |
 
 旧审查记录和素材来源记录保留当时路径，用本表定位；当前 README、维护指南、工具调用和 CI 使用新路径。
