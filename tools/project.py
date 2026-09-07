@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import re
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import shutil
@@ -13,6 +14,24 @@ from verify_manifest import verify
 
 def run(script,*args):
     subprocess.run([sys.executable,str(ROOT/'tools'/script),*args],cwd=ROOT,check=True)
+
+NODE_MIN_MAJOR=18
+
+def node_version_check(run=subprocess.run,minimum=NODE_MIN_MAJOR):
+    """Run `node --version`; return the version string or raise SystemExit naming the actual output (plan v1.3 §4 step 4)."""
+    try:
+        result=run(['node','--version'],capture_output=True,text=True,encoding='utf-8')
+    except (FileNotFoundError,OSError) as error:
+        raise SystemExit('Node.js not found on PATH ('+str(error)+'); install Node.js >= '+str(minimum))
+    output=(result.stdout or '').strip()
+    if result.returncode:
+        raise SystemExit('node --version failed with exit code '+str(result.returncode)+': '+(output or (result.stderr or '').strip()))
+    match=re.match(r'^v(\d+)\.',output)
+    if not match:
+        raise SystemExit('node --version printed an unexpected value: '+repr(output))
+    if int(match.group(1))<minimum:
+        raise SystemExit('Node.js '+output+' is too old; need major version >= '+str(minimum))
+    return output
 
 def release_files(config):
     return [config['entry'],'index.html',*[week_name(n) for n in config['weeks']]]
@@ -73,13 +92,14 @@ def main():
     if args.command=='doctor':
         load_config()
         print('Python: '+sys.version.split()[0]);print('Node: '+str(shutil.which('node')))
-        if sys.version_info<(3,10) or not shutil.which('node'):raise SystemExit('Need Python >=3.10 and Node.js')
+        if sys.version_info<(3,10):raise SystemExit('Need Python >=3.10')
+        print('Node version: '+node_version_check())
         try:
             import playwright.sync_api
             with playwright.sync_api.sync_playwright() as p:
                 browser=p.chromium.launch();browser.close()
         except Exception as e:raise SystemExit('Browser dependency unavailable: '+str(e))
-        print('PASS environment and Chromium')
+        print('PASS environment, Node.js >= '+str(NODE_MIN_MAJOR)+' and Chromium')
     elif args.command=='baseline':run('baseline.py',*(['--create']+(['--force'] if args.force else []) if args.create else ['--check']))
     elif args.command=='build':run('build_lessons.py')
     elif args.command=='check':run('run_checks.py',*(['--quick'] if args.quick else []))

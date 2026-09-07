@@ -12,6 +12,7 @@
 |---|---|
 | `browser/test_initialpick.py` | W1 第七天与 W3 首字母游戏：重听、答错重试、答对后揭示、整轮完成、折叠取消和触屏 |
 | `test_build.py` | 清单异常、include 路径／循环、合并失败不覆盖 `build/` 旧周、发布白名单与内容哈希、缺件即报、`verify_manifest` 对篡改／多余／缺失文件的拒绝 |
+| `test_doctor.py` | `project.py doctor` 的 Node 版本门槛：桩覆盖 v22、v18 通过，v16 过旧、缺失、非零退出、格式异常失败并打印实际输出；另记录本机实际版本 |
 | `test_size_budget.py` | 体量护栏（过渡指标）：预算来自 `project.json` 的 `sizeBudgetMB`，`weekNN.html` 与 `course.html` 各自不得大于预算，等于通过，`index.html` 不计；伪造超限、缺件、预算声明畸形三类反例 |
 | `test_baseline.py` / `fixtures/baseline_20260907.json` | 四周单文件基线：骨架哈希、声明顺序、逐键媒体字节；可证伪四类与引用形态拒绝；`baseline --create` 只在干净树上生成且不覆盖，`build` 与 `check` 只读它。基线不匹配时先确认改动是有意的，再单独一个 commit 跑 `python tools/project.py baseline --create --force` 重取 |
 | `test_course.py` | 左侧周导航、手机折叠、整周与逐日锁、撤销后重锁、保存失败、HTTP 旧进度与离线切换 |

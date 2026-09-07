@@ -55,6 +55,7 @@ def main():
                 ('size budget', [sys.executable, 'tools/size_budget.py']),
                 ('baseline contract', [sys.executable, 'tests/unit/test_baseline.py']),
                 ('size budget contract', [sys.executable, 'tests/unit/test_size_budget.py']),
+                ('doctor contract', [sys.executable, 'tests/unit/test_doctor.py']),
                 ('directory layout', [sys.executable, 'tests/unit/test_layout.py']),
                 ('build boundaries', [sys.executable, 'tests/unit/test_build.py']),
                 ('assessment contract', ['node', 'tests/unit/test_assessment_contract.js']),
