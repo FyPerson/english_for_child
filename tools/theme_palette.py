@@ -6,6 +6,9 @@ spec (CIELAB L* of the ground: light 93 to 95.5, dark 10 to 12; ink on every bac
 >= 4.5:1; lines visibly separated from the ground) and writes them into the template. Semantic colors (vowel, cons,
 accent, ok) are never touched.
 
+Every token is kept inside the sRGB gamut by reducing its chroma (never by clipping a channel), so the hue stays
+what was asked for; the tokens whose chroma had to be reduced are reported in the palette's `chroma_reduced`.
+
 Usage:
   python tools/theme_palette.py --set A --dry-run          # show the four weeks of set A and their checks
   python tools/theme_palette.py --set A --apply            # write set A into week01..week04 templates
@@ -21,9 +24,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from project_config import ROOT
 
 TOKENS = ['ground', 'surface', 'surface-2', 'sunk', 'line', 'line-2', 'ink', 'ink-2', 'ink-3', 'tile-face', 'tile-edge']
-SEMANTIC_SOFT = {   # fixed semantic soft backgrounds the ink also sits on; they do not change per week
-    'light': ['#FBE7E2', '#E0EEF1', '#FBF0DA', '#E4EFE4'],
-    'dark': ['#3A211B', '#12313A', '#372A13', '#1B2D1D'],
+SEMANTIC_SOFT = {   # fixed semantic soft backgrounds the ink also sits on; they do not change per week (contract-tested against the templates)
+    'light': {'vowel-soft': '#FBE7E2', 'cons-soft': '#E0EEF1', 'accent-soft': '#FBF0DA', 'ok-soft': '#E4EFE4'},
+    'dark': {'vowel-soft': '#3A211B', 'cons-soft': '#12313A', 'accent-soft': '#372A13', 'ok-soft': '#1B2D1D'},
 }
 SETS = {
     'A': [(165, '薄荷'), (300, '香芋'), (235, '天空'), (45, '蜜桃')],
@@ -31,21 +34,45 @@ SETS = {
 }
 LIGHT_GROUND_L = (93.0, 95.5)
 DARK_GROUND_L = (10.0, 12.0)
+MAX_CHROMA = 0.4
+GAMUT_TOL = 1e-7
 
 
-def oklch_to_srgb(L, C, h):
+def oklch_to_linear(L, C, h):
+    """Linear sRGB, unclipped: a channel outside 0..1 means the color is outside the sRGB gamut."""
     a = C * math.cos(math.radians(h)); b = C * math.sin(math.radians(h))
     l_ = L + 0.3963377774 * a + 0.2158037573 * b
     m_ = L - 0.1055613458 * a - 0.0638541728 * b
     s_ = L - 0.0894841775 * a - 1.2914855480 * b
     l, m, s = l_ ** 3, m_ ** 3, s_ ** 3
-    r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s
-    g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s
-    bb = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+    return (4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+            -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+            -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)
+
+
+def in_gamut(lin):
+    return all(-GAMUT_TOL <= v <= 1 + GAMUT_TOL for v in lin)
+
+
+def gamut_chroma(L, C, h):
+    """The largest chroma <= C at which this lightness and hue stay inside sRGB (bisection; C itself when it fits)."""
+    if in_gamut(oklch_to_linear(L, C, h)):
+        return C
+    lo, hi = 0.0, C
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        if in_gamut(oklch_to_linear(L, mid, h)):
+            lo = mid
+        else:
+            hi = mid
+    return lo
+
+
+def oklch_to_srgb(L, C, h):
     def gam(x):
         x = max(0.0, min(1.0, x))
         return 12.92 * x if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055
-    return tuple(round(gam(v) * 255) for v in (r, g, bb))
+    return tuple(round(gam(v) * 255) for v in oklch_to_linear(L, C, h))
 
 
 def hexs(rgb):
@@ -79,11 +106,11 @@ def cielab_L(rgb):
 
 
 def oklch_L_for_lab_L(target_L, chroma, hue):
-    """Bisect the OKLCH lightness that yields the target CIELAB L* for this hue (L* drifts with hue at fixed OKLCH L)."""
+    """Bisect the OKLCH lightness whose in-gamut color has the target CIELAB L* (L* drifts with hue at fixed OKLCH L)."""
     lo, hi = 0.0, 1.0
     for _ in range(40):
         mid = (lo + hi) / 2
-        if cielab_L(oklch_to_srgb(mid, chroma, hue)) < target_L:
+        if cielab_L(oklch_to_srgb(mid, gamut_chroma(mid, chroma, hue), hue)) < target_L:
             lo = mid
         else:
             hi = mid
@@ -94,23 +121,40 @@ LIGHT_GROUND_TARGET, DARK_GROUND_TARGET = 94.5, 11.0
 
 
 def week(hue, name, chroma=0.045):
-    """Light and dark token sets for one hue: the ground is solved to the spec's CIELAB L*, the ladder is relative."""
+    """Light and dark token sets for one hue: the ground is solved to the spec's CIELAB L*, the ladder is relative.
+
+    Chroma is reduced per token as far as the sRGB gamut requires; `chroma_reduced` lists those tokens with the kept share."""
+    if not (isinstance(hue, (int, float)) and math.isfinite(hue)):
+        raise ValueError(f'{name}: hue must be a finite number, got {hue!r}')
+    if not (isinstance(chroma, (int, float)) and math.isfinite(chroma) and 0 <= chroma <= MAX_CHROMA):
+        raise ValueError(f'{name}: chroma must be within 0 and {MAX_CHROMA}, got {chroma!r}')
+    hue = hue % 360
+    reduced = {}
+
+    def tok(mode, token, L, C):
+        L = max(0.0, min(1.0, L))
+        kept = gamut_chroma(L, C, hue)
+        if C and kept < C - 1e-9:
+            reduced[f'{mode} {token}'] = round(kept / C, 2)
+        return oklch_to_srgb(L, kept, hue)
+
     c = chroma
     Lg = oklch_L_for_lab_L(LIGHT_GROUND_TARGET, c, hue)
     light = {
-        'ground': oklch_to_srgb(Lg, c, hue), 'surface': (255, 255, 255), 'surface-2': oklch_to_srgb(min(Lg + 0.02, 0.985), c * 0.55, hue),
-        'sunk': oklch_to_srgb(Lg - 0.035, c * 0.9, hue), 'line': oklch_to_srgb(Lg - 0.07, c * 0.9, hue), 'line-2': oklch_to_srgb(Lg - 0.155, c, hue),
-        'ink': oklch_to_srgb(0.27, 0.025, hue), 'ink-2': oklch_to_srgb(0.49, 0.03, hue), 'ink-3': oklch_to_srgb(0.63, 0.025, hue),
-        'tile-face': (255, 255, 255), 'tile-edge': oklch_to_srgb(Lg - 0.135, 0.04, hue),
+        'ground': tok('light', 'ground', Lg, c), 'surface': (255, 255, 255), 'surface-2': tok('light', 'surface-2', min(Lg + 0.02, 0.985), c * 0.55),
+        'sunk': tok('light', 'sunk', Lg - 0.035, c * 0.9), 'line': tok('light', 'line', Lg - 0.07, c * 0.9), 'line-2': tok('light', 'line-2', Lg - 0.155, c),
+        'ink': tok('light', 'ink', 0.27, 0.025), 'ink-2': tok('light', 'ink-2', 0.49, 0.03), 'ink-3': tok('light', 'ink-3', 0.63, 0.025),
+        'tile-face': (255, 255, 255), 'tile-edge': tok('light', 'tile-edge', Lg - 0.135, 0.04),
     }
     Ld = oklch_L_for_lab_L(DARK_GROUND_TARGET, 0.022, hue)
     dark = {   # ground CIELAB L* 11 (spec 10 to 12), then the same ladder upwards
-        'ground': oklch_to_srgb(Ld, 0.022, hue), 'surface': oklch_to_srgb(Ld + 0.05, 0.024, hue), 'surface-2': oklch_to_srgb(Ld + 0.09, 0.026, hue),
-        'sunk': oklch_to_srgb(Ld - 0.04, 0.018, hue), 'line': oklch_to_srgb(Ld + 0.15, 0.03, hue), 'line-2': oklch_to_srgb(Ld + 0.23, 0.035, hue),
-        'ink': oklch_to_srgb(0.95, 0.012, hue), 'ink-2': oklch_to_srgb(0.76, 0.02, hue), 'ink-3': oklch_to_srgb(0.62, 0.02, hue),
-        'tile-face': oklch_to_srgb(Ld + 0.09, 0.026, hue), 'tile-edge': oklch_to_srgb(Ld + 0.25, 0.035, hue),
+        'ground': tok('dark', 'ground', Ld, 0.022), 'surface': tok('dark', 'surface', Ld + 0.05, 0.024), 'surface-2': tok('dark', 'surface-2', Ld + 0.09, 0.026),
+        'sunk': tok('dark', 'sunk', Ld - 0.04, 0.018), 'line': tok('dark', 'line', Ld + 0.15, 0.03), 'line-2': tok('dark', 'line-2', Ld + 0.23, 0.035),
+        'ink': tok('dark', 'ink', 0.95, 0.012), 'ink-2': tok('dark', 'ink-2', 0.76, 0.02), 'ink-3': tok('dark', 'ink-3', 0.62, 0.02),
+        'tile-face': tok('dark', 'tile-face', Ld + 0.09, 0.026), 'tile-edge': tok('dark', 'tile-edge', Ld + 0.25, 0.035),
     }
-    palette = {'name': name, 'hue': hue, 'light': {k: hexs(v) for k, v in light.items()}, 'dark': {k: hexs(v) for k, v in dark.items()}}
+    palette = {'name': name, 'hue': hue, 'light': {k: hexs(v) for k, v in light.items()}, 'dark': {k: hexs(v) for k, v in dark.items()},
+               'chroma_reduced': reduced}
     palette['checks'] = validate(palette)
     return palette
 
@@ -125,7 +169,7 @@ def validate(palette):
         if not ground_range[0] <= L <= ground_range[1]:
             problems.append(f'{mode} ground L* {L:.1f} outside {ground_range}')
         backgrounds = {'ground': t['ground'], 'surface': t['surface'], 'surface-2': t['surface-2'], 'sunk': t['sunk']}
-        backgrounds.update({f'soft{i}': parse_hex(h) for i, h in enumerate(SEMANTIC_SOFT[mode])})
+        backgrounds.update({name: parse_hex(h) for name, h in SEMANTIC_SOFT[mode].items()})
         for bg_name, bg in backgrounds.items():
             for ink, need in (('ink', 7.0), ('ink-2', 4.5)):
                 ratio = contrast(t[ink], bg)
@@ -149,13 +193,24 @@ BLOCKS = [('light', r':root\{'),
 
 
 def block_spans(text):
+    """(start, end, kind) of the three token blocks: each selector must occur once, the block is closed by brace depth
+    (so a brace inside a value cannot cut it short) and must not contain comments (a comment could hide a token)."""
     spans = []
     for kind, pattern in BLOCKS:
-        m = re.search(pattern, text)
-        if not m:
-            raise SystemExit(f'template block {kind} not found')
-        start = m.end()
-        spans.append((start, text.index('}', start), kind))
+        matches = list(re.finditer(pattern, text))
+        if len(matches) != 1:
+            raise SystemExit(f'template block {kind} must occur exactly once, found {len(matches)}')
+        start = i = matches[0].end()
+        depth = 1
+        while i < len(text) and depth:
+            depth += {'{': 1, '}': -1}.get(text[i], 0)
+            i += 1
+        if depth:
+            raise SystemExit(f'template block {kind} is not closed')
+        end = i - 1
+        if '/*' in text[start:end]:
+            raise SystemExit(f'template block {kind} must not contain comments')
+        spans.append((start, end, kind))
     return spans
 
 
@@ -185,8 +240,10 @@ def apply(week_no, palette, dry=False):
     changed = sum(1 for a, b in zip(text.split('\n'), out.split('\n')) if a != b)
     if not dry and out != text:
         path.write_text(out, encoding='utf-8', newline='\n')
-    print(f'week{week_no:02} {palette["name"]} (hue {palette["hue"]}): {changed} lines {"would change" if dry else "changed"}; '
-          f'ground {palette["light"]["ground"]} / {palette["dark"]["ground"]}; L* {palette["checks"]["light ground L*"]} / {palette["checks"]["dark ground L*"]}', flush=True)
+    reduced = palette['chroma_reduced']
+    print(f'week{week_no:02} {palette["name"]} (hue {palette["hue"]:g}): {changed} lines {"would change" if dry else "changed"}; '
+          f'ground {palette["light"]["ground"]} / {palette["dark"]["ground"]}; L* {palette["checks"]["light ground L*"]} / {palette["checks"]["dark ground L*"]}; '
+          f'chroma reduced for gamut: {", ".join(f"{k} {v:.0%}" for k, v in reduced.items()) or "none"}', flush=True)
     return changed
 
 
@@ -204,6 +261,8 @@ def main():
         for n, (hue, name) in enumerate(SETS[args.set], 1):
             apply(n, week(hue, name), dry)
     elif args.week is not None and args.hue is not None:
+        if not math.isfinite(args.hue):
+            ap.error('--hue must be a finite number')
         apply(args.week, week(args.hue, args.name or f'hue {args.hue:g}'), dry)
     else:
         ap.error('give --set, or --week with --hue')
