@@ -112,7 +112,7 @@ def verify(archive_root, inventory=INVENTORY):
                 continue
             raise SystemExit(f'UNLISTED file in archive: {rel}')
     if ignored:
-        print('IGNORED operating-system metadata: ' + ', '.join(ignored), flush=True)
+        print('IGNORED operating-system metadata: ' + ', '.join(sorted(ignored)), flush=True)
     print(f'ARCHIVE OK: {checked} files verified under {archive_root}', flush=True)
     return checked
 
