@@ -68,8 +68,10 @@ def package():
         try:previous=json.loads((candidate/'manifest.json').read_text(encoding='utf-8'))
         except (OSError,ValueError):continue
         if previous.get('release')==release_id:
-            unexpected={p.name for p in candidate.iterdir()}-set(contents)-{'manifest.json'}
-            if unexpected: raise ValueError(f'Unexpected files in release directory: {sorted(unexpected)}')
+            # Same allowlist rule as build_contents(), applied recursively to the existing version directory.
+            present={p.relative_to(candidate).as_posix() for p in candidate.rglob('*') if p.is_file()}
+            unexpected=sorted(present-set(contents)-{'manifest.json'})
+            if unexpected: raise ValueError(f'Unexpected files in release directory: {unexpected}')
             verify(candidate)
             target=candidate
             break

@@ -67,8 +67,49 @@ class VerifyArchiveTests(unittest.TestCase):
             inventory.write_text(json.dumps(data), encoding='utf-8')
             with self.assertRaisesRegex(SystemExit, 'declares count 5'):
                 verify_archive.verify(root, inventory)
+            data['moves'][0]['count'] = 2
+            inventory.write_text(json.dumps(data), encoding='utf-8')
             with self.assertRaisesRegex(SystemExit, 'MISSING archive directory'):
                 verify_archive.verify(Path(temp) / 'nowhere', inventory)
+
+    def test_operating_system_metadata_is_ignored_and_reported(self):
+        import contextlib, io
+        with tempfile.TemporaryDirectory() as temp:
+            root, inventory = make_archive(temp, {'a.png': b'aaa'})
+            (root / 'shots' / 'Thumbs.db').write_bytes(b'win');(root / 'shots' / '.DS_Store').write_bytes(b'mac')
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(verify_archive.verify(root, inventory), 1)
+            self.assertIn('IGNORED operating-system metadata: shots/.DS_Store, shots/Thumbs.db', out.getvalue())
+
+    def test_inventory_schema_is_validated_before_touching_the_archive(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root, inventory = make_archive(temp, {'a.png': b'aaa', 'b.png': b'bb'})
+            good = json.loads(inventory.read_text(encoding='utf-8'))
+            def variant(mutate):
+                data = json.loads(json.dumps(good)); mutate(data)
+                inventory.write_text(json.dumps(data), encoding='utf-8')
+                return inventory
+            cases = [
+                (lambda d: d.__setitem__('schemaVersion', 2), 'schemaVersion'),
+                (lambda d: d.__setitem__('moves', []), 'non-empty'),
+                (lambda d: d['moves'][0].__setitem__('archiveDir', '../shots'), 'single path segment'),
+                (lambda d: d['moves'].append(dict(d['moves'][0])), 'listed twice'),
+                (lambda d: d['moves'][0].__setitem__('count', -1), 'non-negative'),
+                (lambda d: d['moves'][0].__setitem__('count', True), 'non-negative'),
+                (lambda d: d['moves'][0]['files'][0].__setitem__('path', '../escape.png'), 'invalid path'),
+                (lambda d: d['moves'][0]['files'][0].__setitem__('path', 'C:/x.png'), 'invalid path'),
+                (lambda d: d['moves'][0]['files'][0].__setitem__('bytes', '3'), 'non-negative integer'),
+                (lambda d: d['moves'][0]['files'][0].__setitem__('sha256', 'zz'), '64 hex'),
+                (lambda d: d['moves'][0]['files'][1].__setitem__('path', 'A.PNG'), 'listed twice'),
+                (lambda d: d['moves'][0]['files'][0].pop('bytes'), 'exactly path, bytes and sha256'),
+            ]
+            for mutate, pattern in cases:
+                with self.assertRaisesRegex(SystemExit, pattern, msg=pattern):
+                    verify_archive.verify(root, variant(mutate))
+            inventory.write_text('{not json', encoding='utf-8')
+            with self.assertRaisesRegex(SystemExit, 'not valid JSON'):
+                verify_archive.verify(root, inventory)
 
 
 if __name__ == '__main__':

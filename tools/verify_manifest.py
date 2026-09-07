@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
@@ -44,7 +45,7 @@ def verify(directory):
             raise SystemExit(f'manifest.json lists an invalid path: {name!r}')
         if not isinstance(digest, str) or not HEX64.match(digest):
             raise SystemExit(f'manifest.json digest for {name} is not 64 hex characters')
-        key = name.casefold()
+        key = unicodedata.normalize('NFC', name).casefold()
         if key in folded:
             raise SystemExit(f'manifest.json lists {name} and {folded[key]} which collide on case-insensitive file systems')
         folded[key] = name

@@ -81,10 +81,17 @@ def replace_directory(target, staging):
         staging.rename(target)
     except OSError as error:
         if old.exists():
-            old.rename(target)
-        raise SystemExit(f'cannot move the new build into {target}: {error}; the previous build was restored')
+            try:
+                old.rename(target)
+            except OSError as rollback_error:
+                raise SystemExit(f'cannot move the new build into {target}: {error}; restoring the previous build ALSO failed '
+                                 f'({rollback_error}); it is still at {old}, move it back by hand')
+            raise SystemExit(f'cannot move the new build into {target}: {error}; the previous build was restored')
+        raise SystemExit(f'cannot move the new build into {target}: {error}')
     if old.exists():
         shutil.rmtree(old, ignore_errors=True)
+        if old.exists():
+            print(f'WARNING: the previous build directory {old} could not be deleted; delete it by hand', flush=True)
 
 
 def build(output_dir=None, week=None):
@@ -115,7 +122,7 @@ def build(output_dir=None, week=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--week', type=int, help='Build one week (plus course and index); requires --output-dir')
-    ap.add_argument('--output-dir', type=Path, help=f'Write products here instead of {BUILD.relative_to(ROOT)}/')
+    ap.add_argument('--output-dir', type=Path, help=f'Write products here instead of {BUILD.relative_to(ROOT)}/; the directory is owned by the build and replaced as a whole, anything else in it is discarded')
     args = ap.parse_args()
     build(output_dir=args.output_dir, week=args.week)
 

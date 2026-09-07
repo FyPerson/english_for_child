@@ -91,6 +91,32 @@ class BuildTests(unittest.TestCase):
             self.assertEqual((build/'week01.html').read_text(),'previous release')
             self.assertEqual([p.name for p in root.iterdir() if p.name.startswith('.build')],[])
 
+    def test_failed_rollback_is_reported_with_the_old_directory_path(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);src,config=fake_build_env(root)
+            build=root/'build';build.mkdir();(build/'week01.html').write_text('previous release')
+            real_rename=Path.rename
+            def failing_rename(self,target):
+                if self.name.startswith('.build.tmp-') or self.name.startswith('.build.old-'):raise OSError('simulated lock')
+                return real_rename(self,target)
+            a,b=patched_build(root,src,config)
+            with a,b,patch.object(Path,'rename',failing_rename):
+                with self.assertRaisesRegex(SystemExit,r'restoring the previous build ALSO failed .*it is still at .*\.build\.old-'):build_lessons.build()
+            old=[p for p in root.iterdir() if p.name.startswith('.build.old-')]
+            self.assertEqual(len(old),1);self.assertEqual((old[0]/'week01.html').read_text(),'previous release')
+
+    def test_undeletable_old_directory_is_reported_not_hidden(self):
+        import contextlib,io
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);src,config=fake_build_env(root)
+            build=root/'build';build.mkdir();(build/'week01.html').write_text('previous release')
+            a,b=patched_build(root,src,config);out=io.StringIO()
+            with a,b,patch.object(build_lessons.shutil,'rmtree',lambda *args,**kw:None),contextlib.redirect_stdout(out):
+                build_lessons.build()
+            self.assertIn('could not be deleted',out.getvalue())
+            self.assertEqual(len([p for p in root.iterdir() if p.name.startswith('.build.old-')]),1)
+            self.assertIn('const week=1',(build/'week01.html').read_text())
+
     def test_single_week_build_requires_an_explicit_output_directory(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);src,config=fake_build_env(root,weeks=(1,2))
@@ -167,6 +193,20 @@ class BuildTests(unittest.TestCase):
             h=hashlib.sha256(b'x').hexdigest()
             manifest({'week01.html':h,'WEEK01.HTML':h})
             with self.assertRaisesRegex(SystemExit,'collide on case-insensitive'):verify_manifest.verify(target)
+            import unicodedata
+            nfc,nfd=unicodedata.normalize('NFC','café.html'),unicodedata.normalize('NFD','café.html')
+            self.assertNotEqual(nfc,nfd)
+            (target/nfc).write_bytes(b'x')
+            manifest({nfc:h,nfd:h})   # NFC and NFD spellings of the same name
+            with self.assertRaisesRegex(SystemExit,'collide on case-insensitive'):verify_manifest.verify(target)
+
+    def test_existing_release_directory_is_checked_recursively(self):
+        with tempfile.TemporaryDirectory() as temp,patch.object(project,'ROOT',Path(temp)),patch.object(project,'BUILD',Path(temp)/'build'):
+            root=Path(temp);(root/'build').mkdir()
+            for name in project.release_files(load_config()):(root/'build'/name).write_text('fixture '+name)
+            first=project.package()
+            (first/'nested').mkdir();(first/'nested'/'stray.txt').write_text('deep')
+            with self.assertRaisesRegex(ValueError,'nested/stray.txt'):project.package()
 
 
 if __name__=='__main__':unittest.main()
