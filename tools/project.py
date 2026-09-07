@@ -66,6 +66,7 @@ def main():
     group.add_argument('--create',action='store_true');group.add_argument('--check',action='store_true')
     base.add_argument('--force',action='store_true',help='With --create: overwrite an existing fixture deliberately')
     args=ap.parse_args()
+    if args.command=='baseline' and args.force and not args.create: base.error('--force only applies to --create')
     if args.command=='doctor':
         load_config()
         print('Python: '+sys.version.split()[0]);print('Node: '+str(shutil.which('node')))

@@ -1,23 +1,33 @@
-"""Single-file baseline of the delivered weeks.
+"""Single-file baseline of the four delivered weeks.
 
-`--create` takes the baseline once (clean tree, fresh build) and writes tests/fixtures/baseline_20260907.json.
-`--check` compares the current build with it: skeleton hash, declaration order, and per-key media bytes.
-`build` and `check` only ever read the fixture; retaking it is a deliberate `--create --force` in its own commit.
+`--create` takes the baseline once (clean tree before and after a fresh build) and writes
+tests/fixtures/baseline_20260907.json. `--check` compares the current build with it: skeleton hash,
+declaration order, and per-key media bytes. `build` and `check` only ever read the fixture; retaking it is a
+deliberate `--create --force` in its own commit.
+
+Transitional (phase 0 and phase 1 of the engineering plan v1.3 §3.4 ③): the default build form is the single-file
+form, so both commands read the products the default build writes. From phase 0 step 2 they read a
+`--output-dir` temporary directory, and from phase 1b they build explicitly with `--single-file`.
 """
 import argparse
 import datetime
 import hashlib
 import json
 import platform
+import re
 import subprocess
 import sys
 from pathlib import Path
 from project_config import ROOT, load_config, week_name
 
 NAMES = ['PHONEME_AUDIO', 'WORD_AUDIO', 'PHONEME_ILL', 'WORD_ILL', 'WALL_ILL', 'BOOK_IMG', 'CELEBRATE_NAT']
+MIMES = {'audio/mpeg', 'image/png', 'image/webp'}
+COVERED_WEEKS = [week_name(n) for n in (1, 2, 3, 4)]   # the delivered weeks the baseline must always cover
 FIXTURE = ROOT / 'tests/fixtures/baseline_20260907.json'
 HELPER = ROOT / 'tools/validation/media_declarations.js'
 FORM = 'single-file'
+HEX64 = re.compile(r'^[0-9a-f]{64}$')
+HEX40 = re.compile(r'^[0-9a-f]{40}$')
 
 
 def sha256(data):
@@ -25,7 +35,7 @@ def sha256(data):
 
 
 def declarations(path):
-    result = subprocess.run(['node', str(HELPER), str(path)], capture_output=True, text=True, encoding='utf-8')
+    result = subprocess.run(['node', str(HELPER), str(path)], capture_output=True, text=True, encoding='utf-8', timeout=120)
     if result.returncode:
         raise ValueError((result.stderr or '').strip() or f'media_declarations failed for {path}')
     return json.loads(result.stdout)
@@ -34,6 +44,8 @@ def declarations(path):
 def analyze(path):
     """Return sha256, skeletonSha256, declarationOrder and media table of one built lesson."""
     raw_bytes = Path(path).read_bytes()
+    if b'\r' in raw_bytes:
+        raise ValueError(f'{Path(path).name}: carriage return found; built lessons must be LF only')
     raw = raw_bytes.decode('utf-8')
     decls = declarations(path)
     order = sorted(NAMES, key=lambda name: raw.index(decls[name]['text']))
@@ -55,24 +67,37 @@ def git(*args):
     return subprocess.run(['git', *args], cwd=ROOT, capture_output=True, text=True, encoding='utf-8', check=True).stdout.strip()
 
 
+def build():
+    subprocess.run([sys.executable, str(ROOT / 'tools/build_lessons.py')], cwd=ROOT, check=True)
+
+
+def node_version():
+    return subprocess.run(['node', '--version'], capture_output=True, text=True, encoding='utf-8', check=True).stdout.strip()
+
+
 def create(force=False, fixture=FIXTURE):
     if fixture.exists() and not force:
         raise SystemExit(f'REFUSED: {fixture.name} already exists; retake deliberately with --force')
     if git('status', '--porcelain'):
         raise SystemExit('REFUSED: working tree or index is not clean')
-    subprocess.run([sys.executable, str(ROOT / 'tools/build_lessons.py')], cwd=ROOT, check=True)
+    build()
+    if git('status', '--porcelain'):
+        raise SystemExit('REFUSED: the build changed tracked products, so HEAD does not describe them; commit the rebuilt products first')
     config = load_config()
-    weeks = {week_name(n): analyze(ROOT / week_name(n)) for n in config['weeks']}
-    node = subprocess.run(['node', '--version'], capture_output=True, text=True, encoding='utf-8', check=True).stdout.strip()
+    missing = [name for name in COVERED_WEEKS if name not in {week_name(n) for n in config['weeks']}]
+    if missing:
+        raise SystemExit('REFUSED: project.json no longer lists the covered weeks ' + ', '.join(missing))
+    weeks = {name: analyze(ROOT / name) for name in COVERED_WEEKS}
     data = {
         'schemaVersion': 1,
         'takenAt': datetime.date.today().isoformat(),
         'sourceCommit': git('rev-parse', 'HEAD'),
         'form': FORM,
-        'toolVersions': {'python': platform.python_version(), 'node': node, 'hash': 'sha256'},
+        'toolVersions': {'python': platform.python_version(), 'node': node_version(), 'hash': 'sha256'},
         'weeks': weeks,
         'course': {'sha256': sha256((ROOT / config['entry']).read_bytes())},
     }
+    validate(data)
     fixture.parent.mkdir(parents=True, exist_ok=True)
     temp = fixture.with_suffix('.json.tmp')
     temp.write_text(json.dumps(data, ensure_ascii=False, indent=1) + '\n', encoding='utf-8', newline='\n')
@@ -81,15 +106,101 @@ def create(force=False, fixture=FIXTURE):
     return data
 
 
+def _fail(message):
+    raise SystemExit('baseline fixture invalid: ' + message)
+
+
+def validate(data):
+    """Reject any fixture that could pass silently: wrong shape, missing weeks, malformed entries."""
+    if not isinstance(data, dict):
+        _fail('not an object')
+    expected_keys = {'schemaVersion', 'takenAt', 'sourceCommit', 'form', 'toolVersions', 'weeks', 'course'}
+    if set(data) != expected_keys:
+        _fail(f'top-level keys must be exactly {sorted(expected_keys)}')
+    if data['schemaVersion'] != 1:
+        _fail('unsupported schemaVersion')
+    if data['form'] != FORM:
+        _fail(f'form must be {FORM!r}, got {data["form"]!r}')
+    if not isinstance(data['sourceCommit'], str) or not HEX40.match(data['sourceCommit']):
+        _fail('sourceCommit must be a 40-hex commit id')
+    if not isinstance(data['takenAt'], str) or not re.match(r'^\d{4}-\d{2}-\d{2}$', data['takenAt']):
+        _fail('takenAt must be an ISO date')
+    tools = data['toolVersions']
+    if not isinstance(tools, dict) or set(tools) != {'python', 'node', 'hash'} or tools['hash'] != 'sha256':
+        _fail('toolVersions must list python, node and hash sha256')
+    course = data['course']
+    if not isinstance(course, dict) or set(course) != {'sha256'} or not HEX64.match(str(course['sha256'])):
+        _fail('course must carry a single sha256')
+    weeks = data['weeks']
+    if not isinstance(weeks, dict) or set(weeks) != set(COVERED_WEEKS):
+        _fail(f'weeks must be exactly {COVERED_WEEKS}')
+    for name in COVERED_WEEKS:
+        entry = weeks[name]
+        if not isinstance(entry, dict) or set(entry) != {'sha256', 'skeletonSha256', 'declarationOrder', 'media'}:
+            _fail(f'{name}: entry keys must be sha256, skeletonSha256, declarationOrder, media')
+        for field in ('sha256', 'skeletonSha256'):
+            if not isinstance(entry[field], str) or not HEX64.match(entry[field]):
+                _fail(f'{name}: {field} must be a 64-hex digest')
+        if sorted(entry['declarationOrder']) != sorted(NAMES) or len(entry['declarationOrder']) != len(NAMES):
+            _fail(f'{name}: declarationOrder must be a permutation of the seven declarations')
+        media = entry['media']
+        if not isinstance(media, dict) or set(media) != set(NAMES):
+            _fail(f'{name}: media must contain exactly the seven declarations')
+        for decl in NAMES:
+            rows = media[decl]
+            if not isinstance(rows, list):
+                _fail(f'{name}: {decl} must be a list')
+            keys = []
+            for row in rows:
+                if not (isinstance(row, list) and len(row) == 3 and all(isinstance(x, str) for x in row)):
+                    _fail(f'{name}: {decl} rows must be [key, mime, sha256]')
+                key, mime, digest = row
+                if mime not in MIMES or not HEX64.match(digest):
+                    _fail(f'{name}: {decl}[{key!r}] has an unknown mime or a malformed digest')
+                if key in keys:
+                    _fail(f'{name}: {decl} has duplicate key {key!r}')
+                keys.append(key)
+            if decl == 'CELEBRATE_NAT' and keys != ['']:
+                _fail(f'{name}: CELEBRATE_NAT must have exactly one entry with an empty key')
+            if decl != 'CELEBRATE_NAT' and '' in keys:
+                _fail(f'{name}: {decl} has an empty key')
+    return data
+
+
 def load(fixture=FIXTURE):
     if not fixture.exists():
         raise SystemExit(f'MISSING baseline fixture {fixture}; create it once with `python tools/project.py baseline --create`')
-    data = json.loads(fixture.read_text(encoding='utf-8'))
-    if data.get('schemaVersion') != 1:
-        raise SystemExit('baseline: unsupported schemaVersion')
-    if data.get('form') != FORM:
-        raise SystemExit(f'baseline: form must be {FORM!r}, got {data.get("form")!r}')
-    return data
+    try:
+        data = json.loads(fixture.read_text(encoding='utf-8'))
+    except ValueError as error:
+        _fail(f'not valid JSON ({error})')
+    return validate(data)
+
+
+def _media_difference(name, decl, expected, actual):
+    ek = [row[0] for row in expected]
+    ak = [row[0] for row in actual]
+    label = f'{name}: {decl}'
+    if ek != ak:
+        added = [k for k in ak if k not in ek]
+        removed = [k for k in ek if k not in ak]
+        parts = []
+        if added:
+            parts.append('added ' + ', '.join(repr(k) for k in added))
+        if removed:
+            parts.append('removed ' + ', '.join(repr(k) for k in removed))
+        if not added and not removed:
+            first = next(i for i, (x, y) in enumerate(zip(ek, ak)) if x != y)
+            parts.append(f'reordered from position {first} ({ek[first]!r} expected, {ak[first]!r} built)')
+        return [f'{label} keys differ: ' + '; '.join(parts)]
+    out = []
+    mime = [k or '<string>' for (k, m1, _), (_, m2, _) in zip(expected, actual) if m1 != m2]
+    data = [k or '<string>' for (k, _, d1), (_, _, d2) in zip(expected, actual) if d1 != d2]
+    if mime:
+        out.append(f'{label} mime differs for ' + ', '.join(mime))
+    if data:
+        out.append(f'{label} bytes differ for ' + ', '.join(data))
+    return out
 
 
 def differences(expected, actual):
@@ -100,34 +211,39 @@ def differences(expected, actual):
             out.append(f'{name}: present in baseline but not built')
             continue
         e, a = expected[name], actual[name]
-        for field in ['skeletonSha256', 'declarationOrder']:
-            if e[field] != a[field]:
-                out.append(f'{name}: {field} differs')
+        if e['skeletonSha256'] != a['skeletonSha256']:
+            out.append(f'{name}: skeletonSha256 differs ({e["skeletonSha256"][:12]} expected, {a["skeletonSha256"][:12]} built)')
+        if e['declarationOrder'] != a['declarationOrder']:
+            out.append(f'{name}: declarationOrder differs (expected {e["declarationOrder"]}, built {a["declarationOrder"]})')
         for decl in NAMES:
-            em = [tuple(x) for x in e['media'].get(decl, [])]
-            am = [tuple(x) for x in a['media'].get(decl, [])]
-            if em == am:
-                continue
-            if [x[0] for x in em] != [x[0] for x in am]:
-                out.append(f'{name}: {decl} keys differ ({len(em)} baseline vs {len(am)} built)')
-            else:
-                changed = [x[0] or '<string>' for x, y in zip(em, am) if x != y]
-                out.append(f'{name}: {decl} mime or bytes differ for ' + ', '.join(changed))
+            out.extend(_media_difference(name, decl, e['media'][decl], a['media'][decl]))
     return out
 
 
 def check(fixture=FIXTURE, week_paths=None):
+    """Compare built lessons with the fixture. `week_paths` (tests) must map every covered week explicitly."""
     data = load(fixture)
-    config = load_config()
-    built = {week_name(n): (week_paths or {}).get(week_name(n), ROOT / week_name(n)) for n in config['weeks']}
-    actual = {name: analyze(path) for name, path in built.items() if name in data['weeks']}
-    skipped = sorted(set(built) - set(data['weeks']))
+    if week_paths is not None:
+        missing = [name for name in COVERED_WEEKS if name not in week_paths]
+        if missing:
+            raise ValueError('week_paths must cover ' + ', '.join(missing))
+        built = {name: Path(week_paths[name]) for name in COVERED_WEEKS}
+        skipped = []
+    else:
+        config = load_config()
+        listed = [week_name(n) for n in config['weeks']]
+        missing = [name for name in COVERED_WEEKS if name not in listed]
+        if missing:
+            raise SystemExit('project.json no longer lists the covered weeks ' + ', '.join(missing))
+        built = {name: ROOT / name for name in COVERED_WEEKS}
+        skipped = [name for name in listed if name not in COVERED_WEEKS]
+    actual = {name: analyze(path) for name, path in built.items()}
     diffs = differences(data['weeks'], actual)
     if diffs:
         raise SystemExit('BASELINE MISMATCH; if the change is intended, retake with '
                          '`python tools/project.py baseline --create --force` in its own commit:\n  ' + '\n  '.join(diffs))
     print(f'BASELINE OK: {len(actual)} weeks match {fixture.name} (form {FORM})'
-          + (f'; not covered: {", ".join(skipped)}' if skipped else ''), flush=True)
+          + (f'; not covered by the baseline: {", ".join(skipped)}' if skipped else ''), flush=True)
 
 
 def main():
@@ -135,9 +251,11 @@ def main():
     group = ap.add_mutually_exclusive_group(required=True)
     group.add_argument('--create', action='store_true', help='Build, then write the baseline fixture (refuses to overwrite)')
     group.add_argument('--check', action='store_true', help='Compare the current build with the baseline fixture')
-    ap.add_argument('--force', action='store_true', help='With --create: overwrite an existing fixture deliberately')
+    ap.add_argument('--force', action='store_true', help='With --create only: overwrite an existing fixture deliberately')
     ap.add_argument('--fixture', type=Path, default=FIXTURE)
     args = ap.parse_args()
+    if args.force and not args.create:
+        ap.error('--force only applies to --create')
     if args.create:
         create(force=args.force, fixture=args.fixture)
     else:
