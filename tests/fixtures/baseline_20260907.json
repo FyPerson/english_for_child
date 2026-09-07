@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "takenAt": "2026-09-07",
- "sourceCommit": "57b19ebdf789cb0e417964d4daa4c096ae239600",
+ "sourceCommit": "0b7e79bff12032faed4de3f0967f5f744838ca63",
  "form": "single-file",
  "toolVersions": {
   "python": "3.12.0",
@@ -569,8 +569,8 @@
    }
   },
   "week02.html": {
-   "sha256": "15ee18e9ec4df4e84dceabec77c036786c97f61f3db2c5f665aa48d77a532118",
-   "skeletonSha256": "d9aa72e4b19607d6d9c7cf35ebab3cbdae4042b3e4bd5ff7a2ead9a28ab44314",
+   "sha256": "0a202683540591c2027dd40076407e92dfc639e56328be13b0519561c643a87e",
+   "skeletonSha256": "66316fb13bb631e2e26ced89b60bd539d6391197a477a34d00a5e97e0b28e605",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -1262,8 +1262,8 @@
    }
   },
   "week03.html": {
-   "sha256": "183228e947134b44856a90bda5c12a4ff616fdd6c088de4b1cdffb8a96de8e27",
-   "skeletonSha256": "02156561a55b6b3258a27619d08ca02677d394677528ceb1b20350b899b0c75c",
+   "sha256": "80d82314ca0668f91908a0a8b0bb86552aee12541804db385bf4147b3f5bcb9c",
+   "skeletonSha256": "a6fb7d8de6a84724b5fe881b0d9e52adab9060f42b6f970f88daaf3d640347e3",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -2360,8 +2360,8 @@
    }
   },
   "week04.html": {
-   "sha256": "e8f81e613f12c66ca72dfb4a12f2058c3b1800888e5961a632ecd8b0db6ebe7d",
-   "skeletonSha256": "1cc69a01f983baeb6e8c2d1421175775bc3688e8f077384aaeb92df2b35a2220",
+   "sha256": "4ac6dc8b2194079dc8639cf4ef88bee4573c4b342385fd686013d13bcb5b4bda",
+   "skeletonSha256": "2753164a4127b26a5ba608571ab2209fcaa0f6ba8d8316de910c6df22ddedefc",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -3950,6 +3950,6 @@
   }
  },
  "course": {
-  "sha256": "fbf312c79eca22446fa2a221c782147018402255e6e5c7c90bb74fc3508da9f3"
+  "sha256": "504fc702eae85dc5ad73b611d5fcf5f29cc19dc8c5d6b730e29f7b3c9c6feb5c"
  }
 }
