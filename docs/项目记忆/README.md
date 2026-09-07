@@ -1,6 +1,6 @@
 ---
 状态: active（交接入口）
-日期: 2026-09-05
+日期: 2026-09-07
 source_of_truth: frontend/src/ 与根目录 README.md
 ---
 
@@ -13,10 +13,12 @@ source_of_truth: frontend/src/ 与根目录 README.md
 - 当前工程流程见 [长期维护指南](../development.md)：`project.json` 清单、独立媒体源码、统一 `tools/project.py` 命令、带哈希的发布目录与 GitHub 回归工作流。
 - 合并入口 `build/course.html`（先 build）目前包含 W1—W3，左侧周导航；前一周未完成则后一周整周锁定。原独立周课件保留。
 - W1—W3：现有课程保留；公共进度、游戏、测评与触屏实现已经对齐。
-- W4：无新字位的巩固周已设计并装配为 `build/week04.html`。十九字位复习、三本旧书、十词基线、62 词月测短文，等待实际家庭试课反馈。
+- W4：无新字位的巩固周已设计并装配为 `build/week04.html`。十九字位复习、三本旧书、十词基线、62 词月测短文，等待实际家庭试课反馈。词卡墙 34 词全部有图（2026-09-07 补齐；造词工坊用的 dan / nat / nap / rag / pats 五张由 codex 生图，原图在 `resources/assets/week04/word-cards/`，该目录 README 写明不要对第四周跑 `embed_assets.py` 全量重建）。
+- 周主题色：四周底色为柔和糖果色方案 A（薄荷 / 香芋 / 天空 / 蜜桃，OKLCH 色相 165 / 300 / 235 / 45），由 `tools/theme_palette.py` 生成并校验（底色 CIELAB L* 浅 94.5、深 11；对比度硬断言；彩度按 sRGB 色域收缩）。新一周选色：`python tools/theme_palette.py --week N --hue H --name 名 --apply`，随后重取基线单独一个 commit。
 - 进度：保存失败提示、恢复清洗、JSON 备份与跨设备手动恢复已落地；没有账号或自动云同步。
-- 回归：G1—G6 结算与落盘／刷新恢复已有统一测试；另有存储故障、测评隔离、移动端与长按矩阵。
-- git：仍沿用 main。当前提交请用 `git log -1` 查看。本次修改未自动提交或推送。
+- 回归：G1—G6 结算与落盘／刷新恢复已有统一测试；另有存储故障、测评隔离、移动端与长按矩阵；`python tools/project.py check` 另含可复现构建、四周单文件基线比对（`tests/fixtures/baseline_20260907.json`）与体积护栏。
+- 工程健康化：方案 v1.3（`docs/工程健康化实施方案_20260907_v1.3.md`）第 0 期六步已完成（2026-09-07）：基线、生成物不入库、过渡护栏、doctor、截图与 OpenLearn 移出、历史重写。第 1 期媒体清单化 09-14 到 09-18，第 1b 期目录交付与壳 09-19 到 09-24，两者与里程碑 2（双字母积木）同为第五周装配前硬截止。
+- git：仍沿用 main。**历史已于 2026-09-07 重写并强推**，重写前的提交号全部作废，对照见 [历史重写对照](历史重写对照_20260907.md)；任何重写前的 clone 必须重新 clone，不要 pull 或 rebase。当前提交请用 `git log -1` 查看。
 
 ## 接手顺序
 
