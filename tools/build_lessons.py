@@ -3,10 +3,18 @@
 Products (`course.html`, `index.html`, every `weekNN.html`) are written to `build/` by default, or to
 `--output-dir`. They are generated files and are not tracked by git; `python tools/project.py check` rebuilds
 them into a temporary directory and compares byte for byte (reproducible build).
+
+The products directory is replaced as a whole (plan v1.3 §3.4): every product is first written to a staging
+directory next to the target, then the old directory is renamed away, the staging directory is renamed into place
+and the old one is deleted. A failure before the swap leaves the old directory untouched; a failed swap is rolled
+back. Stale files from earlier builds therefore never survive a build. `--week` builds one week (plus the course
+and index) and must be given an explicit `--output-dir`, so `build/` is always a complete set.
 """
 import argparse
 from pathlib import Path
 import re
+import secrets
+import shutil
 import subprocess
 import tempfile
 from project_config import ROOT, BUILD, INDEX_HTML, load_config, week_name
@@ -35,12 +43,8 @@ def product_names(config):
     return [config['entry'], 'index.html', *[week_name(n) for n in config['weeks']]]
 
 
-def build(output_dir=None, week=None):
-    """Render every lesson and the course; validate everything before writing any product."""
-    config = load_config()
-    output_dir = Path(output_dir) if output_dir is not None else BUILD
-    if week is not None and week not in config['weeks']:
-        raise SystemExit('Unknown week')
+def render(config, week=None):
+    """Render and validate every lesson and the course; return [(name, text)] without writing anything."""
     templates = [SRC / f'weeks/week{n:02}.template.html' for n in config['weeks']]
     if set(templates) != set((SRC / 'weeks').glob('week*.template.html')):
         raise SystemExit('Template inventory differs from project.json')
@@ -61,19 +65,56 @@ def build(output_dir=None, week=None):
         validate_script(combined)
         outputs.append((config['entry'], combined))
         outputs.append(('index.html', INDEX_HTML))
-    output_dir.mkdir(parents=True, exist_ok=True)
-    for name, rendered in outputs:
+    return outputs
+
+
+def replace_directory(target, staging):
+    """Atomically swap `staging` into `target`; roll back if the swap fails."""
+    target = Path(target)
+    old = target.parent / f'.{target.name}.old-{secrets.token_hex(4)}'
+    if target.exists():
+        try:
+            target.rename(old)
+        except OSError as error:
+            raise SystemExit(f'cannot replace {target}: {error}; close programs that hold its files and retry')
+    try:
+        staging.rename(target)
+    except OSError as error:
+        if old.exists():
+            old.rename(target)
+        raise SystemExit(f'cannot move the new build into {target}: {error}; the previous build was restored')
+    if old.exists():
+        shutil.rmtree(old, ignore_errors=True)
+
+
+def build(output_dir=None, week=None):
+    """Render every lesson and the course, then replace the products directory as a whole."""
+    config = load_config()
+    if week is not None and week not in config['weeks']:
+        raise SystemExit('Unknown week')
+    if week is not None and output_dir is None:
+        raise SystemExit('--week only builds part of the product set; give an explicit --output-dir so build/ stays complete')
+    output_dir = Path(output_dir) if output_dir is not None else BUILD
+    outputs = render(config, week=week)
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = output_dir.parent / f'.{output_dir.name}.tmp-{secrets.token_hex(4)}'
+    staging.mkdir()
+    try:
+        for name, rendered in outputs:
+            (staging / name).write_text(rendered, encoding='utf-8', newline='\n')
+        replace_directory(output_dir, staging)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+    for name, _ in outputs:
         path = output_dir / name
-        temporary = path.with_suffix('.html.tmp')
-        temporary.write_text(rendered, encoding='utf-8', newline='\n')
-        temporary.replace(path)
         print('BUILT ' + str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path), flush=True)
     return output_dir
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--week', type=int, help='Build one week (plus the course); default builds all')
+    ap.add_argument('--week', type=int, help='Build one week (plus course and index); requires --output-dir')
     ap.add_argument('--output-dir', type=Path, help=f'Write products here instead of {BUILD.relative_to(ROOT)}/')
     args = ap.parse_args()
     build(output_dir=args.output_dir, week=args.week)

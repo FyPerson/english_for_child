@@ -52,7 +52,8 @@ class SizeBudgetTests(unittest.TestCase):
 
     def test_budget_declaration_is_validated(self):
         for bad in [None, 8, {'week': 8}, {'week': 8, 'course': 20, 'extra': 1}, {'week': 0, 'course': 20},
-                    {'week': '8', 'course': 20}, {'week': True, 'course': 20}, {'week': 8, 'course': -1}]:
+                    {'week': '8', 'course': 20}, {'week': True, 'course': 20}, {'week': 8, 'course': -1},
+                    {'week': 8.5, 'course': 20}, {'week': float('nan'), 'course': 20}, {'week': 8, 'course': float('inf')}]:
             cfg = config()
             cfg['sizeBudgetMB'] = bad
             with self.assertRaises(ValueError, msg=repr(bad)):

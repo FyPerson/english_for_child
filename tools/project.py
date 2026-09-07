@@ -1,10 +1,15 @@
-"""Stable developer entry: build, check, release, serve, doctor, baseline."""
+"""Stable developer entry: build, check, release, serve, doctor, baseline.
+
+release = check (which builds build/ itself) then package build/ into dist/<version>/; nothing is built a third time.
+serve   = build then package, without the regression run, for a quick local preview.
+"""
 import argparse
 import hashlib
 import json
 import re
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import secrets
 import shutil
 import subprocess
 import sys
@@ -16,59 +21,76 @@ def run(script,*args):
     subprocess.run([sys.executable,str(ROOT/'tools'/script),*args],cwd=ROOT,check=True)
 
 NODE_MIN_MAJOR=18
+NODE_VERSION=re.compile(r'v(\d+)\.\d+\.\d+')
 
 def node_version_check(run=subprocess.run,minimum=NODE_MIN_MAJOR):
     """Run `node --version`; return the version string or raise SystemExit naming the actual output (plan v1.3 §4 step 4)."""
     try:
-        result=run(['node','--version'],capture_output=True,text=True,encoding='utf-8')
+        result=run(['node','--version'],capture_output=True,text=True,encoding='utf-8',timeout=30)
     except (FileNotFoundError,OSError) as error:
         raise SystemExit('Node.js not found on PATH ('+str(error)+'); install Node.js >= '+str(minimum))
-    output=(result.stdout or '').strip()
+    except (subprocess.SubprocessError,UnicodeError) as error:
+        raise SystemExit('node --version could not be run: '+type(error).__name__+': '+str(error))
+    stdout=(result.stdout or '').strip();stderr=(result.stderr or '').strip()
+    shown=' / '.join(part for part in ['stdout: '+repr(stdout) if stdout else '','stderr: '+repr(stderr) if stderr else ''] if part) or 'no output'
     if result.returncode:
-        raise SystemExit('node --version failed with exit code '+str(result.returncode)+': '+(output or (result.stderr or '').strip()))
-    match=re.match(r'^v(\d+)\.',output)
+        raise SystemExit('node --version failed with exit code '+str(result.returncode)+' ('+shown+')')
+    match=NODE_VERSION.fullmatch(stdout)
     if not match:
-        raise SystemExit('node --version printed an unexpected value: '+repr(output))
+        raise SystemExit('node --version printed an unexpected value ('+shown+')')
     if int(match.group(1))<minimum:
-        raise SystemExit('Node.js '+output+' is too old; need major version >= '+str(minimum))
-    return output
+        raise SystemExit('Node.js '+stdout+' is too old; need major version >= '+str(minimum))
+    return stdout
 
 def release_files(config):
     return [config['entry'],'index.html',*[week_name(n) for n in config['weeks']]]
 
+def build_contents(config):
+    """Read build/ strictly: the file set must equal the allowlist, nothing more and nothing less."""
+    files=release_files(config)
+    if not BUILD.is_dir(): raise SystemExit('MISSING build/; run python tools/project.py build')
+    present={p.relative_to(BUILD).as_posix() for p in BUILD.rglob('*') if p.is_file()}
+    missing=[name for name in files if name not in present]
+    extra=sorted(present-set(files))
+    if missing: raise SystemExit('MISSING products in build/: '+', '.join(missing)+'; run python tools/project.py build')
+    if extra: raise SystemExit('build/ contains files outside the release allowlist: '+', '.join(extra)+'; rebuild with python tools/project.py build')
+    return {name:(BUILD/name).read_bytes() for name in files}
+
 def package():
     config=load_config()
-    files=release_files(config)
-    # Human-readable directories; content identity remains in the manifest. Products come from build/ only.
-    missing=[name for name in files if not (BUILD/name).is_file()]
-    if missing: raise SystemExit('MISSING products in build/: '+', '.join(missing)+'; run python tools/project.py build')
-    contents={name:(BUILD/name).read_bytes() for name in files}
+    contents=build_contents(config)
     hashes={name:hashlib.sha256(data).hexdigest() for name,data in contents.items()}
     release_id=hashlib.sha256(json.dumps(hashes,sort_keys=True).encode()).hexdigest()[:16]
     dist=ROOT/'dist'
     dist.mkdir(parents=True,exist_ok=True)
-    target=None
     for candidate in sorted(dist.glob('soundblocks-*')):
         if not candidate.is_dir():continue
         try:previous=json.loads((candidate/'manifest.json').read_text(encoding='utf-8'))
         except (OSError,ValueError):continue
         if previous.get('release')==release_id:
+            unexpected={p.name for p in candidate.iterdir()}-set(contents)-{'manifest.json'}
+            if unexpected: raise ValueError(f'Unexpected files in release directory: {sorted(unexpected)}')
+            verify(candidate)
             target=candidate
             break
-    if target is None:
+    else:
+        # Human-readable directory name; content identity remains in the manifest. Write to a staging directory first,
+        # verify it, then rename it into place so a failure never leaves a half-written version in dist/.
         stem='soundblocks-'+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         target=dist/stem
         suffix=2
         while target.exists():
             target=dist/f'{stem}-{suffix:02}'
             suffix+=1
-    target.mkdir(parents=True,exist_ok=True)
-    unexpected={p.name for p in target.iterdir()}-set(contents)-{'manifest.json'}
-    if unexpected: raise ValueError(f'Unexpected files in release directory: {sorted(unexpected)}')
-    for name,data in contents.items():
-        temp=target/(name+'.tmp');temp.write_bytes(data);temp.replace(target/name)
-    (target/'manifest.json').write_text(json.dumps({'schemaVersion':1,'release':release_id,'files':hashes},ensure_ascii=False,indent=2)+'\n',encoding='utf-8',newline='\n')
-    verify(target)   # the same check the CI release job runs before publishing
+        staging=dist/('.staging-'+secrets.token_hex(4))
+        staging.mkdir()
+        try:
+            for name,data in contents.items():(staging/name).write_bytes(data)
+            (staging/'manifest.json').write_text(json.dumps({'schemaVersion':1,'release':release_id,'files':hashes},ensure_ascii=False,indent=2)+'\n',encoding='utf-8',newline='\n')
+            verify(staging)   # the same check the CI release job runs before publishing
+            staging.rename(target)
+        finally:
+            if staging.exists(): shutil.rmtree(staging,ignore_errors=True)
     latest=dist/'最新版本.txt.tmp'
     latest.write_text(f'最近打包版本：{target.name}\n\n打开课件：{target.name}/index.html\n发布网站：上传此版本目录内的文件。\n',encoding='utf-8',newline='\n')
     latest.replace(dist/'最新版本.txt')
@@ -80,8 +102,8 @@ def main():
     commands=ap.add_subparsers(dest='command',required=True)
     commands.add_parser('build')
     check=commands.add_parser('check');check.add_argument('--quick',action='store_true')
-    commands.add_parser('release',help='Build, run full regression, then produce a publication-only directory')
-    serve=commands.add_parser('serve',help='Build and preview publication-only files locally');serve.add_argument('--port',type=int,default=8000)
+    commands.add_parser('release',help='Run the full regression (which builds build/), then package it into dist/<version>/')
+    serve=commands.add_parser('serve',help='Build, package and preview locally without the regression run');serve.add_argument('--port',type=int,default=8000)
     commands.add_parser('doctor')
     base=commands.add_parser('baseline',help='Take (once) or compare the single-file baseline of the delivered weeks')
     group=base.add_mutually_exclusive_group(required=True)
@@ -103,16 +125,17 @@ def main():
     elif args.command=='baseline':run('baseline.py',*(['--create']+(['--force'] if args.force else []) if args.create else ['--check']))
     elif args.command=='build':run('build_lessons.py')
     elif args.command=='check':run('run_checks.py',*(['--quick'] if args.quick else []))
+    elif args.command=='release':
+        run('run_checks.py')   # step ① of check writes build/; nothing is built again here
+        package()
     else:
         run('build_lessons.py')
-        if args.command=='release':run('run_checks.py')
         target=package()
-        if args.command=='serve':
-            handler=partial(SimpleHTTPRequestHandler,directory=str(target))
-            with ThreadingHTTPServer(('127.0.0.1',args.port),handler) as server:
-                print(f'Preview http://127.0.0.1:{server.server_port}/ (Ctrl+C to stop)',flush=True)
-                try:server.serve_forever()
-                except KeyboardInterrupt:pass
+        handler=partial(SimpleHTTPRequestHandler,directory=str(target))
+        with ThreadingHTTPServer(('127.0.0.1',args.port),handler) as server:
+            print(f'Preview http://127.0.0.1:{server.server_port}/ (Ctrl+C to stop)',flush=True)
+            try:server.serve_forever()
+            except KeyboardInterrupt:pass
 
 if __name__=='__main__':
     try:main()

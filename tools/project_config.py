@@ -25,8 +25,8 @@ def size_budgets(data):
     if not isinstance(raw,dict) or set(raw)!={'week','course'}:
         raise ValueError('project.json sizeBudgetMB must be an object with exactly the keys week and course')
     for key,value in raw.items():
-        if isinstance(value,bool) or not isinstance(value,(int,float)) or value<=0:
-            raise ValueError(f'project.json sizeBudgetMB.{key} must be a positive number of megabytes')
+        if isinstance(value,bool) or not isinstance(value,int) or value<=0:
+            raise ValueError(f'project.json sizeBudgetMB.{key} must be a positive integer number of megabytes')
     return raw
 
 def week_name(n): return f'week{n:02}.html'

@@ -1,8 +1,8 @@
 """Size guardrail for built products (engineering plan v1.3 §3.5, transitional indicators).
 
 `project.json` carries `sizeBudgetMB`: `week` applies to every `weekNN.html`, `course` to `course.html`;
-`index.html` is not counted. Units are decimal megabytes (1 MB = 1 000 000 bytes). A product whose byte size is
-GREATER than its budget fails; equal passes. Relaxing a number is a deliberate decision, never a default action.
+`index.html` is not counted. Budgets are positive integers in decimal megabytes (1 MB = 1 000 000 bytes), so the
+byte limit is exact. A product whose byte size is GREATER than its budget fails; equal passes. Relaxing a number is a deliberate decision, never a default action.
 
 Usage: python tools/size_budget.py [--dir <products directory>]   (default build/)
 """

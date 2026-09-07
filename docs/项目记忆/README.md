@@ -30,7 +30,7 @@ source_of_truth: frontend/src/ 与根目录 README.md
 
 第三周 g/o/u/l/f/b 已注入；b 来源为 TESSA A1，2026-09-04 记录了用户确认。第二周有逐音确认记录。第三周单词与句子的剩余听检不能用机器校验代替。
 
-`resources/reference/OpenLearn_Phonics_Audio/` 是用户提供的候选教学长音轨；本次优化没有用它替换正式音素。逐音来源仍见 `resources/assets/phonemes/README.md`。统一 42 音属于长期升级，不阻塞第四周复习。
+OpenLearn 候选教学长音轨（原 `resources/reference/OpenLearn_Phonics_Audio/`，2026-09-07 已移出仓库，见 `外部归档清单_20260907.md`）没有用来替换正式音素。逐音来源仍见 `resources/assets/phonemes/README.md`。统一 42 音属于长期升级，不阻塞第四周复习。
 
 过去“前两周十二段全部没听检”的说法与第二周确认记录冲突，已移除，不补造未知的第一周确认时间。听检状态以用户实际确认和对应来源记录为准。
 

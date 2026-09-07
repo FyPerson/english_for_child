@@ -1,5 +1,6 @@
 """doctor: Node.js version gate with stubbed `node --version` outputs (plan v1.3 §4 phase 0 step 4)."""
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import unittest
@@ -29,16 +30,26 @@ class DoctorNodeTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, 'Node.js not found'):
             project.node_version_check(run=stub(raise_error=FileNotFoundError('node')))
 
-    def test_nonzero_exit_fails_with_output(self):
-        with self.assertRaisesRegex(SystemExit, 'exit code 3: boom'):
-            project.node_version_check(run=stub('', returncode=3, stderr='boom'))
+    def test_nonzero_exit_fails_with_both_streams(self):
+        with self.assertRaisesRegex(SystemExit, r"exit code 3 \(stdout: 'partial' / stderr: 'boom'\)"):
+            project.node_version_check(run=stub('partial', returncode=3, stderr='boom'))
+        with self.assertRaisesRegex(SystemExit, r'exit code 3 \(no output\)'):
+            project.node_version_check(run=stub('', returncode=3))
+
+    def test_timeout_and_decode_errors_become_readable_failures(self):
+        with self.assertRaisesRegex(SystemExit, 'could not be run: TimeoutExpired'):
+            project.node_version_check(run=stub(raise_error=subprocess.TimeoutExpired(['node'], 30)))
+        with self.assertRaisesRegex(SystemExit, 'could not be run: UnicodeDecodeError'):
+            project.node_version_check(run=stub(raise_error=UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'bad')))
 
     def test_unexpected_format_fails_with_actual_output(self):
-        for output in ['', 'node 22', '22.11.0', 'vX.1.0']:
-            with self.assertRaisesRegex(SystemExit, 'unexpected value'):
+        for output in ['', 'node 22', '22.11.0', 'vX.1.0', 'v18.0.0garbage', 'v18.0', 'v18.0.0\nextra line']:
+            with self.assertRaisesRegex(SystemExit, 'unexpected value', msg=repr(output)):
                 project.node_version_check(run=stub(output))
 
     def test_real_node_on_this_machine_is_recorded(self):
+        if not shutil.which('node'):
+            self.skipTest('node is not on PATH here; `python tools/project.py doctor` is the environment check')
         version = project.node_version_check()
         self.assertRegex(version, r'^v\d+\.\d+\.\d+$')
         print('Node.js on this machine: ' + version, flush=True)
