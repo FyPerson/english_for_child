@@ -2,20 +2,20 @@
 
 项目分为 `frontend/` 前端、`backend/` 后端边界说明（尚无实现）、`resources/` 素材、`tests/` 测试、`tools/` 构建和 `docs/` 文档。完整目录与旧路径对照见 [项目结构](docs/architecture.md)。
 
-给孩子与家长共同使用的自然拼读课件。每周一个可离线打开的 HTML，也可以直接通过 HTTPS 静态网站访问。进度保存在当前浏览器，支持逐周 JSON 备份与恢复。
+给孩子与家长共同使用的自然拼读课件。每周一个可离线打开的 HTML，也可以直接通过 HTTPS 静态网站访问。课件由源码构建，生成物不入库：clone 后先 `python tools/project.py build`，产物在 `build/`；不想本机构建可从 CI artifact 或 Release 下载同一份产物。进度保存在当前浏览器，支持逐周 JSON 备份与恢复。
 
 ## 使用
 
-- 推荐入口：`course.html`，前三周合并版。桌面左侧周次导航、手机可展开目录；当天所有打卡保存成功才开放下一天，前一周全部完成才开放下一周（包括总览）。锁定周显示解锁条件，不能进入。
+- 推荐入口：`build/course.html`（先 build），前三周合并版。桌面左侧周次导航、手机可展开目录；当天所有打卡保存成功才开放下一天，前一周全部完成才开放下一周（包括总览）。锁定周显示解锁条件，不能进入。
 - 撤销早期打卡会重新锁定后续课程，但不删除后续记录。同一来源下沿用原周存储键；本地文件的存储隔离因浏览器而异，旧进度未显示时请用原周课件导出，再到合并版对应周家长设置导入。
-- 第一至三周：`week01.html`、`week02.html`、`week03.html`。
-- 第四周：`week04.html`，巩固 19 块积木、复读三本小书、十词基线和月测阅读。
+- 第一至三周：`build/week01.html`、`build/week02.html`、`build/week03.html`。
+- 第四周：`build/week04.html`，巩固 19 块积木、复读三本小书、十词基线和月测阅读。
 - 家长设置：页脚按住 1.5 秒。可设日期、导出备份、导入本周备份、长按重置。
 - 保存失败会显示提示；换设备、换浏览器、从本地迁移到域名之前，先导出备份。
 
 ## 开发与检查
 
-源码位于 `frontend/src/`；根目录课件是生成物，不再作为公共引擎的编辑入口。使用 Python 3.10+、Node.js、Playwright：
+源码位于 `frontend/src/`；课件是生成物，写到 `build/`（不入库），不是编辑入口。CI 每次 push 上传构建产物 artifact，打 `v*` tag 才发布 Release（zip 加 manifest）。使用 Python 3.10+、Node.js、Playwright：
 
 ```powershell
 python -m pip install -r requirements-dev.txt
@@ -50,7 +50,7 @@ python tools/project.py release           # 构建、完整回归、生成 dist/
 
 播放总线和每周首页仍保留在各自模板中；此次没有重写已经审核过的底层播放协议。共同的游戏和状态实现由同一份源码构建。
 
-现有音频／插画工具仍可更新根目录课件。更新后运行 `node tools/capture_lesson_media.js weekNN.html`，只把素材同步回 `frontend/src/media/weekNN/`，再构建检查。原始素材与出处保留在 `resources/assets/`，不改变已采用的发音。不要用历史 `port.py` / `port_w3.py` 生成新周。
+现有音频／插画工具仍可更新 `build/` 下的课件。更新后运行 `node tools/capture_lesson_media.js build/weekNN.html`，只把素材同步回 `frontend/src/media/weekNN/`，再构建检查。原始素材与出处保留在 `resources/assets/`，不改变已采用的发音。不要用历史 `port.py` / `port_w3.py` 生成新周。
 
 ## 详细说明
 

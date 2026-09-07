@@ -18,7 +18,7 @@
 | `resources/manifests/`、`resources/reference/` | 素材清单和候选参考音源 | 否 |
 | `test-results/` | 自动化截图，不提交 | 否 |
 | `docs/` | 课程设计、工程说明、验收与历史决策 | 否 |
-| 根目录 HTML | 为现有链接保留的生成课件；随源码一起版本管理 | 可单独使用 |
+| `build/` | 构建产物：`course.html`、`index.html`、`weekNN.html`；不提交，`python tools/project.py build` 生成 | 可单独使用 |
 | `dist/<内容版本>/` | 仅包含可公开课件、入口和哈希清单 | 是 |
 | `tmp/`、`.venv/` | 本机实验、依赖与临时结果；Git 忽略 | 否 |
 
@@ -40,9 +40,9 @@ python tools/project.py doctor
 
 ## 日常变更
 
-1. 改课程内容：编辑对应 `weekNN.data.js`。改公共交互：编辑 `frontend/src/shared/`。不要直接修根目录生成 HTML。
-2. `python tools/project.py build`：从源码展开全部课件，校验每周契约、脚本语法和合并脚本后写出。单个输出原子替换；多文件不承诺操作系统层面的事务。
-3. `python tools/project.py check --quick`：检查生成一致性、数据、测评反例、媒体覆盖、配置及发布边界。
+1. 改课程内容：编辑对应 `weekNN.data.js`。改公共交互：编辑 `frontend/src/shared/`。不要直接修 `build/` 下的生成 HTML。
+2. `python tools/project.py build`：从源码展开全部课件，校验每周契约、脚本语法和合并脚本后写到 `build/`。单个输出原子替换；多文件不承诺操作系统层面的事务。
+3. `python tools/project.py check --quick`：构建、在临时目录重建一次逐文件比对（可重现构建）、对照单文件基线，再检查数据、测评反例、媒体覆盖、配置及发布边界。
 4. `python tools/project.py check`：交付前完整回归，包括真实浏览器的进度、六类游戏、测评、触屏、周导航与既有冒烟。
 5. `python tools/project.py serve`：在本机 `127.0.0.1:8000` 查看发布目录。固定端口有助于复用同一来源下的进度；更换端口会形成另一来源。
 
@@ -61,8 +61,8 @@ python tools/project.py doctor
 现有媒体工具仍以 HTML 常量为注入接口，保留这条已使用的处理链：
 
 ```sh
-# 按对应工具说明，先处理素材并更新 weekNN.html
-node tools/capture_lesson_media.js weekNN.html
+# 按对应工具说明，先处理素材并更新 build/weekNN.html
+node tools/capture_lesson_media.js build/weekNN.html
 python tools/project.py build
 python tools/project.py check
 ```
@@ -73,7 +73,7 @@ python tools/project.py check
 
 `python tools/project.py release` 依次构建、完整回归、输出本地发布目录。失败不继续打包。目录使用本机时间命名，如 `soundblocks-2026-09-05_14-30-00`；同秒有不同内容时追加序号，内容相同则复用已有目录。内容标识与每个文件的哈希仍记录在 `manifest.json`。`dist/最新版本.txt` 指向最近打包的目录（包括本地预览打包）。
 
-只上传该目录中的文件，网站首页是 `index.html`。这条命令不登录托管商、不上传、不购买域名。回退时重新上传上一版目录。保持 HTTPS、域名和课件路径稳定；部署代码回退不等于回退浏览器中的学习记录。
+只上传该目录中的文件，网站首页是 `index.html`。副机或家长机不必本机构建：CI 每次 push 的 artifact 与打 `v*` tag 发布的 Release（zip 加 manifest）提供同一份产物。这条命令不登录托管商、不上传、不购买域名。回退时重新上传上一版目录。保持 HTTPS、域名和课件路径稳定；部署代码回退不等于回退浏览器中的学习记录。
 
 合并入口的周锁是学习引导。独立周 HTML 仍作为可直接使用的教材一起提供，不构成防绕过或账号权限系统。
 

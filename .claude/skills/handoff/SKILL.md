@@ -129,7 +129,7 @@ commit message 写**实际包含什么**，不写"我以为它是什么"。一�
 |---|---|
 | `[[wikilink]]` → 真实相对链接 | 外部模型解析不了 wikilink，交叉引用会全断 |
 | 去工具专用元数据（`node_type` / `originSessionId` / `modified`）→ 换成项目 frontmatter | 噪音，且与项目文档体例不一致 |
-| 裸文件名 / 简写路径 → 仓库全路径 | `check_data.js` 对接手方没用，`tools/week-checks/check_data.js` 才有 |
+| 裸文件名 / 简写路径 → 仓库全路径 | `check_data.js` 对接手方没用，`tools/validation/check_data.js` 才有 |
 | **用第 2 步的结果更正过期事实** | 核心价值所在 |
 
 改完**逐个 `test -e` 验证链接**（中文路径用 shell `test -e`，禁用 Python `os.path.exists`——在 Git Bash 下对中文路径误判）。

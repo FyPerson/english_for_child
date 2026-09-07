@@ -29,12 +29,12 @@ english_for_child/
 ├─ tmp/                      本机实验与缓存，不提交
 ├─ .github/workflows/        自动回归配置
 ├─ project.json              正式周与合并范围清单
-└─ course.html、weekNN.html  兼容现有使用方式的生成课件
+└─ build/                    构建产物（course.html、index.html、weekNN.html），不提交
 ```
 
 Python 脚本目前只负责构建、处理资源、验证和本机预览，因此放在 `tools/`。`backend/` 尚无服务，等真正需要账号、同步和数据库时再实现。前端的浏览器本地进度仍属于前端状态。
 
-构建时必须使用的契约读取器在 `tools/validation/`，验证这些契约的测试在 `tests/unit/`；两者不再混在一起。根目录生成 HTML 保留已有路径，正式网站只上传 `dist/<版本>/` 内文件。
+构建时必须使用的契约读取器在 `tools/validation/`，验证这些契约的测试在 `tests/unit/`；两者不再混在一起。生成 HTML 只在 `build/`（不提交），正式网站只上传 `dist/<版本>/` 内文件。
 
 ## 旧路径迁移表
 
