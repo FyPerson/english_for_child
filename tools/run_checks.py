@@ -57,6 +57,7 @@ def main():
                 ('size budget contract', [sys.executable, 'tests/unit/test_size_budget.py']),
                 ('doctor contract', [sys.executable, 'tests/unit/test_doctor.py']),
                 ('archive inventory contract', [sys.executable, 'tests/unit/test_verify_archive.py']),
+                ('theme palette contract', [sys.executable, 'tests/unit/test_theme_palette.py']),
                 ('directory layout', [sys.executable, 'tests/unit/test_layout.py']),
                 ('build boundaries', [sys.executable, 'tests/unit/test_build.py']),
                 ('assessment contract', ['node', 'tests/unit/test_assessment_contract.js']),

@@ -7,6 +7,7 @@
 | 构建 | `build_lessons.py`、`build_course.py`、`project_config.py` | 正式构建实现；合并内容来自源码 |
 | 回归 | `run_checks.py`、`check.ps1`、`../tests/unit/`、`../tests/browser/` | 统一入口仍保留旧调用兼容 |
 | 基线 | `baseline.py`、`validation/media_declarations.js` | 四周单文件基线的生成（`baseline --create`，干净树上一次）与比对（`check` 第 ③ 步）；重取须 `--force` 并单独提交 |
+| 周主题色 | `theme_palette.py` | 从一个色相生成一周的第一层令牌（浅色加两处深色块）并按设计规范 §3.1 断言后写进模板；新周用 `--week N --hue H --name 名 --apply`，四周整套用 `--set A --apply` |
 | 体量护栏 | `size_budget.py` | 按 `project.json` 的 `sizeBudgetMB` 检查 `build/` 下每个周文件与合并入口的字节数（十进制 MB，大于即失败）；放宽是一次拍板 |
 | 发布核对 | `verify_manifest.py` | 按 `manifest.json` 逐文件核对发布目录；`package` 写完自检，CI release job 发布前同一检查 |
 | 数据契约 | `validation/check_data.js`、`load_data.js`、`assessment_contract.js` | 教学引用、测评隔离、周次与素材契约 |

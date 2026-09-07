@@ -404,20 +404,22 @@ with sync_playwright() as p:
     # ---------- ⑤ 主题 ----------
     pg.locator(".backlink").first.click()
     pg.wait_for_timeout(300)
+    # 底色跟随模板自己的 --ground 令牌（周主题色会换，断言不写死数值）
+    token_rgb = "(()=>{const h=getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();return `rgb(${parseInt(h.slice(1,3),16)}, ${parseInt(h.slice(3,5),16)}, ${parseInt(h.slice(5,7),16)})`})()"
     light_bg = pg.evaluate("getComputedStyle(document.body).backgroundColor")
+    ok(light_bg == pg.evaluate(token_rgb), f"浅色底不等于 --ground 令牌（实际 {light_bg}）")
     pg.evaluate("document.documentElement.setAttribute('data-theme','dark')")
     pg.wait_for_timeout(150)
     dark_bg = pg.evaluate("getComputedStyle(document.body).backgroundColor")
     ok(light_bg != dark_bg, "深色模式没生效")
-    ok("241, 239, 247" in light_bg, f"浅色底不是第二周紫（实际 {light_bg}）")
-    ok("24, 22, 29" in dark_bg, f"深色底不是第二周紫（实际 {dark_bg}）")
+    ok(dark_bg == pg.evaluate(token_rgb), f"深色底不等于深色 --ground 令牌（实际 {dark_bg}）")
 
-    # 跟随系统深色
+    # 跟随系统深色：未手动选主题时，系统深色应得到与手动深色相同的底色
     pg2 = br.new_page(color_scheme="dark")
     pg2.goto(URL)
     pg2.wait_for_timeout(400)
     sys_dark = pg2.evaluate("getComputedStyle(document.body).backgroundColor")
-    ok("24, 22, 29" in sys_dark, f"跟随系统深色失效（实际 {sys_dark}）")
+    ok(sys_dark == dark_bg, f"跟随系统深色失效（实际 {sys_dark}，手动深色 {dark_bg}）")
     pg2.close()
 
     # ---------- ⑥ 窄屏 ----------
