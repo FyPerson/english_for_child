@@ -1,4 +1,4 @@
-"""Stable developer entry: build, check, release, serve, doctor."""
+"""Stable developer entry: build, check, release, serve, doctor, baseline."""
 import argparse
 import hashlib
 import json
@@ -61,6 +61,10 @@ def main():
     commands.add_parser('release',help='Build, run full regression, then produce a publication-only directory')
     serve=commands.add_parser('serve',help='Build and preview publication-only files locally');serve.add_argument('--port',type=int,default=8000)
     commands.add_parser('doctor')
+    base=commands.add_parser('baseline',help='Take (once) or compare the single-file baseline of the delivered weeks')
+    group=base.add_mutually_exclusive_group(required=True)
+    group.add_argument('--create',action='store_true');group.add_argument('--check',action='store_true')
+    base.add_argument('--force',action='store_true',help='With --create: overwrite an existing fixture deliberately')
     args=ap.parse_args()
     if args.command=='doctor':
         load_config()
@@ -72,6 +76,7 @@ def main():
                 browser=p.chromium.launch();browser.close()
         except Exception as e:raise SystemExit('Browser dependency unavailable: '+str(e))
         print('PASS environment and Chromium')
+    elif args.command=='baseline':run('baseline.py',*(['--create']+(['--force'] if args.force else []) if args.create else ['--check']))
     elif args.command=='build':run('build_lessons.py')
     elif args.command=='check':run('run_checks.py',*(['--quick'] if args.quick else []))
     else:
