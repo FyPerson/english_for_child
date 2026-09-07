@@ -16,6 +16,17 @@ def load_config(path=None):
         if values != list(range(1,len(values)+1)): raise ValueError(f'{name} must be consecutive, starting at 1')
     if not set(course)<=set(weeks): raise ValueError('courseWeeks must be included in weeks')
     if data.get('entry') != 'course.html': raise ValueError('The stable entry must be course.html')
+    size_budgets(data)
     return data
+
+def size_budgets(data):
+    """Validate sizeBudgetMB (transitional guardrail, plan v1.3 §3.5) and return it: week and course, positive megabytes."""
+    raw=data.get('sizeBudgetMB')
+    if not isinstance(raw,dict) or set(raw)!={'week','course'}:
+        raise ValueError('project.json sizeBudgetMB must be an object with exactly the keys week and course')
+    for key,value in raw.items():
+        if isinstance(value,bool) or not isinstance(value,(int,float)) or value<=0:
+            raise ValueError(f'project.json sizeBudgetMB.{key} must be a positive number of megabytes')
+    return raw
 
 def week_name(n): return f'week{n:02}.html'
