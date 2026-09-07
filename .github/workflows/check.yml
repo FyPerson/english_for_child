@@ -16,9 +16,49 @@ jobs:
           node-version: '22'
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m playwright install --with-deps chromium
-      - run: python tools/project.py check
+      # Build, full regression (reproducible build, baseline, unit and browser suites), then package dist/<version>/.
+      - run: python tools/project.py release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soundblocks-${{ github.sha }}
+          path: dist/soundblocks-*/
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: browser-screenshots
           path: test-results/screenshots/reliability-mobile/
+  release:
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: soundblocks-${{ github.sha }}
+          path: ${{ github.workspace }}/dist-artifact
+      - name: Verify the artifact, zip it, verify the zip, publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          DIR=$(find "$GITHUB_WORKSPACE/dist-artifact" -mindepth 1 -maxdepth 1 -type d -name 'soundblocks-*')
+          test "$(printf '%s\n' "$DIR" | wc -l)" -eq 1
+          python tools/verify_manifest.py "$DIR"
+          ZIP="$GITHUB_WORKSPACE/soundblocks-$TAG.zip"
+          (cd "$DIR" && zip -r "$ZIP" .)
+          TMP=$(mktemp -d)
+          unzip -q "$ZIP" -d "$TMP"
+          python tools/verify_manifest.py "$TMP"
+          ZIP_SHA=$(sha256sum "$ZIP" | cut -d' ' -f1)
+          test -f "$ZIP"
+          test -f "$DIR/manifest.json"
+          gh release create "$TAG" "$ZIP" "$DIR/manifest.json" --verify-tag --notes "zip sha256: $ZIP_SHA"

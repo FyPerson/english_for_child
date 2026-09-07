@@ -1,6 +1,7 @@
 """Build boundaries and release contents; no network and no production mutations."""
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -65,5 +66,24 @@ class BuildTests(unittest.TestCase):
             with self.assertRaises(ValueError):project.package()
             (first/'extra.txt').unlink();(root/'build'/'index.html').unlink()
             with self.assertRaisesRegex(SystemExit,'MISSING products'):project.package()
+
+    def test_verify_manifest_accepts_release_and_rejects_tampering(self):
+        import verify_manifest
+        tool=Path(__file__).resolve().parents[2]/'tools/verify_manifest.py'
+        with tempfile.TemporaryDirectory() as temp,patch.object(project,'ROOT',Path(temp)),patch.object(project,'BUILD',Path(temp)/'build'):
+            root=Path(temp);(root/'build').mkdir()
+            for name in project.release_files(load_config()):(root/'build'/name).write_text('fixture '+name)
+            target=project.package()
+            self.assertEqual(set(verify_manifest.verify(target)['files']),set(project.release_files(load_config())))
+            cli=subprocess.run([sys.executable,str(tool),str(target)],capture_output=True,text=True,encoding='utf-8')
+            self.assertEqual(cli.returncode,0,cli.stderr)
+            (target/'week01.html').write_text('tampered')
+            with self.assertRaisesRegex(SystemExit,'HASH MISMATCH week01.html'):verify_manifest.verify(target)
+            (target/'week01.html').write_text('fixture week01.html')
+            (target/'notes.txt').write_text('stray')
+            with self.assertRaisesRegex(SystemExit,'UNLISTED file in release directory: notes.txt'):verify_manifest.verify(target)
+            (target/'notes.txt').unlink();(target/'index.html').unlink()
+            with self.assertRaisesRegex(SystemExit,'MISSING listed file index.html'):verify_manifest.verify(target)
+            with self.assertRaisesRegex(SystemExit,'MISSING'):verify_manifest.verify(root/'build')
 
 if __name__=='__main__':unittest.main()

@@ -9,6 +9,7 @@ import subprocess
 import sys
 from datetime import datetime
 from project_config import ROOT, BUILD, load_config, week_name
+from verify_manifest import verify
 
 def run(script,*args):
     subprocess.run([sys.executable,str(ROOT/'tools'/script),*args],cwd=ROOT,check=True)
@@ -48,6 +49,7 @@ def package():
     for name,data in contents.items():
         temp=target/(name+'.tmp');temp.write_bytes(data);temp.replace(target/name)
     (target/'manifest.json').write_text(json.dumps({'schemaVersion':1,'release':release_id,'files':hashes},ensure_ascii=False,indent=2)+'\n',encoding='utf-8',newline='\n')
+    verify(target)   # the same check the CI release job runs before publishing
     latest=dist/'最新版本.txt.tmp'
     latest.write_text(f'最近打包版本：{target.name}\n\n打开课件：{target.name}/index.html\n发布网站：上传此版本目录内的文件。\n',encoding='utf-8',newline='\n')
     latest.replace(dist/'最新版本.txt')

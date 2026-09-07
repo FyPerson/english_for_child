@@ -6,6 +6,8 @@
 |---|---|---|
 | 构建 | `build_lessons.py`、`build_course.py`、`project_config.py` | 正式构建实现；合并内容来自源码 |
 | 回归 | `run_checks.py`、`check.ps1`、`../tests/unit/`、`../tests/browser/` | 统一入口仍保留旧调用兼容 |
+| 基线 | `baseline.py`、`validation/media_declarations.js` | 四周单文件基线的生成（`baseline --create`，干净树上一次）与比对（`check` 第 ③ 步）；重取须 `--force` 并单独提交 |
+| 发布核对 | `verify_manifest.py` | 按 `manifest.json` 逐文件核对发布目录；`package` 写完自检，CI release job 发布前同一检查 |
 | 数据契约 | `validation/check_data.js`、`load_data.js`、`assessment_contract.js` | 教学引用、测评隔离、周次与素材契约 |
 | 素材 | `gen_audio.py`、`build_audio.py`、`build_phonemes.py`、`prep_phonemes.py`、`embed_assets.py`、`unify_card_outlines.py` | 按各工具说明与对应 manifest 使用；可能有额外依赖 |
 | 素材回收 | `capture_lesson_media.js` | 将已注入 HTML 的素材保存到 `frontend/src/media/` |
