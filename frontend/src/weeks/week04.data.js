@@ -1869,7 +1869,7 @@ const W = {
   },
   "dan": {
     "zh": "丹",
-    "art": null
+    "art": "dan"
   },
   "dig": {
     "zh": "挖",
@@ -1953,7 +1953,7 @@ const W = {
   },
   "nap": {
     "zh": "打个盹",
-    "art": null
+    "art": "nap"
   },
   "naps": {
     "zh": "在打盹",
@@ -1961,7 +1961,7 @@ const W = {
   },
   "nat": {
     "zh": "纳特",
-    "art": null
+    "art": "nat"
   },
   "not": {
     "zh": "不",
@@ -1977,7 +1977,7 @@ const W = {
   },
   "pan": {
     "zh": "平底锅",
-    "art": null
+    "art": "pan"
   },
   "pat": {
     "zh": "轻轻拍",
@@ -1985,7 +1985,7 @@ const W = {
   },
   "pats": {
     "zh": "轻拍",
-    "art": null
+    "art": "pats"
   },
   "pen": {
     "zh": "钢笔",
@@ -2005,7 +2005,7 @@ const W = {
   },
   "rag": {
     "zh": "抹布",
-    "art": null
+    "art": "rag"
   },
   "ran": {
     "zh": "跑了",
@@ -2037,7 +2037,7 @@ const W = {
   },
   "tap": {
     "zh": "水龙头",
-    "art": null
+    "art": "tap"
   },
   "the": {
     "zh": "这个 / 那个",
@@ -2045,7 +2045,7 @@ const W = {
   },
   "tip": {
     "zh": "小费",
-    "art": null
+    "art": "tip"
   },
   "to": {
     "zh": "到……去",
