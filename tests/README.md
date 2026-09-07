@@ -12,6 +12,7 @@
 |---|---|
 | `browser/test_initialpick.py` | W1 第七天与 W3 首字母游戏：重听、答错重试、答对后揭示、整轮完成、折叠取消和触屏 |
 | `test_build.py` | 清单异常、include 路径／循环、合并失败不覆盖旧周、发布白名单与内容哈希 |
+| `test_baseline.py` / `fixtures/baseline_20260907.json` | 四周单文件基线：骨架哈希、声明顺序、逐键媒体字节；可证伪四类与引用形态拒绝；`baseline --create` 只在干净树上生成且不覆盖，`build` 与 `check` 只读它。基线不匹配时先确认改动是有意的，再单独一个 commit 跑 `python tools/project.py baseline --create --force` 重取 |
 | `test_course.py` | 左侧周导航、手机折叠、整周与逐日锁、撤销后重锁、保存失败、HTTP 旧进度与离线切换 |
 | `check_data.js` / `load_data.js` | W1—W4 数据、引用、时长、词卡墙、积木架；读取 HTML 或数据 JS |
 | `assessment_contract.js` | W4 起的保留词／复测／探针／全年词池隔离，巩固周与月测短文 |

@@ -14,6 +14,8 @@ def main():
     args=ap.parse_args()
     if not shutil.which('node'): raise SystemExit('MISSING: Node.js')
     jobs=[('generated lessons',[sys.executable,'tools/build_lessons.py','--check']),
+          ('single-file baseline',[sys.executable,'tools/baseline.py','--check']),
+          ('baseline contract',[sys.executable,'tests/unit/test_baseline.py']),
           ('directory layout',[sys.executable,'tests/unit/test_layout.py']),
           ('build boundaries',[sys.executable,'tests/unit/test_build.py']),
           ('assessment contract',['node','tests/unit/test_assessment_contract.js']),
