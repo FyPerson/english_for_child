@@ -115,7 +115,7 @@ def main():
         for m in re.finditer(r'`((?:docs|tools|tests|frontend|resources)/[^`]+?\.(?:js|py|md|json|html))`', line):
             path = m.group(1)
             # NN、N、<...>、* 是模板占位符，不是真实路径
-            if re.search(r'(weekNN|weekN\b|<[^>]+>|\*)', path):
+            if re.search(r'(weekNN|weekN\b|_wN|第N周|YYYYMMDD|vX\.Y|<[^>]+>|\*)', path):
                 continue
             if not (args.repo / path).exists():
                 problems.append((i, f'指向的文件不存在：{path}'))
