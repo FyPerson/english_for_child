@@ -64,7 +64,7 @@ def main():
                 ('media coverage', ['node', 'tests/unit/test_media.js'])]
         if not args.quick:
             jobs += [(name, [sys.executable, 'tests/browser/' + name + '.py']) for name in
-                     ['test_date_schedule', 'test_progress', 'test_games', 'test_initialpick', 'test_assessment_browser', 'test_mobile', 'test_course',
+                     ['test_audio_touch', 'test_date_schedule', 'test_progress', 'test_games', 'test_initialpick', 'test_assessment_browser', 'test_mobile', 'test_course',
                       'smoke_parent_panel', 'smoke_w2_browser', 'smoke_w3_browser']]
         failures = []
         for name, job in jobs:

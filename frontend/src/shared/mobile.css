@@ -1,5 +1,8 @@
 /* Shared accessibility and touch layout; desktop teaching colors remain unchanged. */
 [hidden]{display:none!important}
+/* Remove native Safari button padding/alignment from the letter face. */
+.tile{padding:0;text-align:center;display:flex;align-items:center;justify-content:center}
+button.tile{-webkit-appearance:none;appearance:none}
 .progress-notice{position:relative;max-width:1060px;margin:16px auto;padding:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;background:var(--surface);color:var(--ink);border:2px solid var(--accent);border-radius:14px}
 .progress-notice>span{flex:1 1 260px}
 .progress-tools{flex-wrap:wrap}

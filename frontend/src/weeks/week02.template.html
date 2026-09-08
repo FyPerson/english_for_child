@@ -1066,6 +1066,7 @@ function showAudioFailure(opts){
    ⑤ 全程任一时刻被外部取消 → resolve cancelled 并停止物理音源 ---------- */
 const WordAudio = (() => {
   let seq = 0;
+  let player = null; // Reuse the gesture-authorized element for delayed word/phrase playback.
   function play(key, opts){
     opts = opts || {};
     return new Promise(resolve => {
@@ -1128,14 +1129,20 @@ const WordAudio = (() => {
       const src = WORD_AUDIO[key];
       if(!src){ toFallback(); return; }     // 缺键直接转兜底
 
-      audioEl = new Audio(src);             // ③
-      if(opts.rate) audioEl.playbackRate = opts.rate;
+      audioEl = player || (player = new Audio()); // ③ Keep Safari playback permission on this element.
+      audioEl.src = src;
+      audioEl.playbackRate = opts.rate || 1;
       audioEl.onended = () => { if(isCurrent() && phase === 'embedded') finish('ended'); };
       audioEl.onerror = () => { if(isCurrent() && phase === 'embedded') toFallback(); };
       timeoutId = setTimeout(() => { if(isCurrent() && phase === 'embedded') toFallback(); }, 8000);
       try{
         const p = audioEl.play();
-        if(p && p.catch) p.catch(() => { if(isCurrent() && phase === 'embedded') toFallback(); });
+        if(p && p.catch) p.catch(error => {
+          if(!isCurrent() || phase !== 'embedded') return;
+          // A blocked gesture needs a fresh tap, not a delayed TTS attempt.
+          if(error && error.name === 'NotAllowedError') finish('failed');
+          else toFallback();
+        });
       }catch(e){ toFallback(); }
     });
   }
@@ -1176,7 +1183,18 @@ const Phone = (()=>{
     AudioBus.stopForPhone();                // R-9 变体：断单词/TTS，音素间叠音保留（D3，预筛M4）
     let a = cache[ak];                              // 缓存也按录音键，两个字母共用一个 Audio
     if(!a){ a = new Audio(src); a.preload = 'auto'; cache[ak] = a; }
-    try{ a.currentTime = 0; a.play().catch(()=>{}); }catch(e){}
+    const generation = AudioBus.generation();
+    const failed = () => {
+      if(AudioBus.generation() !== generation) return;
+      showAudioFailure({ retry(){ Phone.say(k); } });
+    };
+    a.onerror = failed;
+    // Seeking before metadata is ready may throw on Safari; still attempt playback.
+    try{ a.currentTime = 0; }catch(e){}
+    try{
+      const playing = a.play();
+      if(playing && playing.catch) playing.catch(failed);
+    }catch(e){ failed(); }
     return true;
   }, stopAll(){
     for(const k in cache){ try{ cache[k].pause(); cache[k].currentTime = 0; }catch(e){} }
