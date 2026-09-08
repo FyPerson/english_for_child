@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "takenAt": "2026-09-08",
- "sourceCommit": "df1d0faa8c019f0e29ba952518ec260fe5bb5949",
+ "sourceCommit": "e99b75dd27f984ca46bf445bff93a7e3fd3f6244",
  "form": "single-file",
  "toolVersions": {
   "python": "3.12.14",
@@ -10,8 +10,8 @@
  },
  "weeks": {
   "week01.html": {
-   "sha256": "7910aaafc3a03bfe5ee1276c7bf444143f1bf1391bc58c8f8ef1675c8b16376f",
-   "skeletonSha256": "551a66cfa4c010dc8409ba38a12cadbad462b366f124e4067e1daa2e2f1ca726",
+   "sha256": "92beb6a7ffc35db6fb16a4f97935bb433b00742e4287c5417ac6493f83cf33ef",
+   "skeletonSha256": "f9126a9a70f1e3a5a394866c069dfd1622f5f861ec4fcefd6a08030844f02aac",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -3950,6 +3950,6 @@
   }
  },
  "course": {
-  "sha256": "5f18e458bb635f5e14a6106a383b6c362811d747299f2bf7161f57c01af6880b"
+  "sha256": "570d35d848e1ddc9c99d74734461d5c94504088dc92cd6ccea27bcb5909585bb"
  }
 }
