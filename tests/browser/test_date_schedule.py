@@ -10,6 +10,7 @@ with sync_playwright() as p:
         page.on('pageerror',lambda e:errors.append(str(e)))
         page.goto((ROOT/f'build/week{week:02}.html').as_uri())
         page.evaluate("setCourseDate(localDateString(),true);renderHome()")
+        assert page.locator('[data-goto="wall"]').is_enabled()
         assert page.locator('.daycard[data-goto="2"]').is_disabled()
         page.evaluate("DAYS[0].steps.forEach((s,si)=>s.blocks.filter(b=>b.b==='checks').forEach(b=>b.items.forEach((_,i)=>dayState(1).checks[`1-${si}-${i}`]=true)));save();renderHome()")
         assert page.locator('.daycard[data-goto="2"]').is_disabled(), 'clicking all checks must not unlock tomorrow'

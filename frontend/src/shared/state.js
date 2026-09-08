@@ -131,7 +131,7 @@ function changeSchedule(action){
 }
 function refreshDateLocks(){
   document.querySelectorAll('[data-goto]').forEach(button=>{
-    const day=Number(button.dataset.goto);if(day<1||day>7)return;
+    const day=Number(button.dataset.goto);if(!Number.isInteger(day)||day<1||day>7)return;
     const weekAllowed=!window.courseWeekAllowed||window.courseWeekAllowed();
     const locked=!weekAllowed||!dayAvailable(day);
     if(button.disabled!==locked)button.disabled=locked;
