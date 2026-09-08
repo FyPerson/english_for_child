@@ -117,6 +117,9 @@ def main():
             # NN、N、<...>、* 是模板占位符，不是真实路径
             if re.search(r'(weekNN|weekN\b|_wN|第N周|YYYYMMDD|vX\.Y|<[^>]+>|\*)', path):
                 continue
+            # 方案类文档会引用「新建 xxx.js」这种还不存在的文件，那是计划不是断言
+            if re.search(r'(新建|新增|待建|将建|计划新增)', line[:m.start()]):
+                continue
             if not (args.repo / path).exists():
                 problems.append((i, f'指向的文件不存在：{path}'))
 
