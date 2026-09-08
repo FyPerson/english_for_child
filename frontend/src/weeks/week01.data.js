@@ -7,7 +7,7 @@ const META = {
   "groupedRack": false,
   "consolidation": false,
   "flashCapacity": {
-    "flash_words": 18,
+    "flash_words": 17,
     "flash_sounds": 6
   }
 };
@@ -67,7 +67,7 @@ const W = {
   nap:{zh:'打个盹',art:'natNap'},   naps:{zh:'在打盹',art:'natNap'},
   tap:{zh:'水龙头',art:'tap'},      tip:{zh:'小费',art:'tip'},
   sip:{zh:'小口喝',art:'sip'},      tin:{zh:'铁罐头',art:'tin'},
-  snap:{zh:'打响指',art:'snap'},    spin:{zh:'转圈圈',art:'spin'},
+  snap:{zh:'打响指',art:'snap'},
   nip:{zh:'轻轻咬一口',art:'nip'},   tan:{zh:'晒黑',art:'tan'},
   sap:{zh:'树汁',art:'sap'},         nit:{zh:'小虫卵',art:null},
   spit:{zh:'吐',art:null},          pip:{zh:'果核',art:'pip'},
@@ -120,7 +120,7 @@ const G3_PAIRS = [['sat','sit'],['pat','pit'],['tap','tip']];
 
 const G4_WORDS = ['at','it','an','in','sat','pin','nap'];
 
-const G5_WHITELIST = ['an','at','in','it','nap','nip','pan','pat','pin','pit','sat','sip','sit','snap','spin','tap','tin','tip'];
+const G5_WHITELIST = ['an','at','in','it','nap','nip','pan','pat','pin','pit','sat','sip','sit','snap','tap','tin','tip'];
 
 const DAYS = [
 {
@@ -253,7 +253,7 @@ const DAYS = [
 },
 {
   n:5, wd:'第五天', title:'鼻子里的声音', sounds:['n'],
-  goal:'能拼出 snap 或 spin —— 两个辅音连在一起，难度上了一个台阶',
+  goal:'尝试在 nap 前加 /s/，读出 snap —— 进阶拼读观察',
   steps:[
     {t:'快闪复习', min:3, blocks:[
       {b:'flash', items:[{k:'s'},{k:'a'},{k:'t'},{k:'i'},{k:'p'},{k:'w',v:'pat'},{k:'w',v:'pit'},{k:'w',v:'tap'},{k:'w',v:'sip'}]}
@@ -264,9 +264,9 @@ const DAYS = [
       {b:'lead', html:'<strong>认字形：</strong>n 像一个小拱门。空中写 5 遍，本子上写 5 个。'}
     ]},
     {t:'拼读 + 挑战', min:11, blocks:[
-      {b:'lead', html:'先拼三个音的，再挑战四个音的。<b>snap 和 spin 开头有两个辅音挤在一起</b>，这是今天的难点，也是最有成就感的地方。'},
-      {b:'blend', words:['an','nap','pan','pin','tin','nip','snap','spin']},
-      {b:'words', items:['an','nap','pan','pin','tin','nip','snap','spin']},
+      {b:'lead', html:'先拼三个音的，再挑战四个音的。<b>snap 开头有两个辅音挤在一起</b>，这是今天的难点，也是最有成就感的地方。'},
+      {b:'blend', words:['an','nap','pan','pin','tin','nip','snap']},
+      {b:'words', items:['an','nap','pan','pin','tin','nip','snap']},
       {b:'note', tone:'warn', html:'拼 <span class="en"><b>snap</b></span> 卡住时，先让他拼 <span class="en">nap</span>，再在前面加一个 s：s+nap → snap。<b>从后往前接</b>比从前往后拼容易得多。'}
     ]},
     {t:'第一次读句子', min:5, blocks:[
@@ -280,7 +280,7 @@ const DAYS = [
     ]},
     {t:'收尾打卡', min:4, blocks:[
       {b:'checks', items:[
-        ['能拼出 <span class="en"><b>snap</b></span> 或 <span class="en"><b>spin</b></span>','四个音的词，能拼出一个就算过'],
+        ['尝试在 <span class="en"><b>nap</b></span> 前加 /s/，读出 <span class="en"><b>snap</b></span>','进阶观察：nap 还不顺时先巩固，不强求当天完成'],
         ['能读出 <span class="en"><b>I see a pin.</b></span>','完整一句，磕巴没关系'],
         ['知道 /n/ 的声音从鼻子出来','捏鼻子测试通过']
       ]}
@@ -301,7 +301,7 @@ const DAYS = [
         {k:'w',v:'sat'},{k:'w',v:'sit'},{k:'w',v:'pat'},{k:'w',v:'pit'},{k:'w',v:'pin'},
         {k:'w',v:'pan'},{k:'w',v:'nap'},{k:'w',v:'tap'},{k:'w',v:'tip'},{k:'w',v:'sip'},
         {k:'w',v:'tin'},{k:'w',v:'an'},{k:'w',v:'at'},{k:'w',v:'it'},{k:'w',v:'in'},
-        {k:'w',v:'snap'},{k:'w',v:'spin'},{k:'w',v:'nip'}
+        {k:'w',v:'snap'},{k:'w',v:'nip'}
       ], timed:true, recKey:'flash_words'}
     ]},
     {t:'读《Nat Naps》', min:15, blocks:[
