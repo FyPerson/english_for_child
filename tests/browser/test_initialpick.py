@@ -9,6 +9,8 @@ def run():
         browser=p.chromium.launch()
         for week,day,total in [(1,7,8),(3,1,5)]:
             page=browser.new_page(viewport={'width':390,'height':844},has_touch=True)
+            # Calendar is fully open for unrelated game/layout regression scenarios.
+            page.add_init_script("document.addEventListener('DOMContentLoaded',()=>{if(typeof state!=='undefined'&&!state.startDate){state.startDate='2020-01-01';save();renderHome();}})")
             errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
             page.goto((ROOT/'build'/f'week{week:02}.html').as_uri())
             page.locator(f'.dots [data-goto="{day}"]').click()

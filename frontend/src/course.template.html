@@ -7,7 +7,7 @@
 @media(max-width:700px){body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}.sidebar{padding:10px 12px;border-right:0;border-bottom:1px solid #d6dfd7;max-height:60dvh}.brand{display:flex;align-items:center;justify-content:space-between;gap:8px}h1{font-size:16px;margin:0}#navToggle{display:block;padding:8px 12px;min-height:44px}nav{display:none;margin:12px 0}.sidebar[data-expanded=true] nav{display:flex}.help{display:none}.sidebar[data-expanded=true] .help{display:block}#courseStatus{font-size:12px}}
 </style></head><body>
 <aside class="sidebar" data-expanded="false"><div class="brand"><h1>声音积木<br>__COURSE_TITLE__</h1><button id="navToggle" aria-expanded="false" aria-controls="weekNav">学习目录</button></div><nav id="weekNav" aria-label="选择学习周次">__COURSE_NAV__</nav>
-<p id="courseStatus" role="status">正在读取学习进度…</p><p class="help">完成当天全部打卡后解锁下一天；完成一整周后解锁下一周。备份与恢复在已解锁周的家长设置中。</p></aside>
+<p id="courseStatus" role="status">正在读取学习进度…</p><p class="help">本周按开课日期每天开放一天，打卡只记录学习情况；完成一整周后解锁下一周。备份与恢复在已解锁周的家长设置中。</p></aside>
 <main><iframe id="lesson" title="第一周课件"></iframe><section id="weekBlocked" hidden><h2>这一周已重新锁定</h2><p>前面的完成记录发生了变化。已有学习记录保留，请从学习目录返回前面尚未完成的周次。</p></section></main><noscript>请启用 JavaScript 后打开课件。</noscript>
 <script id="course-payload" type="application/json">__COURSE_PAYLOAD__</script>
 <script>
@@ -23,7 +23,7 @@ function completion(){
 }
 function allowed(week,day){
   if(!Number.isInteger(week)||week<1||week>course.weeks.length||!Number.isInteger(day)||day<1||day>7) return false;
-  return completion().slice(0,(week-1)*7+day-1).every(Boolean);
+  return completion().slice(0,(week-1)*7).every(Boolean);
 }
 function refresh(){
   const done=completion();const next=done.findIndex(x=>!x);

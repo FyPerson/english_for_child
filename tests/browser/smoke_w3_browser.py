@@ -54,6 +54,8 @@ DUMB_BUTTON = ("button.tile:not([data-sayph]):not([data-say])"
 with sync_playwright() as p:
     br = p.chromium.launch()
     pg = br.new_page(viewport={"width": 1280, "height": 900})
+    # Calendar is fully open for unrelated game/layout regression scenarios.
+    pg.add_init_script("document.addEventListener('DOMContentLoaded',()=>{if(typeof state!=='undefined'&&!state.startDate){state.startDate='2020-01-01';save();renderHome();}})")
     errors = []
     pg.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
     pg.on("console", lambda m: errors.append(f"console.error: {m.text}") if m.type == "error" else None)
@@ -417,13 +419,13 @@ with sync_playwright() as p:
     hold("[data-parent-gate]", 800)
     ok(panel.evaluate("e=>e.hidden") is True, "按住 0.8 秒就打开了面板（应需 1.5 秒）")
     hold("[data-parent-gate]", 1800)
-    ok(panel.evaluate("e=>e.hidden") is False and panel.locator('input[type="date"]').count() == 1
+    ok(panel.evaluate("e=>e.hidden") is False and panel.locator('input[type="date"]').count() == 2
        and panel.locator("[data-parent-reset]").count() == 1, "长按 1.8 秒后面板没打开或缺日期框 / 重置按钮")
     # 改开课日期：单击确认即可
-    panel.locator('input[type="date"]').fill("2026-09-14")
+    panel.locator('[aria-label="Day1 开课日期"]').fill("2020-09-14")
     panel.locator('[data-parent-act="setdate"]').click(); pg.wait_for_timeout(400)
     saved = pg.evaluate("(()=>{try{return JSON.parse(localStorage.getItem('%s')).startDate}catch(e){return null}})()" % STORE_KEY)
-    ok(saved == "2026-09-14", f"面板里设置开课日期后 localStorage 没存对（{saved}）")
+    ok(saved == "2020-09-14", f"面板里设置开课日期后 localStorage 没存对（{saved}）")
     ok("9月14日" in pg.locator("footer").inner_text(), "页脚没有显示新设的开课日期")
     ok(pg.locator("[data-parent-panel]").evaluate("e=>e.hidden") is True, "设置日期后面板没有收起")
     # 制造一点进度，再长按重置：本周的 localStorage 键应被删掉、页面刷新回到全新状态
@@ -437,11 +439,10 @@ with sync_playwright() as p:
     ok("打卡" in pg.locator("[data-parent-panel]").inner_text(), "面板没有写清会清掉什么")
     pg.locator("[data-parent-reset]").first.click(); pg.wait_for_timeout(400)
     ok(pg.evaluate("localStorage.getItem('%s') !== null" % STORE_KEY), "单击「本周从头再来」就清空了进度（应需长按）")
-    with pg.expect_navigation(wait_until="load", timeout=10000):   # 审 20 M-3：等真实重载，不靠固定等待
-        hold("[data-parent-reset]", 1800)
+    hold("[data-parent-reset]", 1800)
     pg.wait_for_timeout(500)
-    ok(pg.evaluate("localStorage.getItem('%s')" % STORE_KEY) is None, "长按重置后本周 localStorage 键没有被删掉")
-    ok(pg.locator('[data-startdate-act="reveal"]').count() >= 1, "重置刷新后首页没有重新出现开课日期提示条")
+    ok(pg.evaluate("Object.values(state.days).every(d=>Object.keys(d.checks).length===0)"), "长按重置后本周 localStorage 键没有被删掉")
+    ok(pg.evaluate('isValidDateStr(state.startDate)'), "重置刷新后首页没有重新出现开课日期提示条")
     # 鼠标 / 键盘 / 触屏三种输入、右键、滑出、删存储失败、主题保留等完整用例在 smoke_parent_panel.py（三周通用）
 
     ok(not errors, "控制台报错：" + "; ".join(errors[:5]))

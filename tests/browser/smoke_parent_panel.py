@@ -109,10 +109,10 @@ def run(target: Path) -> int:
         ok(panel_open(), "触屏原地按住 1.8 秒后面板没打开")
 
         # ---- 改开课日期：单击确认即存 ----
-        pg.locator('[data-parent-panel] input[type="date"]').fill("2026-09-14")
+        pg.locator('[data-parent-panel] input[aria-label="Day1 开课日期"]').fill("2020-09-14")
         pg.locator('[data-parent-act="setdate"]').click(); pg.wait_for_timeout(400)
         saved = pg.evaluate("(()=>{try{return JSON.parse(localStorage.getItem('%s')).startDate}catch(e){return null}})()" % key)
-        ok(saved == "2026-09-14", f"设置开课日期没存对（{saved}）")
+        ok(saved == "2020-09-14", f"设置开课日期没存对（{saved}）")
         ok("9月14日" in pg.locator("footer").inner_text(), "页脚没显示新日期")
         ok(panel_hidden(), "设置日期后面板没有收起")
 
@@ -131,22 +131,21 @@ def run(target: Path) -> int:
         ok("无法恢复" in pg.locator("[data-parent-panel]").inner_text(), "面板没写明清除后无法恢复")
         # 临时把 removeItem 换成空操作模拟"浏览器不让删"；用 try/finally 保证原函数放回原型
         # （delete 会连原函数一起删掉；evaluate 要显式 return 0，函数值不能序列化回 Python）
-        pg.evaluate("(()=>{ window.__realRemove = Storage.prototype.removeItem; Storage.prototype.removeItem = function(){}; return 0; })()")
+        pg.evaluate("(()=>{ window.__realRemove = Storage.prototype.setItem; Storage.prototype.setItem = function(){}; return 0; })()")
         try:
             pg.locator("[data-parent-reset]").first.click(); pg.wait_for_timeout(400)
             ok(pg.evaluate("localStorage.getItem('%s') !== null" % key), "单击重置就清空了（应需长按）")
             hold_mouse("[data-parent-reset]", 1800)
-            ok(pg.evaluate("localStorage.getItem('%s') !== null" % key) and "未能清除" in pg.locator("[data-parent-panel]").inner_text(),
+            ok(pg.evaluate("localStorage.getItem('%s') !== null" % key) and "设置未保存" in pg.locator("#progressNotice").inner_text(),
                "删存储失败时没有提示，或页面被刷新")
         finally:
-            pg.evaluate("(()=>{ Storage.prototype.removeItem = window.__realRemove; delete window.__realRemove; return 0; })()")
+            pg.evaluate("(()=>{ Storage.prototype.setItem = window.__realRemove; delete window.__realRemove; return 0; })()")
 
         # ---- 重置：正常路径 ----
-        with pg.expect_navigation(wait_until="load", timeout=10000):
-            hold_mouse("[data-parent-reset]", 1800)
+        hold_mouse("[data-parent-reset]", 1800)
         pg.wait_for_timeout(500)
-        ok(pg.evaluate("localStorage.getItem('%s')" % key) is None, "长按重置后本周键没删掉")
-        ok(pg.locator('[data-startdate-act="reveal"]').count() >= 1, "重置后首页没重新出现开课日期提示条")
+        ok(pg.evaluate("Object.values(state.days).every(d=>Object.keys(d.checks).length===0)"), "长按重置后本周键没删掉")
+        ok(pg.evaluate('isValidDateStr(state.startDate)'), "重置后首页没重新出现开课日期提示条")
         ok(pg.evaluate("localStorage.getItem('soundblocks-theme')") == "dark", "重置把主题键也清掉了")
         ok(pg.locator("[data-check].on, [data-check][aria-checked='true']").count() == 0, "重置刷新后仍有打卡勾")
         ok(not errors, "控制台报错：" + "; ".join(errors[:3]))

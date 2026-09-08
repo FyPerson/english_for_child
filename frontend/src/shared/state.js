@@ -1,14 +1,7 @@
 let progressNotice = '', progressDirty = false;
 let state = loadProgress();
 
-/* ==================================================================
-   开课日期（规格 §5 末条，2026-08-29 晚新增，P2 收官后增补）：面向"文件分发
-   给多个家庭"场景，每个家庭在自己浏览器里设置 Day1 对应的日历日。
-   state.startDate/state.startDatePromptDismissed 跟 state.days 同级——是
-   state 顶层字段，不属于 state.games（不是某个游戏的成绩，是全局的一次性
-   设置），清洗紧跟在 state.days 清洗后面做，同一批"读取即清洗"逻辑。
-   仅做温和指路：不锁、不自动跳转、不催，计算日落在 [1,7] 外一律静默 null。
-   ================================================================== */
+/* 本周按本地自然日开放；完成记录与开放日期独立。 */
 function isValidDateStr(s){
   if(typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const [y,m,d] = s.split('-').map(Number);
@@ -18,6 +11,8 @@ function isValidDateStr(s){
   return dt.getFullYear() === y && dt.getMonth() === m-1 && dt.getDate() === d;
 }
 if(!isValidDateStr(state.startDate)) delete state.startDate;
+if(!isValidDateStr(state.pausedOn))delete state.pausedOn;
+if(!Number.isInteger(state.openThrough)||state.openThrough<1||state.openThrough>7)delete state.openThrough;
 if(typeof state.startDatePromptDismissed !== 'boolean') state.startDatePromptDismissed = false;
 
 function todayDayN(){
@@ -34,16 +29,7 @@ function formatDateZh(s){
   return `${m}月${d}日`;
 }
 
-/* ==================================================================
-   家长设置面板（2026-09-02 用户拍板：重置包含清进度；长按开门）。
-   页脚入口须长按 1.5 秒才打开——复用 bindLongPress，与 G2/G4/G5 的家长确认同一手势，
-   孩子单击没有任何反应。面板里：
-   · 改开课日期：单击确认即可（后果轻，只影响首页"今天"角标，规格 §5 末条不锁不跳转）；
-   · 本周从头再来：按钮本身再长按 1.5 秒才生效（不可逆）。做法是删掉本周的 localStorage
-     键后整页重载，回到全新状态：打卡、游戏确认与纪录、开课日期一并清空，首页重新出现
-     开课日期提示条让家长设新日期。不逐字段清，避免漏掉 games 里的某个子表。
-   明暗主题键（soundblocks-theme）跨周共用，不动。
-   ================================================================== */
+/* 家长长按入口；改日期默认保留，重新开始以单次存储替换清空本周。 */
 function parentPanelSummary(){
   const days = Object.keys(state.days || {}).filter(n => dayDone(+n)).length;
   const checks = Object.values(state.days || {}).reduce((a, d) => a + Object.values((d && d.checks) || {}).filter(Boolean).length, 0);
@@ -61,17 +47,20 @@ function openParentPanel(){
   panel.innerHTML = `<div class="parent-panel" role="group" aria-label="家长设置">
       <div class="parent-panel__row">
         <span>开课日期（Day 1 对应的日历日）</span>
-        <input type="date" class="startdate-input" aria-label="Day1 开课日期" value="${isValidDateStr(state.startDate) ? state.startDate : ''}">
-        <button class="btn btn--ok" data-parent-act="setdate">确认</button>
+        <input type="date" class="startdate-input" aria-label="Day1 开课日期" value="${isValidDateStr(state.startDate) ? state.startDate : localDateString()}">
+        <label><input type="checkbox" data-clear-with-date>同时清空本周进度（不可撤销，请先导出备份）</label>
+        <button class="btn btn--ok" data-parent-act="setdate">保存日期</button>
         <span class="startdate-hint" style="display:none;font-size:12px;color:var(--vowel)">先选个日期哦</span>
       </div>
       <div class="parent-panel__row">
+        <label>重新开始日期 <input type="date" data-restart-date aria-label="重新开始日期" value="${localDateString()}"></label>
         <button class="btn btn--ghost parent-panel__danger" type="button" data-parent-reset aria-label="本周从头再来：按住 1.5 秒确认，清除后无法恢复">
           <span class="hold-fill" data-longpress-fill></span>
           <span class="hold-label">本周从头再来 · 按住 1.5 秒</span>
         </button>
-        <span class="parent-panel__note">会清掉这台设备上本周的全部进度：${parentPanelSummary()}，以及开课日期。<b>清除后无法恢复。</b>清完页面会刷新，首页会重新请你设置开课日期。</span>
+        <span class="parent-panel__note">会清掉这台设备上本周的全部进度：${parentPanelSummary()}。按所选新日期重新开放课程。<b>清除后无法恢复，请先导出备份。</b></span>
       </div>
+      <div class="parent-panel__row"><button class="btn" data-parent-act="pause">${state.pausedOn ? '恢复日期推进' : '暂停日期推进'}</button><button class="btn" data-parent-act="advance">提前开放下一天</button><span>暂停期间保留已开放内容；恢复后继续每天开放一天。</span></div>
       <div class="parent-panel__row"><button class="linklike" data-parent-act="close">收起</button></div>
     </div>`;
   attachProgressPanel(panel);
@@ -89,15 +78,79 @@ function closeParentPanel(panel, refocus){
   if(gate){ gate.setAttribute('aria-expanded', 'false'); if(refocus) gate.focus(); }
 }
 function resetWeekAndReload(){
-  // 审 20 H-2：删完读回确认，真的没了才刷新；删不掉就留在面板说清楚，绝不把失败伪装成成功
-  let gone = false;
-  try{ localStorage.removeItem(KEY); gone = (localStorage.getItem(KEY) === null); }catch(e){ gone = false; }
-  if(!gone){
-    const note = document.querySelector('[data-parent-panel] .parent-panel__note');
-    if(note) note.innerHTML = '<b>未能清除本周进度</b>（浏览器不允许改动这个页面的存储）。请再按一次；仍不行就换个浏览器打开这个文件再试。';
-    return;
+  const panel=document.querySelector('[data-parent-panel]');
+  const date=panel.querySelector('[data-restart-date]').value;
+  if(!isValidDateStr(date)){panel.querySelector('.parent-panel__note').textContent='请选择有效的重新开始日期。';return;}
+  if(setCourseDate(date,true)){closeParentPanel(panel,false);curDay=0;renderHome();}
+}
+function localDateString(date=new Date()){
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+function dateNumber(date){const [y,m,d]=date.split('-').map(Number);return Date.UTC(y,m-1,d)/86400000;}
+function shiftedDate(date,offset){const [y,m,d]=date.split('-').map(Number);return localDateString(new Date(y,m-1,d+offset));}
+function availableDay(){
+  const elapsed=isValidDateStr(state.startDate) ? dateNumber(state.pausedOn||localDateString())-dateNumber(state.startDate)+1 : 1;
+  return Math.max(0,Math.min(7,Math.max(elapsed,state.openThrough||0)));
+}
+function dayAvailable(n){return Number.isInteger(n)&&n>=1&&n<=availableDay();}
+function dayOpeningMessage(n){
+  if(state.pausedOn)return '日期推进已暂停，请家长恢复或提前开放';
+  if(!isValidDateStr(state.startDate))return '请家长设置开课日期后按日开放';
+  return `${formatDateZh(shiftedDate(state.startDate,n-1))}开放`;
+}
+function replaceProgressSafely(candidate){
+  const previous=state,wasDirty=progressDirty;
+  state=candidate;
+  if(!save()){state=previous;progressDirty=wasDirty;progressMessage('设置未保存，原进度保留。请检查存储权限后重试。');return false;}
+  return true;
+}
+function setCourseDate(date,clear=false){
+  if(!isValidDateStr(date))return false;
+  const candidate=clear ? {days:cleanDays({}),games:{},assessments:{}} : JSON.parse(JSON.stringify(state));
+  candidate.startDate=date;candidate.startDatePromptDismissed=true;
+  delete candidate.pausedOn;delete candidate.openThrough;
+  if(!replaceProgressSafely(candidate))return false;
+  cleanGamesState();state.assessments=cleanAssessmentState(state.assessments);
+  return true;
+}
+function changeSchedule(action){
+  const candidate=JSON.parse(JSON.stringify(state)),today=localDateString();
+  if(action==='pause'){
+    if(candidate.pausedOn){
+      if(candidate.startDate)candidate.startDate=shiftedDate(candidate.startDate,Math.max(0,dateNumber(today)-dateNumber(candidate.pausedOn)));
+      delete candidate.pausedOn;
+    }else{
+      if(!candidate.startDate)candidate.startDate=today;
+      candidate.pausedOn=today;
+    }
+  }else if(action==='advance'){
+    if(!candidate.startDate)candidate.startDate=today;
+    candidate.openThrough=Math.min(7,availableDay()+1);
   }
-  location.reload();
+  return replaceProgressSafely(candidate);
+}
+function refreshDateLocks(){
+  document.querySelectorAll('[data-goto]').forEach(button=>{
+    const day=Number(button.dataset.goto);if(day<1||day>7)return;
+    const weekAllowed=!window.courseWeekAllowed||window.courseWeekAllowed();
+    const locked=!weekAllowed||!dayAvailable(day);
+    if(button.disabled!==locked)button.disabled=locked;
+    button.setAttribute('aria-disabled',String(locked));
+    const message=weekAllowed?dayOpeningMessage(day):'完成前面的周次后开放';
+    if(locked){button.title=message;button.dataset.dateLocked=message;}
+    else if(button.dataset.dateLocked){button.removeAttribute('title');delete button.dataset.dateLocked;}
+  });
+  if(curDay>0&&!dayAvailable(curDay)){curDay=0;renderHome();}
+}
+function initDateSchedule(){
+  const style=document.createElement('style');
+  style.textContent='[data-date-locked]{opacity:.55;cursor:not-allowed!important}.daycard[data-date-locked]::after{content:attr(data-date-locked);display:block;font-size:12px;margin-top:8px}';
+  document.head.appendChild(style);
+  new MutationObserver(refreshDateLocks).observe(document.getElementById('app'),{childList:true,subtree:true});
+  window.addEventListener('focus',refreshDateLocks);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshDateLocks();});
+  setInterval(refreshDateLocks,30000);
+  refreshDateLocks();
 }
 
 /* ==================================================================

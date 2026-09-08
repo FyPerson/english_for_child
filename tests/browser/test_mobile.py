@@ -26,6 +26,8 @@ def run():
                 for width in [320,390,768,1280]:
                     context = browser.new_context(viewport={'width':width,'height':844},has_touch=True,is_mobile=width<768)
                     page=context.new_page()
+                    # Calendar is fully open for unrelated game/layout regression scenarios.
+                    page.add_init_script("document.addEventListener('DOMContentLoaded',()=>{if(typeof state!=='undefined'&&!state.startDate){state.startDate='2020-01-01';save();renderHome();}})")
                     errors=[]
                     requests=[]
                     page.on('pageerror',lambda e: errors.append(str(e)))

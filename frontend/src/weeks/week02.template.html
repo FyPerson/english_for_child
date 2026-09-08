@@ -1370,10 +1370,10 @@ function renderHome(){
     <div class="pnote" style="margin-bottom:20px">
       <span class="pnote__ico">${ART.bulb}</span>
       <div class="pnote__b" style="flex:1">
-        设置开课日期后，每天打开会自动标出今天学哪一天（可跳过）。
+        设置开课日期后，每天开放一天，不依赖打卡完成情况。未设置时可体验第一天。
         <div data-startdate-ctl style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <button class="btn btn--ok" data-startdate-act="reveal">设置</button>
-          <button class="btn btn--ghost" data-startdate-act="skip">不用了</button>
+          <button class="btn btn--ghost" data-startdate-act="skip">稍后设置</button>
         </div>
       </div>
     </div>` : ''}
@@ -1558,6 +1558,7 @@ function renderWall(){
 }
 
 function renderDay(n){
+  if(!dayAvailable(n)){curDay=0;renderHome();return;}
   clearPageTimers();
   const d = DAYS[n-1];
   const ctx = {day:n, uid:0, stepIdx:0};
@@ -1842,7 +1843,7 @@ document.addEventListener('click', e=>{
   // 开课日期（规格 §5 末条）：首页顶部一次性提示条用 [data-startdate-ctl] 包一层容器，
   // "设置"把该容器 innerHTML 换成 input+确认；"确认"从同一个容器里找那个 input 读值。
   // 页脚的常设入口已并入家长设置面板（长按打开，见 openParentPanel / [data-parent-act]）。
-  // 不锁不跳转，全部落地为 renderHome() 整页重绘（跟 data-goto 的整页重绘同一惯例）。
+  // 保存日期后重绘首页，日课开放由共享日期规则计算。
   const sdAct = e.target.closest('[data-startdate-act]');
   if(sdAct){
     const kind = sdAct.dataset.startdateAct;
@@ -1858,7 +1859,7 @@ document.addEventListener('click', e=>{
     if(kind === 'confirm'){
       const ctl = sdAct.closest('[data-startdate-ctl]');
       const val = ctl.querySelector('input[type="date"]').value;
-      if(isValidDateStr(val)){ state.startDate = val; save(); renderHome(); }
+      if(isValidDateStr(val)){ if(setCourseDate(val))renderHome(); }
       else{   // 审查 #2：空值/无效不再静默——温和提示，不催
         const hint = ctl.querySelector('.startdate-hint');
         if(hint) hint.style.display = 'inline';
@@ -1874,10 +1875,11 @@ document.addEventListener('click', e=>{
     const kind = pAct.dataset.parentAct;
     if(kind === 'setdate'){
       const val = panel.querySelector('input[type="date"]').value;
-      if(isValidDateStr(val)){ state.startDate = val; save(); closeParentPanel(panel, false); renderHome(); }
+      if(isValidDateStr(val)){ if(setCourseDate(val,panel.querySelector('[data-clear-with-date]').checked)){closeParentPanel(panel, false);curDay=0;renderHome();} }
       else{ const hint = panel.querySelector('.startdate-hint'); if(hint) hint.style.display = 'inline'; }
       return;
     }
+    if(kind === 'pause'||kind === 'advance'){if(changeSchedule(kind)){closeParentPanel(panel,false);curDay=0;renderHome();}return;}
     if(kind === 'close'){ closeParentPanel(panel, true); return; }
   }
 });
@@ -1902,4 +1904,5 @@ tb.addEventListener('click', ()=>{
 });
 
 renderHome();
+initDateSchedule();
 </script>

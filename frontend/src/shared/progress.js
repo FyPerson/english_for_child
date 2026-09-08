@@ -85,6 +85,8 @@ function parseProgressBackup(text){
   if(!isPlainObject(data.state) || !isPlainObject(data.state.days)) throw new Error('备份中的进度格式不正确。');
   const candidate = {days:cleanDays(data.state.days), games:data.state.games};
   if(isValidDateStr(data.state.startDate)) candidate.startDate = data.state.startDate;
+  if(isValidDateStr(data.state.pausedOn))candidate.pausedOn=data.state.pausedOn;
+  if(Number.isInteger(data.state.openThrough)&&data.state.openThrough>=1&&data.state.openThrough<=7)candidate.openThrough=data.state.openThrough;
   candidate.startDatePromptDismissed = data.state.startDatePromptDismissed === true;
   if(typeof cleanAssessmentState === 'function') candidate.assessments = cleanAssessmentState(data.state.assessments);
   const previous = state;

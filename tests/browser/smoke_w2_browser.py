@@ -27,6 +27,8 @@ def ok(cond, msg):
 with sync_playwright() as p:
     br = p.chromium.launch()
     pg = br.new_page(viewport={"width": 1280, "height": 900})
+    # Calendar is fully open for unrelated game/layout regression scenarios.
+    pg.add_init_script("document.addEventListener('DOMContentLoaded',()=>{if(typeof state!=='undefined'&&!state.startDate){state.startDate='2020-01-01';save();renderHome();}})")
     errors = []
     pg.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
     pg.on("console", lambda m: errors.append(f"console.{m.type}: {m.text}")
@@ -416,6 +418,8 @@ with sync_playwright() as p:
 
     # 跟随系统深色：未手动选主题时，系统深色应得到与手动深色相同的底色
     pg2 = br.new_page(color_scheme="dark")
+    # Calendar is fully open for unrelated game/layout regression scenarios.
+    pg2.add_init_script("document.addEventListener('DOMContentLoaded',()=>{if(typeof state!=='undefined'&&!state.startDate){state.startDate='2020-01-01';save();renderHome();}})")
     pg2.goto(URL)
     pg2.wait_for_timeout(400)
     sys_dark = pg2.evaluate("getComputedStyle(document.body).backgroundColor")

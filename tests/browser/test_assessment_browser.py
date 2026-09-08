@@ -9,6 +9,8 @@ def run():
     with sync_playwright() as p:
         browser=p.chromium.launch()
         page=browser.new_page()
+        # Calendar is fully open for unrelated game/layout regression scenarios.
+        page.add_init_script("document.addEventListener('DOMContentLoaded',()=>{if(typeof state!=='undefined'&&!state.startDate){state.startDate='2020-01-01';save();renderHome();}})")
         errors=[]
         page.on('pageerror',lambda e:errors.append(str(e)))
         page.goto((ROOT/'build'/'week04.html').as_uri())

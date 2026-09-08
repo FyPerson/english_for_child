@@ -37,6 +37,8 @@ def run():
         browser = p.chromium.launch()
         for target in sorted((ROOT/'build').glob('week[0-9][0-9].html')):
             page = browser.new_page()
+            # Calendar is fully open for unrelated game/layout regression scenarios.
+            page.add_init_script("document.addEventListener('DOMContentLoaded',()=>{if(typeof state!=='undefined'&&!state.startDate){state.startDate='2020-01-01';save();renderHome();}})")
             page.clock.install(time=1_780_000_000_000)
             page.clock.pause_at(1_780_000_000_000)
             errors = []
