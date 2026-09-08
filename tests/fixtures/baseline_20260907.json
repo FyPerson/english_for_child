@@ -1,17 +1,17 @@
 {
  "schemaVersion": 1,
- "takenAt": "2026-09-07",
- "sourceCommit": "0b7e79bff12032faed4de3f0967f5f744838ca63",
+ "takenAt": "2026-09-08",
+ "sourceCommit": "df1d0faa8c019f0e29ba952518ec260fe5bb5949",
  "form": "single-file",
  "toolVersions": {
-  "python": "3.12.0",
-  "node": "v24.11.1",
+  "python": "3.12.14",
+  "node": "v24.19.0",
   "hash": "sha256"
  },
  "weeks": {
   "week01.html": {
-   "sha256": "acd7e1b4db3bb0b1c6ed3c1cd1d78444f7cfebb9877002cbfb65bc2338e44ee5",
-   "skeletonSha256": "40d23f7d16ca63d2d1d8e1017b736b60a8dbb6ddf22775405cd0b0e98fef4e32",
+   "sha256": "7910aaafc3a03bfe5ee1276c7bf444143f1bf1391bc58c8f8ef1675c8b16376f",
+   "skeletonSha256": "551a66cfa4c010dc8409ba38a12cadbad462b366f124e4067e1daa2e2f1ca726",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -3950,6 +3950,6 @@
   }
  },
  "course": {
-  "sha256": "504fc702eae85dc5ad73b611d5fcf5f29cc19dc8c5d6b730e29f7b3c9c6feb5c"
+  "sha256": "5f18e458bb635f5e14a6106a383b6c362811d747299f2bf7161f57c01af6880b"
  }
 }
