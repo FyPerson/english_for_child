@@ -15,6 +15,7 @@ const {
   WEEKLY_FORBIDDEN_CONSTANTS, WEEKLY_FORBIDDEN_BLOCKS
 } = require('../../tools/validation/migration_audit');
 const { withGraphemeFallback } = require('../../tools/validation/sounds_grapheme_adapter');
+const { collectWordConsumption } = require('../../tools/validation/word_consumers');
 
 // ============================================================================
 // ① schema 正例：一个手写的最小合法文档必须通过 validateAuditDocument
@@ -156,14 +157,57 @@ console.log('PASS migration_audit：适配层对 grapheme/L 冲突对（如 c/k 
 
 // auditWeek 遇到这种冲突时不应该让整个审计工具崩溃退出，而是转成一条显式的 fail finding
 // （审计工具的职责是"报告问题"，不是"遇到问题就整体炸掉让调用方连其余发现都拿不到"）。
+// findingId 带上错误的 code（grapheme-l-conflict / grapheme-field-invalid 是两种不同的
+// 适配层错误，见下一节），不再是写死的单一 'grapheme-l-conflict'。
 const conflictBox = makeSyntheticBox(CONFLICTING_ALIAS);
 const conflictFindings = auditWeek(conflictBox, '', 'synthetic.js');
-const conflictFinding = conflictFindings.find(f => f.findingId === 'w5:grapheme-l-conflict');
-assert(conflictFinding, 'auditWeek 遇到 grapheme/L 冲突时应产出一条 findingId="w5:grapheme-l-conflict" 的发现，而不是让整个审计抛异常退出');
+const conflictFinding = conflictFindings.find(f => f.findingId === 'w5:grapheme-adapter-error:grapheme-l-conflict');
+assert(conflictFinding, 'auditWeek 遇到 grapheme/L 冲突时应产出一条 findingId="w5:grapheme-adapter-error:grapheme-l-conflict" 的发现，而不是让整个审计抛异常退出');
 assert.equal(conflictFinding.ruleId, 'DATA-SOUNDS-01');
 assert.equal(conflictFinding.status, 'fail');
+assert.equal(conflictFinding.details.code, 'grapheme-l-conflict');
 assert.match(conflictFinding.details.message, /grapheme-l-conflict|不一致/, '冲突 finding 的 details 应带上适配层的原始错误信息，方便定位是哪个 ID 冲突');
-console.log('PASS migration_audit：auditWeek 把适配层冲突转成显式 fail finding（DATA-SOUNDS-01/w5:grapheme-l-conflict），审计工具本身不崩溃');
+console.log('PASS migration_audit：auditWeek 把适配层冲突转成显式 fail finding（DATA-SOUNDS-01/w5:grapheme-adapter-error:grapheme-l-conflict），审计工具本身不崩溃');
+
+// ============================================================================
+// ⑤c（codex high②）：grapheme 键存在但值非法（不是非空字符串），同时有合法 L——
+//    改前会被当成"grapheme 键不存在"，静默用 L 派生兜底覆盖掉本该暴露的 schema 错误；
+//    改后必须显式抛错 grapheme-field-invalid，不允许被 L 兜底覆盖。
+// ============================================================================
+const INVALID_GRAPHEME_WITH_VALID_L = {
+  z: { grapheme: 123, L: 'a', type: 'c' } // grapheme 键存在但是数字，不是非空字符串
+};
+// "改前会误判"的证据：按旧版判据 hasGrapheme = typeof entry.grapheme==='string' && ...
+// 对 grapheme:123 算 false，于是会被旧逻辑的 `!hasGrapheme && hasLegacyL` 分支收编，
+// 静默派生出 grapheme:'a'——把 grapheme 本来是非法值（123）这件事完全盖住了。
+const legacyHasGrapheme = typeof INVALID_GRAPHEME_WITH_VALID_L.z.grapheme === 'string'
+  && INVALID_GRAPHEME_WITH_VALID_L.z.grapheme.length > 0;
+assert.equal(legacyHasGrapheme, false, '"改前"的判据把 grapheme:123 当成"没有 grapheme"，这正是会被静默覆盖的根因');
+// "改后被抓住"：
+assert.throws(() => withGraphemeFallback(INVALID_GRAPHEME_WITH_VALID_L),
+  e => e.code === 'grapheme-field-invalid' && /123/.test(e.message),
+  '适配层遇到 grapheme 键存在但值非法（如 123）时必须显式抛错（code=grapheme-field-invalid），不能被 L 兜底静默覆盖');
+console.log('PASS migration_audit（codex high②）：grapheme:123 + L:\'a\' 不再被静默改写成 grapheme:\'a\'，而是显式抛错 grapheme-field-invalid');
+
+// 空字符串 grapheme 同样属于"键存在但值非法"
+assert.throws(() => withGraphemeFallback({ z: { grapheme: '', L: 'a', type: 'c' } }),
+  e => e.code === 'grapheme-field-invalid',
+  'grapheme 键存在但是空字符串，同样应显式抛错，不能被 L 兜底覆盖');
+
+// auditWeek 同样把这种情况接住转成 fail finding（不崩溃）
+const invalidGraphemeBox = makeSyntheticBox(INVALID_GRAPHEME_WITH_VALID_L);
+const invalidGraphemeFindings = auditWeek(invalidGraphemeBox, '', 'synthetic.js');
+const invalidGraphemeFinding = invalidGraphemeFindings.find(f => f.findingId === 'w5:grapheme-adapter-error:grapheme-field-invalid');
+assert(invalidGraphemeFinding, 'auditWeek 应产出 grapheme-field-invalid 的 fail finding');
+assert.equal(invalidGraphemeFinding.status, 'fail');
+assert.equal(invalidGraphemeFinding.details.code, 'grapheme-field-invalid');
+console.log('PASS migration_audit（codex high②）：auditWeek 把 grapheme-field-invalid 转成显式 fail finding，审计工具不崩溃');
+
+// 键完全不存在（不是"存在但非法"）时，兜底行为必须保持不变——不能矫枉过正
+const trulyMissingGrapheme = { z: { L: 'a', type: 'c' } }; // 没有 grapheme 键
+assert.doesNotThrow(() => withGraphemeFallback(trulyMissingGrapheme), 'grapheme 键完全缺失、L 合法时应正常派生，不应该被 high② 的修复误伤');
+assert.equal(withGraphemeFallback(trulyMissingGrapheme).z.grapheme, 'a', '键完全缺失时仍应派生出 grapheme:=L');
+console.log('PASS migration_audit（回归）：grapheme 键完全缺失（不是存在但非法）时仍正常从 L 派生，未被 high② 误伤');
 
 // ============================================================================
 // ⑥ 真实 W1–W4：跑真实 buildAudit，做结构性断言（不是内容快照，内容摘要见任务报告）
@@ -245,6 +289,145 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   expectLocated('games-flash-display', 'frontend/src/shared/games.js', 1154);
   expectLocated('check-data-schema-gate', 'tools/validation/check_data.js', 83);
   console.log('PASS migration_audit（H-3 验证）：「L 字段消费点」四条全局发现精确定位到方案 §3.1 影响面表点名的四处（render-blocks.js:46/49、games.js:1154、check_data.js:83）');
+}
+
+// ============================================================================
+// ⑧b（codex high①）：wall-covers-all-sounds 的 duplicateIds 必须参与 pass/fail 判定。
+//    改前：集合完整（missing/extra 都空）但含重复项的墙会被误判成 pass。
+//    改后：缺项、额外项、重复项三者各自独立地能把它判成 fail，各给一条反例 fixture，
+//    外加一条"三者都干净"的正例。
+// ============================================================================
+{
+  const soundsAB = { a: { grapheme: 'a', type: 'v' }, b: { grapheme: 'b', type: 'c' } };
+  const boxWith = wallLetters => Object.assign(makeSyntheticBox(soundsAB), { META: Object.assign({}, makeSyntheticBox(soundsAB).META, { wallLetters }) });
+  const wallFinding = wallLetters => auditWeek(boxWith(wallLetters), '', 'synthetic.js')
+    .find(f => f.findingId === 'w5:wall-covers-all-sounds');
+
+  const clean = wallFinding('ab');
+  assert.equal(clean.status, 'pass', '墙 "ab" 恰好等于 SOUNDS 全集 {a,b}、无重复，应该 pass');
+  assert.deepEqual(clean.details, Object.assign({}, clean.details, { hasMissing: false, hasExtra: false, hasDuplicates: false }));
+
+  const missingOnly = wallFinding('a'); // 缺 b，无额外项，无重复
+  assert.equal(missingOnly.status, 'fail', '缺项单独就应该判 fail（正例：只缺 b，其余都干净）');
+  assert.deepEqual(missingOnly.details.missingFromWall, ['b']);
+  assert.equal(missingOnly.details.hasMissing, true);
+  assert.equal(missingOnly.details.hasExtra, false);
+  assert.equal(missingOnly.details.hasDuplicates, false);
+
+  const extraOnly = wallFinding('abz'); // 全集齐全 + 一个 SOUNDS 里没有的 z，无重复
+  assert.equal(extraOnly.status, 'fail', '额外项单独就应该判 fail（正例：多了一个不存在于 SOUNDS 的 z，其余都干净）');
+  assert.deepEqual(extraOnly.details.extraInWall, ['z']);
+  assert.equal(extraOnly.details.hasMissing, false);
+  assert.equal(extraOnly.details.hasExtra, true);
+  assert.equal(extraOnly.details.hasDuplicates, false);
+
+  const duplicateOnly = wallFinding('aab'); // 集合完整 {a,b}，无额外项，但 a 重复了一次
+  // 改前的证据：missingFromWall 与 extraInWall 都是空数组，旧判据
+  // `missingFromWall.length===0 && extraInWall.length===0` 会算出 pass——这正是 high①
+  // 要修的误判。
+  assert.deepEqual(duplicateOnly.details.missingFromWall, [], '"改前会误判"的前提：集合完整，缺项确实是空的');
+  assert.deepEqual(duplicateOnly.details.extraInWall, [], '"改前会误判"的前提：无额外项');
+  const legacyWouldPass = duplicateOnly.details.missingFromWall.length === 0 && duplicateOnly.details.extraInWall.length === 0;
+  assert.equal(legacyWouldPass, true, '按"改前"的判据（只看 missing/extra）这条会被误判成 pass');
+  // 改后：
+  assert.equal(duplicateOnly.status, 'fail', '重复项单独就应该判 fail（正例：wallLetters="aab"，a 重复但集合完整）');
+  assert.deepEqual(duplicateOnly.details.duplicateIds, ['a']);
+  assert.equal(duplicateOnly.details.hasDuplicates, true);
+  assert.equal(duplicateOnly.details.hasMissing, false);
+  assert.equal(duplicateOnly.details.hasExtra, false);
+  console.log('PASS migration_audit（codex high①）：墙的缺项/额外项/重复项各自独立触发 fail；"集合完整但含重复"改前会误判为 pass、改后被抓住（duplicateOnly 用例）');
+}
+
+// ============================================================================
+// ⑧c（codex high③）：word_consumers.js 遇到 catalog 之外的未知块类型必须显式失败，
+//    不能被 switch 的 default 静默跳过；auditWeek 要把它接住转成 DATA-BLOCK-01 的
+//    fail finding，不让审计工具整体崩溃。
+// ============================================================================
+{
+  const unknownBlockBox = {
+    META: { week: 5 }, RESERVED: [], SOUNDS: {}, W: {}, WALL_HINT: {}, BOOK: { pages: [] }, FIRST_TEACH_DAY: {},
+    G1_ROUNDS: {}, G1_THEME: {}, G3_PAIRS: [], G4_WORDS: [], G5_WHITELIST: [],
+    DAYS: [{ n: 1, steps: [{ t: '', min: 30, blocks: [{ b: 'totally-unknown-block-type' }] }] }]
+  };
+  assert.throws(() => collectWordConsumption(unknownBlockBox),
+    e => e.code === 'unknown-block-type' && e.blockType === 'totally-unknown-block-type',
+    'collectWordConsumption 遇到 catalog 之外的块类型必须显式抛错（DATA-BLOCK-01），不能静默 continue/break');
+  console.log('PASS migration_audit（codex high③）：collectWordConsumption 对未知块类型显式失败，不再静默跳过');
+
+  const unknownBlockFindings = auditWeek(unknownBlockBox, '', 'synthetic.js');
+  const blockFinding = unknownBlockFindings.find(f => f.findingId === 'w5:unknown-block-type');
+  assert(blockFinding, 'auditWeek 应该把未知块类型的异常接住，转成一条 findingId="w5:unknown-block-type" 的发现');
+  assert.equal(blockFinding.ruleId, 'DATA-BLOCK-01');
+  assert.equal(blockFinding.status, 'fail');
+  assert.equal(blockFinding.details.blockType, 'totally-unknown-block-type');
+  console.log('PASS migration_audit（codex high③）：auditWeek 把未知块类型转成显式 fail finding（DATA-BLOCK-01），审计工具本身不崩溃');
+}
+
+// ============================================================================
+// ⑧d（codex high④）：DATA-RESERVED-01 的释义查找必须用自有键而不是直接属性读取，
+//    并校验释义值的 schema（对象 + 非空 zh），不能任意 truthy 值就算数。
+// ============================================================================
+{
+  // "改前会误判"的证据：`!!({}).toString` 是 truthy（函数），旧版 `!!W[word]` 会把
+  // RESERVED 词恰好撞上 Object.prototype 属性名（如 'constructor'）误判成"有释义"。
+  const legacyWouldPass = !!({}).constructor;
+  assert.equal(legacyWouldPass, true, '"改前"的判据 !!W[word] 对原型链属性 constructor 会误判为 truthy（有释义）');
+
+  const protoBox = Object.assign(makeSyntheticBox({ a: { grapheme: 'a', type: 'v' } }), {
+    RESERVED: ['constructor'], W: {} // W 是空对象，但 {}.constructor 走原型链能拿到 Object 构造函数
+  });
+  const defFinding = auditWeek(protoBox, '', 'synthetic.js').find(f => f.findingId === 'w5:definition:constructor');
+  assert(defFinding, '应有 constructor 的 definition 发现');
+  assert.equal(defFinding.status, 'fail', '改后：W 里没有自有键 constructor，即使原型链上有同名属性也必须判 fail');
+  assert.equal(defFinding.details.hasOwnKey, false);
+  console.log('PASS migration_audit（codex high④）：definition 检查改用自有键查找后，RESERVED=[\'constructor\']（W={}）正确判 fail，不再被原型链属性误判为 pass');
+
+  // schema 校验：W 里确实有这个键，但值不符合 {zh,...} 的 schema（比如是个空对象/纯字符串）
+  const badSchemaBox = Object.assign(makeSyntheticBox({ a: { grapheme: 'a', type: 'v' } }), {
+    RESERVED: ['cat'], W: { cat: {} } // 有自有键，但缺 zh——旧版 !!W['cat'] 对 {} 同样是 truthy，会误判 pass
+  });
+  const legacyWouldPassSchema = !!badSchemaBox.W.cat;
+  assert.equal(legacyWouldPassSchema, true, '"改前"的判据对缺 zh 的空对象同样误判为 truthy（有释义）');
+  const badSchemaFinding = auditWeek(badSchemaBox, '', 'synthetic.js').find(f => f.findingId === 'w5:definition:cat');
+  assert.equal(badSchemaFinding.status, 'fail', '改后：释义值缺 zh 字段，不符合 W 条目 schema，必须判 fail');
+  assert.equal(badSchemaFinding.details.hasOwnKey, true);
+  assert.equal(badSchemaFinding.details.schemaValid, false);
+  console.log('PASS migration_audit（codex high④）：definition 检查额外校验 W 条目 schema（对象+非空 zh），缺 zh 的空对象不再被当成"有释义"');
+
+  // 大小写口径统一：definition 与 leak 现在都按小写归一化比较
+  const caseBox = Object.assign(makeSyntheticBox({ a: { grapheme: 'a', type: 'v' } }), {
+    RESERVED: ['Cat'], W: { cat: { zh: '猫' } }
+  });
+  const caseFinding = auditWeek(caseBox, '', 'synthetic.js').find(f => f.findingId === 'w5:definition:Cat');
+  assert.equal(caseFinding.status, 'pass', 'RESERVED 词 "Cat" 与 W 键 "cat" 大小写不同，但归一化后应视为同一个词，判 pass');
+  console.log('PASS migration_audit（codex high④）：definition 查找按小写归一化比较，与 leak 检测口径统一');
+}
+
+// ============================================================================
+// ⑧e（codex low）：validateAuditDocument 对 week/source.line/source.column 收紧为
+//    非负整数（拒绝 NaN/Infinity/负数/小数），ruleId 收紧为 DATA-* 命名空间格式。
+// ============================================================================
+{
+  const rejectSchema = (label, mutate) => {
+    const doc = validDoc();
+    mutate(doc);
+    const problems = validateAuditDocument(doc);
+    assert(problems.length > 0, `${label}: 期望 validateAuditDocument 报告问题，实际为空`);
+    return problems;
+  };
+  rejectSchema('week 是小数', d => { d.findings[0].week = 1.5; });
+  rejectSchema('week 是负数', d => { d.findings[0].week = -1; });
+  rejectSchema('week 是 NaN', d => { d.findings[0].week = NaN; });
+  rejectSchema('week 是 Infinity', d => { d.findings[0].week = Infinity; });
+  rejectSchema('source.line 是小数', d => { d.findings[0].source.line = 2.5; });
+  rejectSchema('source.line 是负数', d => { d.findings[0].source.line = -1; });
+  rejectSchema('source.line 是 NaN', d => { d.findings[0].source.line = NaN; });
+  rejectSchema('source.column 是 Infinity', d => { d.findings[0].source.column = Infinity; });
+  rejectSchema('ruleId 不匹配 DATA-* 命名空间', d => { d.findings[0].ruleId = 'not-a-rule-id'; });
+  rejectSchema('ruleId 是小写', d => { d.findings[0].ruleId = 'data-x'; });
+  // 合法值仍应该通过（不能矫枉过正）
+  assert.deepEqual(validateAuditDocument(validDoc()), [], '合法的最小文档（week/line 均为非负整数，ruleId 匹配 DATA-* 格式）在收紧后仍应通过');
+  console.log('PASS migration_audit（codex low）：week/source.line/source.column 收紧为非负整数，ruleId 收紧为 DATA-* 命名空间格式，10 类反例全部被拒绝，合法文档仍通过');
 }
 
 // ============================================================================

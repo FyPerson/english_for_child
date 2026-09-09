@@ -86,10 +86,52 @@ const ENTRY_KINDS = Object.freeze([
   'book-page', 'g1-rounds', 'g3-pairs', 'g4-words', 'g5-whitelist', 'wall-hint'
 ]);
 
+/* BLOCK_TYPE_CATALOG（codex high：default: break 让"没有第六个未覆盖入口"这个结论
+ * 不可机器证明——catalog 和实现可以同步漏项，只测 ENTRY_KINDS 自己声明的集合测不出来）。
+ *
+ * 逐字照抄《周课件数据层交接规范 v2.0》§3「DAYS 结构与块类型」表（第 233-254 行，
+ * 与 frontend/src/shared/render-blocks.js 的全部 case 已逐一对齐，共 24 种），
+ * 不自己重列。24 种里 8 种是词消费块（consumesWords:true，下面 switch 里有对应
+ * case），其余 16 种是非词消费块，各给一句排除理由（reason）。
+ * collectWordConsumption 用它做"遇到目录之外的块类型直接报错"的判据
+ * ——这正是规范 §4.1 第 11 条 `DATA-BLOCK-01`「未知块类型直接失败」在词消费
+ * 抽取这一层的体现，不允许静默 continue/break 把它盖过去。 */
+const BLOCK_TYPE_CATALOG = Object.freeze({
+  lead: { consumesWords: false, reason: '引导正文，自由 HTML 文本，不是离散词条目' },
+  list: { consumesWords: false, reason: '项目符号列表，自由 HTML 文本' },
+  note: { consumesWords: false, reason: '提示条，自由 HTML 文本' },
+  sound: { consumesWords: false, reason: '渲染 SOUNDS[s] 的教学字段；其 demo 词表由顶层 SOUNDS 常量携带（本抽取器按设计整体排除 demo，见文件头排除清单），不属于本块自身的离散词数据' },
+  blend: { consumesWords: true },
+  words: { consumesWords: true },
+  sight: { consumesWords: true },
+  sentences: { consumesWords: true },
+  pair: { consumesWords: true },
+  initialpick: { consumesWords: true },
+  flash: { consumesWords: true },
+  book: { consumesWords: false, reason: '块本身是 {}，正文来自顶层 BOOK.pages 常量，本抽取器在顶层常量阶段单独处理（kind=book-page），不经过这个块' },
+  table: { consumesWords: false, reason: '表格，自由结构，规范未把它定义为词消费入口' },
+  checks: { consumesWords: false, reason: '打卡清单标题/说明，多为中文文案，不是结构化词条目' },
+  g1: { consumesWords: false, reason: '块本身是 {}，G1_ROUNDS 是顶层常量，本抽取器单独处理（kind=g1-rounds）' },
+  g4: { consumesWords: false, reason: '块本身是 {}，G4_WORDS 是顶层常量，本抽取器单独处理（kind=g4-words）' },
+  g5: { consumesWords: false, reason: '块本身是 {}，G5_WHITELIST 是顶层常量，本抽取器单独处理（kind=g5-whitelist）' },
+  output: { consumesWords: false, reason: '输出环节的家长指引 HTML 文本' },
+  exam: { consumesWords: false, reason: '渲染 RESERVED；RESERVED 是审计目标本身，按设计整体排除（见文件头排除清单）' },
+  assessment: { consumesWords: false, reason: '渲染 ASSESS_TEXT；测评短文按设计整体排除（见文件头排除清单）' },
+  baseline: { consumesWords: false, reason: '基线成绩摘要，无词' },
+  retest: { consumesWords: false, reason: '渲染 RESERVED_RETEST；测评池，按设计整体排除（见文件头排除清单）' },
+  probe: { consumesWords: false, reason: '渲染 PROBE_A/PROBE_B；测评池，按设计整体排除（见文件头排除清单）' },
+  wordforge: { consumesWords: true }
+});
+
 /* collectWordConsumption(d) -> Array<{word, kind, week, day?, page?, round?, family?}>
  * d 是 tools/validation/load_data.js 的 loadData() 返回的 box（或同形对象）。
  * 保留原始大小写与来源定位，不去重、不归一化——去重/归一化交给调用方按自己的用途决定
- * （差分测试要保留重复以核对"同一词多处消费"，审计工具要保留来源做泄漏定位）。 */
+ * （差分测试要保留重复以核对"同一词多处消费"，审计工具要保留来源做泄漏定位）。
+ *
+ * 遇到 BLOCK_TYPE_CATALOG 之外的块类型直接抛错（不静默跳过）：调用方（如
+ * migration_audit.js）要接住这个错误转成一条 DATA-BLOCK-01 的 fail finding，
+ * 不能让审计工具因此整体崩溃——处置方式与 sounds_grapheme_adapter.js 的
+ * grapheme-l-conflict 是同一套模式。 */
 function collectWordConsumption(d) {
   const records = [];
   const week = d.META && d.META.week;
@@ -101,6 +143,19 @@ function collectWordConsumption(d) {
   for (const day of d.DAYS || []) {
     for (const step of day.steps || []) {
       for (const b of step.blocks || []) {
+        const catalogEntry = BLOCK_TYPE_CATALOG[b.b];
+        if (!catalogEntry) {
+          const err = new Error(
+            'word_consumers: 未知块类型 "' + b.b + '"（第 ' + day.n + ' 天）——不在规范 v2.0 §3 的 24 种块类型' +
+            ' catalog 里，既不是已登记的词消费块也不是已登记的排除块。新块类型必须先在' +
+            ' BLOCK_TYPE_CATALOG 里显式登记（是词消费块就补 case，不是就补排除理由），' +
+            '不允许被静默跳过（DATA-BLOCK-01：未知块类型直接失败）。'
+          );
+          err.code = 'unknown-block-type';
+          err.blockType = b.b;
+          throw err;
+        }
+        if (!catalogEntry.consumesWords) continue;
         switch (b.b) {
           case 'blend':
             (b.words || []).forEach(w => push(w, 'blend', { day: day.n }));
@@ -139,7 +194,9 @@ function collectWordConsumption(d) {
             }
             break;
           default:
-            break;
+            // 到不了这里：catalogEntry.consumesWords===true 的 8 种在上面都有 case，
+            // 是内部一致性问题而不是"未知块类型"，用不同的错误信息区分。
+            throw new Error('word_consumers: BLOCK_TYPE_CATALOG 声明 "' + b.b + '" 是词消费块，但 switch 里没有对应 case（内部不一致，不是数据问题）');
         }
       }
     }
@@ -177,4 +234,4 @@ function findConsumptionOf(d, word) {
   return collectWordConsumption(d).filter(r => r.word.toLowerCase() === target);
 }
 
-module.exports = { ENTRY_KINDS, tokenizeSentence, collectWordConsumption, usedWordSet, findConsumptionOf };
+module.exports = { ENTRY_KINDS, BLOCK_TYPE_CATALOG, tokenizeSentence, collectWordConsumption, usedWordSet, findConsumptionOf };

@@ -27,14 +27,23 @@
  * 仍然"有 grapheme 就不理会 L"，会静默把 k 积木显示成 'c'，没有任何信号。所以"两者都有
  * 但值不同"必须显式失败，不能悄悄选 grapheme——这不是"L 更权威"，而是"两个字段互相矛盾
  * 时，适配层没有能力替调用方仲裁哪个对，仲裁应该由人来做"。
+ *
+ * ⚠️（codex high 修复）「键存在但值非法」不等于「键不存在」，两者必须分开判断。
+ * 上一版的 hasGrapheme 只按"值是不是非空字符串"判——于是条目若显式写了
+ * `grapheme: 123` 或 `grapheme: ''`，同时又有合法的 `L: 'a'`，会被当成"grapheme 键
+ * 不存在"走进兜底分支，静默派生出 `grapheme: 'a'`，把本该暴露的 schema 错误（谁把
+ * grapheme 写成了数字/空串）盖了过去。现在用 `Object.prototype.hasOwnProperty.call`
+ * 先分离"键是否存在"与"值是否合法"：**只有 grapheme 键完全不存在时，才允许用 L 派生
+ * 兜底**；键存在但值非法，必须显式失败，不能被"缺失兜底"的逻辑捎带覆盖过去。
  */
 
-/* withGraphemeFallback(sounds) -> 新对象：sounds 的浅拷贝，缺 grapheme 但有 L 的条目
- * 派生出 grapheme:=L；已有 grapheme 且与 L 一致（或没有 L）的条目原样保留——
- * grapheme 才是权威字段（见规范 v2.0 §3「SOUNDS 单条」），L 只是拿来兜底派生，不是拿来
- * 覆盖或校验 grapheme 的。
- * 两者都在但值不同时抛错（见上方注释），不静默选 grapheme——这种冲突多半意味着别名派生
- * 行在迁移中被漏改，选错的一方会把错误的字形悄悄展示给孩子。
+/* withGraphemeFallback(sounds) -> 新对象：sounds 的浅拷贝。
+ * grapheme 键完全缺失、且 L 合法时，派生 grapheme:=L；grapheme 键存在且合法（或没有
+ * L）时原样保留——grapheme 才是权威字段（见规范 v2.0 §3「SOUNDS 单条」），L 只是拿来
+ * 兜底派生，不是拿来覆盖或校验 grapheme 的。
+ * 两种情况显式抛错，不静默：① grapheme 键存在但值非法（不是非空字符串）——不允许被
+ * L 兜底覆盖过去；② grapheme 与 L 都存在且都合法，但值不同——多半是别名派生只改了
+ * 基类没改派生行，适配层不替你选，由人核实。
  * 不修改传入对象及其内部条目对象，返回全新对象树的第一层（条目对象本身仅在需要派生时
  * 才浅拷贝，其余条目按引用复用，足够安全，因为调用方只读不写）。 */
 function withGraphemeFallback(sounds) {
@@ -42,9 +51,22 @@ function withGraphemeFallback(sounds) {
   const out = {};
   for (const id of Object.keys(sounds)) {
     const entry = sounds[id];
-    const hasGrapheme = entry && typeof entry === 'object' && typeof entry.grapheme === 'string' && entry.grapheme.length > 0;
-    const hasLegacyL = entry && typeof entry === 'object' && typeof entry.L === 'string' && entry.L.length > 0;
-    if (hasGrapheme && hasLegacyL && entry.grapheme !== entry.L) {
+    const isEntryObject = entry && typeof entry === 'object';
+    const hasOwnGrapheme = isEntryObject && Object.prototype.hasOwnProperty.call(entry, 'grapheme');
+    const hasOwnL = isEntryObject && Object.prototype.hasOwnProperty.call(entry, 'L');
+    const graphemeValid = hasOwnGrapheme && typeof entry.grapheme === 'string' && entry.grapheme.length > 0;
+    const lValid = hasOwnL && typeof entry.L === 'string' && entry.L.length > 0;
+
+    if (hasOwnGrapheme && !graphemeValid) {
+      const err = new Error(
+        'sounds_grapheme_adapter: SOUNDS.' + id + ' 的 grapheme 字段存在但不是非空字符串（' +
+        JSON.stringify(entry.grapheme) + '）——键存在但值非法时不允许用 L 兜底覆盖，请先修正 grapheme'
+      );
+      err.code = 'grapheme-field-invalid';
+      err.id = id;
+      throw err;
+    }
+    if (graphemeValid && lValid && entry.grapheme !== entry.L) {
       const err = new Error(
         'sounds_grapheme_adapter: SOUNDS.' + id + ' 的 grapheme("' + entry.grapheme + '") 与 L("' + entry.L +
         '")不一致——很可能是别名派生（Object.assign）在 L→grapheme 迁移过程中只改了基类' +
@@ -54,7 +76,7 @@ function withGraphemeFallback(sounds) {
       err.id = id;
       throw err;
     }
-    if (!hasGrapheme && hasLegacyL) {
+    if (!hasOwnGrapheme && lValid) {
       out[id] = Object.assign({}, entry, { grapheme: entry.L });
     } else {
       out[id] = entry;

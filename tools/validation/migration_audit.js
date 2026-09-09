@@ -90,34 +90,60 @@ function auditWeek(box, raw, file) {
   const RESERVED = Array.isArray(box.RESERVED) ? box.RESERVED : [];
   const SOUNDS = box.SOUNDS || {};
   const W = box.W || {};
-  /* 适配层遇到 grapheme/L 冲突对（同一条目两个字段都在但值不同——典型形态是别名派生
-     Object.assign 在 4a 迁移过程中只改了基类没改派生行，见 sounds_grapheme_adapter.js
-     的注释）会显式抛错，不静默选一个可能错的值。这里接住，转成一条 fail finding，
-     不让整个审计工具因为一条数据的冲突而崩溃；分词相关的其余发现继续用未适配的
-     SOUNDS 兜底跑（大概率因缺 grapheme 而报 segment-unknown，如实反映"适配失败"的后果，
-     不是掩盖）。 */
-  let adaptedSounds, graphemeConflictError = null;
+  /* 适配层遇到 grapheme/L 冲突（同一条目两个字段都在但值不同）或非法 grapheme（键存在
+     但值不是非空字符串）都会显式抛错，不静默选一个可能错的值——见
+     sounds_grapheme_adapter.js 的两种错误码 grapheme-l-conflict / grapheme-field-invalid。
+     这里接住，转成一条 fail finding，不让整个审计工具因为一条数据的问题而崩溃；
+     分词相关的其余发现继续用未适配的 SOUNDS 兜底跑（大概率因缺 grapheme 而报
+     segment-unknown，如实反映"适配失败"的后果，不是掩盖）。 */
+  let adaptedSounds, graphemeAdapterError = null;
   try {
     adaptedSounds = withGraphemeFallback(SOUNDS);
   } catch (e) {
-    graphemeConflictError = e;
+    graphemeAdapterError = e;
     adaptedSounds = SOUNDS;
   }
-  const consumption = collectWordConsumption(box);
+  /* word_consumers.js 遇到 BLOCK_TYPE_CATALOG 之外的未知块类型同样显式抛错
+     （DATA-BLOCK-01：未知块类型直接失败），这里同一套接住-转finding的模式：不让
+     一个未登记的块类型让整个审计崩溃，但要把它变成一条看得见的 fail，而不是像
+     旧版 switch 的 default:break 那样静默吞掉。consumption 兜底为空数组时，
+     下面的 RESERVED 泄漏检测会全部"看似"pass——这不是掩盖，是如实的级联后果，
+     该 fail finding 本身已经说明了原因，第 5/7 步据此知道要先修好未知块类型问题
+     再信任泄漏检测的结果。 */
+  let consumption = [], blockCatalogError = null;
+  try {
+    consumption = collectWordConsumption(box);
+  } catch (e) {
+    blockCatalogError = e;
+  }
 
   const reservedLoc = locateDeclaration(raw, 'RESERVED');
   const soundsLoc = locateDeclaration(raw, 'SOUNDS');
   const wLoc = locateDeclaration(raw, 'W');
   const metaLoc = locateDeclaration(raw, 'META');
 
-  if (graphemeConflictError) {
+  if (graphemeAdapterError) {
     pushFinding(findings, {
-      findingId: weekTag + 'grapheme-l-conflict',
+      findingId: weekTag + 'grapheme-adapter-error:' + (graphemeAdapterError.code || 'unknown'),
       ruleId: 'DATA-SOUNDS-01',
       week: week,
       status: 'fail',
       source: { file: file, line: soundsLoc.present ? soundsLoc.line : null, column: null },
-      details: { message: graphemeConflictError.message }
+      details: { code: graphemeAdapterError.code || 'unknown', message: graphemeAdapterError.message }
+    });
+  }
+  if (blockCatalogError) {
+    pushFinding(findings, {
+      findingId: weekTag + 'unknown-block-type',
+      ruleId: 'DATA-BLOCK-01',
+      week: week,
+      status: 'fail',
+      source: { file: file, line: null, column: null },
+      details: {
+        code: blockCatalogError.code || 'unknown', blockType: blockCatalogError.blockType || null,
+        message: blockCatalogError.message,
+        note: 'word_consumers.js 的 BLOCK_TYPE_CATALOG 未登记此块类型，词消费抽取在本周整体降级为空集合，下面 DATA-RESERVED-01 的泄漏检测结果不可信，需先在 catalog 里登记该块类型再复核'
+      }
     });
   }
 
@@ -208,9 +234,29 @@ function auditWeek(box, raw, file) {
     }
   });
 
-  /* ---- DATA-RESERVED-01：每个 RESERVED 必须在 W 里有释义 + 一个都不许泄漏进别处 ---- */
+  /* ---- DATA-RESERVED-01：每个 RESERVED 必须在 W 里有释义 + 一个都不许泄漏进别处 ----
+     ⚠️（codex high 修复）`!!W[word]` 是直接属性读取，会走原型链——`W['toString']`
+     返回 Object.prototype.toString（truthy），会被误判成"有释义"。改用只在
+     Object.keys(W) 返回的自有键里查找（Object.keys 天然不含原型链属性，等价于逐个
+     hasOwnProperty），且额外校验释义值本身符合 W 条目 schema（至少是对象、有非空
+     zh 字段——规范 v2.0 §3「12 个常量表」：`W` 的形状是 `{词:{zh, art, lemma?,
+     proper?, segments?}}`），不是随便一个 truthy 值就算数。
+
+     ⚠️ 统一大小写口径（codex 指出原实现一边敏感一边不敏感）：下面的 definition 查找
+     与 leak 检测（本函数另一半）现在都按小写归一化比较——W 的键与 RESERVED 词在
+     四周现有数据里本来就全是小写，归一化不改变现状结果，但让两条检查的口径与
+     assessment_contract.js 的 normalize()/tokens()（同样先 toLowerCase 再比较）一致，
+     不再存在"同一个词大小写不同就被两条规则读出两种答案"的缝隙。 */
+  const wKeysByLower = new Map(); // 小写归一化词 -> W 里的原始键（原始键必然是 Object.keys(W) 的自有键）
+  Object.keys(W).forEach(k => wKeysByLower.set(k.toLowerCase(), k));
+  const isValidWEntry = entry => !!entry && typeof entry === 'object' && !Array.isArray(entry)
+    && typeof entry.zh === 'string' && entry.zh.length > 0;
+
   RESERVED.forEach(word => {
-    const hasDefinition = !!W[word];
+    const originalKey = wKeysByLower.get(word.toLowerCase());
+    const hasOwnKey = originalKey !== undefined && Object.prototype.hasOwnProperty.call(W, originalKey);
+    const entry = hasOwnKey ? W[originalKey] : undefined;
+    const hasDefinition = hasOwnKey && isValidWEntry(entry);
     pushFinding(findings, {
       findingId: weekTag + 'definition:' + word,
       ruleId: 'DATA-RESERVED-01',
@@ -219,13 +265,15 @@ function auditWeek(box, raw, file) {
       source: { file: file, line: wLoc.present ? wLoc.line : null, column: null },
       details: {
         word: word, hasDefinition: hasDefinition,
+        hasOwnKey: hasOwnKey, schemaValid: hasOwnKey ? isValidWEntry(entry) : null,
         currentlyExempted: week >= 4,
         note: week >= 4 ? 'check_data.js:79 现状对 week>=4 豁免"RESERVED 必须在 W 里"，该豁免正是规则 #1 状态列标注"待删除"的对象；本发现如实报告事实，不代表当前校验器会拦下' : null
       }
     });
   });
   RESERVED.forEach(word => {
-    const hits = consumption.filter(r => r.word.toLowerCase() === word.toLowerCase());
+    const normalizedWord = word.toLowerCase();
+    const hits = consumption.filter(r => r.word.toLowerCase() === normalizedWord);
     pushFinding(findings, {
       findingId: weekTag + 'leak:' + word,
       ruleId: 'DATA-RESERVED-01',
@@ -273,18 +321,28 @@ function auditWeek(box, raw, file) {
       if (seenOnce.has(id)) { if (!duplicateIds.includes(id)) duplicateIds.push(id); }
       else seenOnce.add(id);
     });
+    /* ⚠️（codex high 修复）duplicateIds 之前只写进 details 不参与判定——"集合完整但含
+       重复项"的墙会被误判成 pass。在独立的教学顺序真相源（累计 newPatterns，第 7 步
+       才可算）落地之前，缺项、额外项、重复项三者各自独立判失败：任何一类不为空，
+       这条发现就是 fail，details 里各自列出是哪一类、具体是哪些 ID，方便第 7 步
+       定位到底要修哪一类问题。顺序本身仍不比较（无真相源可比）。 */
+    const hasMissing = missingFromWall.length > 0;
+    const hasExtra = extraInWall.length > 0;
+    const hasDuplicates = duplicateIds.length > 0;
     pushFinding(findings, {
       findingId: weekTag + 'wall-covers-all-sounds',
       ruleId: 'DATA-WALL-01',
       week: week,
-      status: (missingFromWall.length === 0 && extraInWall.length === 0) ? 'pass' : 'fail',
+      status: (hasMissing || hasExtra || hasDuplicates) ? 'fail' : 'pass',
       source: { file: file, line: metaLoc.present ? metaLoc.line : null, column: null },
       details: {
         wallLettersOrdered: wallOrdered, duplicateIds: duplicateIds,
         wallCount: wallSet.size, soundsCount: soundsSet.size,
         missingFromWall: missingFromWall, extraInWall: extraInWall,
-        note: '规范 v2.0 §3「唯一模型」要求 wallLetters 统一后等于 SOUNDS 全部键；统一动作本身是第 7 步的工作，这里只报告现状是否已经满足。'
-          + 'wallLettersOrdered 保留原始顺序与重复项，供第 7 步核对累计 newPatterns 真相源迁入前后是否一致'
+        hasMissing: hasMissing, hasExtra: hasExtra, hasDuplicates: hasDuplicates,
+        note: '规范 v2.0 §3「唯一模型」要求 wallLetters 统一后等于 SOUNDS 全部键、无重复；统一动作本身是第 7 步的工作，这里只报告现状是否已经满足。'
+          + '缺项(missingFromWall)/额外项(extraInWall)/重复项(duplicateIds) 三者任一非空即判 fail，各自独立报告，不合并成一个模糊的"不一致"。'
+          + 'wallLettersOrdered 保留原始顺序，供第 7 步核对累计 newPatterns 真相源迁入前后是否一致（顺序本身第 7 步前不比较）'
       }
     });
   }
@@ -436,6 +494,19 @@ function checkFindingIdUniqueness(findings) {
   }
 }
 
+/* RULE_ID_PATTERN：ruleId 必须落在规范的 DATA-* 命名空间里（形如 DATA-ASSESS-01、
+ * DATA-RESERVED-02），不是随便一个字符串——否则 'not-a-real-rule' 这类拼写错误也能
+ * 通过 schema 校验（codex low）。 */
+const RULE_ID_PATTERN = /^DATA-[A-Z0-9]+(-[A-Z0-9]+)*$/;
+
+/* isNonNegativeInteger：source.line / source.column / week 现状要么是"确定的非负整数
+ * 位置/周次"要么是 null（可空且已写明何时为空），不该接受 NaN、Infinity、负数、
+ * 小数——`typeof v === 'number'` 对这些全部放行，必须换成 Number.isInteger + 非负
+ * （codex low）。 */
+function isNonNegativeInteger(v) {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0;
+}
+
 /* validateAuditDocument(doc) -> Array<string>：结构校验，返回问题列表（空数组=合法）。
  * 供测试跑 schema 正反 fixture：合法文档应得到 []，故意写错的应得到非空列表。 */
 function validateAuditDocument(doc) {
@@ -447,14 +518,14 @@ function validateAuditDocument(doc) {
   doc.findings.forEach((f, i) => {
     const p = 'findings[' + i + ']';
     if (typeof f.findingId !== 'string' || !f.findingId) problems.push(p + '.findingId 必须是非空字符串');
-    if (typeof f.ruleId !== 'string' || !f.ruleId) problems.push(p + '.ruleId 必须是非空字符串');
-    if (!(f.week === null || typeof f.week === 'number')) problems.push(p + '.week 必须是 number 或 null');
+    if (typeof f.ruleId !== 'string' || !RULE_ID_PATTERN.test(f.ruleId)) problems.push(p + '.ruleId 必须是非空字符串且匹配 DATA-* 命名空间格式（如 DATA-ASSESS-01）');
+    if (!(f.week === null || isNonNegativeInteger(f.week))) problems.push(p + '.week 必须是非负整数或 null');
     if (!STATUS_VALUES.has(f.status)) problems.push(p + '.status 必须是 pass/fail/not-applicable/unknown 之一');
     if (!f.source || typeof f.source !== 'object') problems.push(p + '.source 必须是对象');
     else {
       if (typeof f.source.file !== 'string' || !f.source.file) problems.push(p + '.source.file 必填且必须是非空字符串');
-      if (!(f.source.line === null || typeof f.source.line === 'number')) problems.push(p + '.source.line 必须是 number 或 null');
-      if (!(f.source.column === null || typeof f.source.column === 'number')) problems.push(p + '.source.column 必须是 number 或 null');
+      if (!(f.source.line === null || isNonNegativeInteger(f.source.line))) problems.push(p + '.source.line 必须是非负整数或 null');
+      if (!(f.source.column === null || isNonNegativeInteger(f.source.column))) problems.push(p + '.source.column 必须是非负整数或 null');
     }
     if (!f.details || typeof f.details !== 'object' || Array.isArray(f.details)) problems.push(p + '.details 必须是规则级对象结构，不是自由文本/数组');
   });
