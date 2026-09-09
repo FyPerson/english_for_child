@@ -62,6 +62,9 @@ def build_jobs(temp, quick, skip_baseline, reproducible_fn=reproducible):
             ('build boundaries', [sys.executable, 'tests/unit/test_build.py']),
             ('run_checks contract', [sys.executable, 'tests/unit/test_run_checks.py']),
             ('graphemes contract', ['node', 'tests/unit/test_graphemes.js']),
+            ('word consumers contract', ['node', 'tests/unit/test_word_consumers.js']),
+            ('migration diff contract', ['node', 'tests/unit/test_migration_diff.js']),
+            ('migration audit contract', ['node', 'tests/unit/test_migration_audit.js']),
             ('assessment contract', ['node', 'tests/unit/test_assessment_contract.js']),
             ('media coverage', ['node', 'tests/unit/test_media.js'])]
     if not quick:

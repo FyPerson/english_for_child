@@ -14,16 +14,18 @@ NOOP_REPRODUCIBLE = lambda temp: None  # noqa: E731 - avoid touching the real bu
 QUICK_NAMES_WITH_BASELINE = ['build', 'reproducible build', 'reproducible build: compare', 'single-file baseline',
                              'size budget', 'baseline contract', 'size budget contract', 'doctor contract',
                              'archive inventory contract', 'theme palette contract', 'directory layout',
-                             'build boundaries', 'run_checks contract', 'graphemes contract', 'assessment contract',
-                             'media coverage']
+                             'build boundaries', 'run_checks contract', 'graphemes contract',
+                             'word consumers contract', 'migration diff contract', 'migration audit contract',
+                             'assessment contract', 'media coverage']
 
 QUICK_NAMES_WITHOUT_BASELINE = [n for n in QUICK_NAMES_WITH_BASELINE if n != 'single-file baseline']
 
 # Every job that follows 'single-file baseline' in the unfiltered list above (plan v1.7 §4 step 1, verdict ①).
 POST_BASELINE_NAMES = ['size budget', 'baseline contract', 'size budget contract', 'doctor contract',
                         'archive inventory contract', 'theme palette contract', 'directory layout',
-                        'build boundaries', 'run_checks contract', 'graphemes contract', 'assessment contract',
-                        'media coverage']
+                        'build boundaries', 'run_checks contract', 'graphemes contract',
+                        'word consumers contract', 'migration diff contract', 'migration audit contract',
+                        'assessment contract', 'media coverage']
 
 BROWSER_SUITE_NAMES = ['test_audio_touch', 'test_date_schedule', 'test_progress', 'test_games', 'test_initialpick',
                         'test_assessment_browser', 'test_mobile', 'test_course', 'smoke_parent_panel',
