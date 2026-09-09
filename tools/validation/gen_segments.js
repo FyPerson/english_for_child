@@ -335,6 +335,16 @@ function writeSuggestions(rawText, analysis, options) {
   return { text, written, writtenHeuristic, heuristicNotWritten, needsHuman };
 }
 
+/* hasUnreviewedMarkerInText(text) -> boolean：目标文件的某段文本里是否还残留
+ * @gen-segments-unreviewed 标记——与 check_data.js §⑪（DATA-SEGMENTS-UNREVIEWED
+ * 门槛）扫描的是同一个字面标记（见 injectSegmentsIntoWDeclaration 附近注释、
+ * check_data.js 里 `unreviewedMatches` 那条正则）。main() 用它扫描"本次运行结束后
+ * 磁盘上会留下的最终文本"，而不是只看"这次是不是我写的"（H2 复测修复，见下方
+ * main() 里 hasUnreviewedMarkersOnDisk 的注释）。 */
+function hasUnreviewedMarkerInText(text) {
+  return /@gen-segments-unreviewed/.test(text);
+}
+
 function main() {
   const args = process.argv.slice(2);
   const writeHeuristic = args.includes('--write-heuristic');
@@ -349,17 +359,20 @@ function main() {
     console.error('  --write-heuristic  额外写回"字位数最少"启发式候选（多解词）——基于未经验证的');
     console.error('                     启发式，bat fixture 已证明它会给错，写回的每一处都会带');
     console.error('                     @gen-segments-unreviewed 标记并被 check_data.js 拦下直到人工复核');
-    console.error('三种模式的退出码语义（H2 修复，2026-09-09 外审 high，见下方 hasUnreviewedWritten 注释）：');
+    console.error('三种模式的退出码语义（H2 修复，2026-09-10 内部预筛 high，见下方 hasUnreviewedMarkersOnDisk 注释）：');
     console.error('  dry-run（不加 --write）      ：0=没有任何候选/歧义需要处理；1=存在 tie/unknown/error；');
     console.error('                               3=存在按启发式选出但尚未落盘的 resolved 候选');
     console.error('  --write（不加 --write-heuristic）：只落盘 unique 词；resolved 候选一律不写，');
     console.error('                               退出码含义同 dry-run（0/1/3）');
     console.error('  --write-heuristic            ：额外落盘 resolved 候选（带 @gen-segments-unreviewed');
     console.error('                               标记）——0=没有 tie/unknown/error 且没有已落盘但未复核的');
-    console.error('                               候选；1=存在 tie/unknown/error；4=本次确有 resolved 候选');
-    console.error('                               被落盘但仍带未复核标记，check_data.js 会拦截，必须人工');
-    console.error('                               复核删除标记后才算真正完成（不再是这里的 3——3 专指"根本');
-    console.error('                               没落盘"，4 专指"已落盘但还没人复核过"，两者含义不同）');
+    console.error('                               候选；1=存在 tie/unknown/error；4=磁盘上最终文件里仍');
+    console.error('                               残留 @gen-segments-unreviewed 标记（不论是本次写入的，');
+    console.error('                               还是更早一次 --write-heuristic 遗留、这次根本没碰到那些');
+    console.error('                               词），check_data.js 会拦截，必须人工复核删除标记后才算');
+    console.error('                               真正完成（不再是这里的 3——3 专指"根本没落盘"，4 专指');
+    console.error('                               "磁盘上还带着未复核标记"，两者含义不同；3 种模式统一按');
+    console.error('                               "扫描最终磁盘内容"判定 4，重跑不会掩盖已存在的标记）');
     console.error('  2=用法错误（本分支）');
     process.exit(2);
   }
@@ -402,18 +415,22 @@ function main() {
    *     是"已经落盘、正等着人复核"，两种状态调用方需要做的下一步动作不一样（3 该考虑
    *     要不要重跑并加 --write-heuristic；4 该去打开文件删标记做复核），混在一起报告
    *     会让人不知道该做哪一步。
-   * hasUnreviewedWritten 由下面 write 分支实际写回后据实回填（只有真的写进磁盘的那些
-   * 才算数，不是"analysis 里存在 resolved 就算"——避免 dry-run 或写入被跳过时误报）。 */
-  let hasUnreviewedWritten = false;
+   * 改前 hasUnreviewedWritten 由下面 write 分支实际写回后据实回填，但只在"这次
+   * writeSuggestions 真的新写入了 heuristic 候选"时才置真——见下方 finalText/
+   * hasUnreviewedMarkersOnDisk 的 H2 复测修复说明：只覆盖"本次写入"这一种情形，
+   * 重跑（这些词已经是 already-has-segments，不会再进 resolveWord/writeSuggestions）
+   * 会让退出码悄悄跌回 0，而标记其实还在磁盘上。 */
+  let finalText = raw; // 本次运行结束后磁盘上会留下的最终文本；默认等于读入时的原文
+  // （dry-run，或下面 write 分支里没有任何词被写回时，磁盘内容都不会变）。
 
   if (write) {
     const result = writeSuggestions(raw, analysis, { writeHeuristic });
     if (result.written.length) {
       fs.writeFileSync(targetPath, result.text, 'utf8');
+      finalText = result.text;
       console.log('');
       console.log('已写回 ' + result.written.length + ' 个词的 segments：' + result.written.join(', '));
       if (result.writtenHeuristic.length) {
-        hasUnreviewedWritten = true;
         console.log('  其中 ' + result.writtenHeuristic.length + ' 个是按"字位数最少"启发式选出的候选' +
           '（--write-heuristic 已启用，均带 @gen-segments-unreviewed 标记，需人工复核；退出码将是 4，' +
           '不是 0——check_data.js 会拦下这些标记，复核并删除标记前不算真正完成）：' +
@@ -438,14 +455,28 @@ function main() {
       'bat fixture 已证明它会给错，务必先看报告里的全部解析再决定要不要用这个开关。');
   }
 
+  /* H2 复测修复（内部预筛 2026-09-10：退出码 4 只覆盖"本次运行写入的那一次"，重跑
+   * 恒返回 0）：改前只有"这次 writeSuggestions 新写入了 heuristic 候选"才会把退出码
+   * 推到 4——一旦候选已经在磁盘上（不论是这次写的，还是更早一次 --write-heuristic
+   * 遗留、这次因为词已经变成 already-has-segments 根本不会再被 resolveWord/
+   * writeSuggestions 碰到），退出码就会悄悄跌回 0，而 @gen-segments-unreviewed 标记
+   * 其实还在文件里，check_data.js 依然会拦截。改法：不再问"这次是不是我写的"，直接
+   * 扫描本次运行结束后磁盘上会留下的最终文本（finalText）——dry-run/--write/
+   * --write-heuristic 三种模式统一走这一条判据，"是否还有未复核标记"因此变成一个
+   * 只看磁盘当前内容就能算出的机器判断：不依赖调用方记得再跑一遍 check_data.js，
+   * 也不会被"这次没碰到那几个词"这种历史遗留状态蒙混过去——首跑写入标记后，不论
+   * 后面重跑多少次、传不传 --write/--write-heuristic，只要标记还没被人删掉，退出码
+   * 必须一直是 4。 */
+  const hasUnreviewedMarkersOnDisk = hasUnreviewedMarkerInText(finalText);
+
   if (needsHumanExit) process.exit(1);
   if (hasUnwrittenCandidates) process.exit(3);
-  if (hasUnreviewedWritten) process.exit(4);
+  if (hasUnreviewedMarkersOnDisk) process.exit(4);
 }
 
 module.exports = {
   enumerateSegmentations, resolveWord, analyzeWeek, formatReport,
-  injectSegmentsIntoWDeclaration, writeSuggestions
+  injectSegmentsIntoWDeclaration, writeSuggestions, hasUnreviewedMarkerInText
 };
 
 if (require.main === module) main();

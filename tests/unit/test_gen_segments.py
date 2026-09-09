@@ -341,6 +341,46 @@ class GenSegmentsOnlyResolvedExitCodeTests(unittest.TestCase):
         self.assertIn('@gen-segments-unreviewed', m_rain.group(0))
         self.assertIn('退出码将是 4', result.stdout, '写回时的提示文案应点名退出码 4，不能只说"需人工复核"却不点出机器可判的退出码')
 
+    def test_rerun_after_write_heuristic_still_exits_4(self):
+        # H2 复测修复（内部预筛 2026-09-10）：改前 hasUnreviewedWritten 只在"本次
+        # writeSuggestions 真的新写入了 heuristic 候选"时才置真——首跑 --write-heuristic
+        # 后 rain/aid 已经变成 already-has-segments（带着 @gen-segments-unreviewed
+        # 标记），不会再进入 resolveWord/writeSuggestions 的处理路径，之后不论重跑
+        # dry-run / --write / 再来一次 --write-heuristic，"这次是不是我写的"都是否，
+        # 退出码因此恒为 0，而标记其实还在磁盘上，check_data.js 依然会拦截——这正是
+        # 内部预筛复测实测复现的漏洞。改法是直接扫描本次运行结束后磁盘上的最终文件
+        # 内容，不再问"这次是不是我写的"。这里断言：首跑 rc=4 且标记留下 4 处；随后
+        # dry-run / --write / --write-heuristic 三次重跑，rc 必须仍是 4，标记个数
+        # 一个不少（不是被静默清掉，只是没人复核）。
+        first = gs.run(str(self.target), write=True, write_heuristic=True, capture_output=True)
+        self.assertEqual(first.returncode, 4, '首跑 --write-heuristic 应以退出码 4 结束（rain/aid 写回但未复核）')
+        after_first = self.target.read_text(encoding='utf-8')
+        marker_count_after_first = after_first.count('@gen-segments-unreviewed')
+        # 每个词的注入注释里 @gen-segments-unreviewed 字面量出现 2 次（开头声明 +
+        # 结尾"请删除本行的 @gen-segments-unreviewed 标记"提示，见
+        # injectSegmentsIntoWDeclaration 的 seg 拼接），rain/aid 两个词共 4 处。
+        self.assertEqual(marker_count_after_first, 4, '首跑后应恰好留下 4 处未复核标记（rain/aid 各一条注释、每条注释里出现 2 次字面量）')
+
+        dry = gs.run(str(self.target), write=False, capture_output=True)
+        self.assertEqual(dry.returncode, 4,
+                          'H2 复测：首跑后再来一次 dry-run，磁盘上标记仍在，退出码必须仍是 4，不能因为"这次没写"就跌回 0')
+        self.assertEqual(self.target.read_text(encoding='utf-8').count('@gen-segments-unreviewed'), marker_count_after_first,
+                          'dry-run 不应改动文件，标记数不应变化')
+
+        write_only = gs.run(str(self.target), write=True, capture_output=True)
+        self.assertEqual(write_only.returncode, 4,
+                          'H2 复测：再来一次 --write（不加 --write-heuristic），rain/aid 已是 already-has-segments，'
+                          '这次没有新写入任何东西，但磁盘上仍残留标记，退出码必须仍是 4')
+        self.assertEqual(self.target.read_text(encoding='utf-8').count('@gen-segments-unreviewed'), marker_count_after_first,
+                          '--write 不应触碰已带 segments 的 rain/aid，标记数不应变化')
+
+        write_heuristic_again = gs.run(str(self.target), write=True, write_heuristic=True, capture_output=True)
+        self.assertEqual(write_heuristic_again.returncode, 4,
+                          'H2 复测：第三次重跑（再来一次 --write-heuristic），rain/aid 仍是 already-has-segments，'
+                          '这次同样没有新写入，退出码必须仍是 4，不能被"重跑"本身掩盖已存在的标记')
+        self.assertEqual(self.target.read_text(encoding='utf-8').count('@gen-segments-unreviewed'), marker_count_after_first,
+                          '三次重跑标记数应保持不变——本用例证明的是退出码不该跌回 0，不是标记会被意外清除或重复写入')
+
     def test_unreviewed_marker_matches_the_exact_pattern_check_data_scans_for(self):
         # H2 的矛盾点是："退出码 4 时写进文件的标记" 与 "check_data.js §⑪ 实际扫描的
         # 标记" 必须是同一个字符串，否则"退出码 4 提醒人去复核"这件事本身就对不上下游

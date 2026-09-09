@@ -42,18 +42,34 @@
  *   - 模板序列化与 HTML 反解析往返一致
  *   - 文案说"3 块积木"
  *   - 墙显示全部可上墙字位（至少 r/ai/n 三块），只有 ai 是本周新点亮态；
- *     newPatterns 与 FIRST_TEACH_DAY 键都只有 ai
+ *     newPatterns 与 FIRST_TEACH_DAY 键都只有 ai——这条现在真喂给第 7 步接入
+ *     check_data.js 的真实 DATA-WALL-01 判定链（wall_order.js 的
+ *     computeTeachingOrder/expectedWallOrder/diffWallLetters/setsEqual），不是
+ *     拿测试字面量与自身比对（HIGH1 修复，内部预筛 2026-09-10，见下方
+ *     testWallDataAndNewPatterns 与 testBreakTheCopyProvesWallOrderDiscriminates）
  *   - 另加一个需要重复字位的合成词 + 重复 rack 项，验证按索引消耗而非 Set 去重
  *     （三审 M-6），并用"改坏副本"证明这条断言真的会因为退化成 Set 语义而转红
+ *   - r/a/i/n/ai 共存表下三个游戏的初始化真跑一次（MEDIUM5 修复，内部预筛
+ *     2026-09-10）：CORE 场景此前刻意只留 r/ai/n（不含单字母 a/i），G4/G5 的
+ *     rack 从没在"a、i、ai 同时可选"的真实 W5 形态下跑过；见下方
+ *     testGamesRunUnderCoexistingSoundsRack
  *
- * ---- 边界（不可越，方案原文）----
- * 本 fixture 只验第 6 步的消费者链路，不得直接用于 DATA-WALL-01（八审 L-5：它的
- * newPatterns 只有 ai，说明不了 r、n 从哪一周进入累计教学顺序）——墙校验在第 7 步
- * 另建带连续周记录的 fixture。本文件的"墙"断言因此只做数据级与单字位级检查
- * （wallLetters 展开正确、每个 id 可解析、FIRST_TEACH_DAY/newPatterns 只含 ai），
- * 不构造、也不需要构造一个真实可用的"完整累计墙"渲染函数——现状里那个函数本来就
- * 不存在（周 1-3 的 hero 硬编码本周字面量，周 4 的 hero 把 lit 写死成 true，两处都
- * 没有一个通用的"读 wallLetters + 按 FIRST_TEACH_DAY 算点亮态"的共享实现可复用）。
+ * ---- 边界（不可越，方案原文；HIGH1 修复后收紧）----
+ * 本 fixture 只验第 6 步的消费者链路，不得越权替代 check_data.js §⑤ 对仓库真实
+ * 周文件的完整校验（八审 L-5 的顾虑仍然成立：本文件的合成 weekRecords 是手写的
+ * 两周记录，不读 project.json/frontend/src/weeks/*.data.js，不是"仓库现状是否
+ * 自洽"的证据）——那件事仍然是 check_data.js 在第 7 步已经做的、对真实周数据文件
+ * 逐一校验的职责。HIGH1 收紧的是本文件内部的证据强度：「只有 ai 是本周新点亮态」
+ * 这条核心断言，改前只是拿 CORE_META/CORE_FIRST_TEACH_DAY 两个测试字面量互相比较
+ * （恒真，不接触任何生产代码），改后喂给 wall_order.js 的真实
+ * computeTeachingOrder/expectedWallOrder/diffWallLetters/setsEqual（与
+ * check_data.js §⑤ 完全同源的同一组函数），用两条合成 weekRecords（上一周已教
+ * r/n，本周只新教 ai）证明这些真实函数对"wallLetters 顺序应与累计教学顺序一致、
+ * ai 追加在最后"这件事给出正确结论，并用"改坏副本"证明这条断言确实依赖
+ * computeTeachingOrder 的追加顺序、不是恒真式。本文件仍然不构造、也不需要构造
+ * 一个真实可用的"完整累计墙"渲染函数——现状里那个函数本来就不存在（周 1-3 的
+ * hero 硬编码本周字面量，周 4 的 hero 把 lit 写死成 true，两处都没有一个通用的
+ * "读 wallLetters + 按 FIRST_TEACH_DAY 算点亮态"的共享实现可复用）。
  *
  * ---- 环境桩的说明（为什么不是"绕过生产路径"）----
  * games.js/render-blocks.js 本身是本文件要验证的真实生产代码，逐字 fs.readFileSync
@@ -74,6 +90,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { loadData } = require('../../tools/validation/load_data');
+// HIGH1 修复（内部预筛 2026-09-10）：「墙/首教日」一节改用第 7 步已接入 check_data.js
+// 的真实 DATA-WALL-01 判定链（与 check_data.js §⑤ 完全同源），不再把测试字面量与
+// 自身比对——见下方 testWallDataAndNewPatterns/testBreakTheCopyProvesWallOrderDiscriminates。
+const { computeTeachingOrder, expectedWallOrder, diffWallLetters, setsEqual } = require('../../tools/validation/wall_order');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const SHARED = path.join(ROOT, 'frontend', 'src', 'shared');
@@ -262,7 +282,13 @@ const CORE_SOUNDS = {
 const CORE_W = { rain: { zh: '雨（合成测试词，不对应任何正式周）', art: null, segments: ['r', 'ai', 'n'] } };
 const CORE_META = {
   week: 99, storageKey: 'synthetic-ai-test', groupedRack: false,
-  wallLetters: ['r', 'ai', 'n'], rackG4: ['r', 'ai', 'n'], rackG5: ['r', 'ai', 'n'], newPatterns: ['ai']
+  // wallLetters 顺序改为 r/n/ai（HIGH1 修复，2026-09-10）：真实 DATA-WALL-01 判定
+  // 累计教学顺序时，本周（week）新教的字位必然追加在已教字位之后（computeTeachingOrder
+  // 按周序累计，见 wall_order.js）——r/n 视为上一周已教、ai 是本周唯一新教，wallLetters
+  // 的真实顺序理应是"已教在前、本周新教的 ai 在最后"，不是原先随手写的 r/ai/n（ai 夹在
+  // 中间）。rackG4/rackG5 不受影响，继续用方案原文写死的 r/ai/n（那两个数组只影响 G4/G5
+  // 的摆词顺序，与墙的累计教学顺序是两回事，见下方 testG4/testG5 两节）。
+  wallLetters: ['r', 'n', 'ai'], rackG4: ['r', 'ai', 'n'], rackG5: ['r', 'ai', 'n'], newPatterns: ['ai']
 };
 // FIRST_TEACH_DAY 只含 ai：r/n 视为此前某周已教（本合成周不新增），newPatterns 与
 // FIRST_TEACH_DAY 键因此都只有 ai——这正是方案第 6 行明写的判据。
@@ -405,13 +431,23 @@ function testG5SurfaceLookupFindsWord() {
 }
 
 // ----------------------------------------------------------------------------
-// 墙 / newPatterns / FIRST_TEACH_DAY（边界：只做数据级 + 单字位级检查，见文件头
-// 「边界」一节——真正的累计墙渲染函数在第 7 步才建立）。
+// 墙 / newPatterns / FIRST_TEACH_DAY（HIGH1 修复，内部预筛 2026-09-10：改前 4 条
+// 断言里有 2 条把 CORE_META/CORE_FIRST_TEACH_DAY 这两个 150 行前定义的测试字面量
+// 与它们自身的定义值比对——恒真，不接触任何生产代码；normalizeIdList 传数组时的
+// {legacy:true} 也是摆设，它宣称要挡的"被展开成更多字符"只存在于字符串分支，本
+// fixture 永远走不到；examRecorded(1) 断言的是本文件 STUB_ENV 里自己写的桩，不是
+// 生产代码。改法：喂给第 7 步已接入 check_data.js 的真实 DATA-WALL-01 判定链——
+// wall_order.js 的 computeTeachingOrder/expectedWallOrder/diffWallLetters/
+// setsEqual，与 check_data.js §⑤ 完全同源——用两条合成 weekRecords（上一周已教
+// r/n，本周只新教 ai）证明这些真实函数对"wallLetters 顺序应与累计教学顺序一致、
+// ai 追加在最后"给出正确结论。这条断言的"改坏副本"验证见下方
+// testBreakTheCopyProvesWallOrderDiscriminates。）
 // ----------------------------------------------------------------------------
 function testWallDataAndNewPatterns() {
-  const wallIds = core.sandbox.normalizeIdList(CORE_META.wallLetters, { legacy: true });
-  assert.deepEqual(wallIds, ['r', 'ai', 'n'],
-    `墙应显示全部 3 个可上墙字位（r/ai/n），不是被展开成更多字符：${JSON.stringify(wallIds)}`);
+  // 与 check_data.js:211 完全一致的调用形态：META.wallLetters 第 7 步起是字位 ID
+  // 数组，不再需要 legacy 选项（那只用于展开旧格式字符串，本 fixture 从未落进
+  // 那个分支）。
+  const wallIds = core.sandbox.normalizeIdList(CORE_META.wallLetters);
   // 每个上墙字位都必须真的可解析（graphemeLabel/soundType 不抛）——"可上墙"的最低要求。
   for (const id of wallIds) {
     const label = core.sandbox.graphemeLabel(id, CORE_SOUNDS);
@@ -419,25 +455,82 @@ function testWallDataAndNewPatterns() {
     assert(typeof label === 'string' && label.length > 0, `墙字位 "${id}" 应能取到显示字形`);
     assert(type === 'c' || type === 'v', `墙字位 "${id}" 应能取到合法元音/辅音分类`);
   }
-  assert.deepEqual(wallIds.map(id => core.sandbox.graphemeLabel(id, CORE_SOUNDS)), ['r', 'ai', 'n'],
+  assert.deepEqual(wallIds.map(id => core.sandbox.graphemeLabel(id, CORE_SOUNDS)), ['r', 'n', 'ai'],
     '墙上 ai 的显示字形应是 "ai" 一整块，不是被拆开显示');
 
-  // 只有 ai 是本周新点亮态：newPatterns 与 FIRST_TEACH_DAY 键都只含 ai。
-  assert.deepEqual(CORE_META.newPatterns, ['ai'], 'newPatterns 应只含 ai（本周唯一新教字位）');
-  assert.deepEqual(Object.keys(CORE_FIRST_TEACH_DAY), ['ai'], 'FIRST_TEACH_DAY 键应只含 ai');
-  // ai 的点亮态是真实可计算的（走真实 dayDone，同 state.js:233-239 语义）：
-  // day1 的 checks 已在 G5 场景里被置位，dayDone(1) 应为 true（该天唯一的块类型是
-  // exam，没有 checks 块，total===0，走"不存在 checks 块就看 st.done"分支——st.done
-  // 未显式设置，为 undefined，!!undefined===false）。为了让"ai 已点亮"这件事本身
-  // 可判定，这里改用不依赖 checks 块的路径：直接断言 examRecorded(1) 已为 true
-  // （G5 场景已解锁），说明"day1 已完成到足以解锁 G5 的程度"，这是本合成周唯一定义过
-  // 的"完成"信号；r/n 不在 FIRST_TEACH_DAY 里，按方案"不是新教那一周的一次性义务"
-  // 的反面——它们的点亮态来自更早的周，不属于本合成 fixture 的语义范围（边界已在
-  // 文件头写明：完整累计墙验证在第 7 步）。
-  assert.equal(core.sandbox.examRecorded(1), true, 'day1 应已标记完成到可解锁 G5 的程度，供"ai 已点亮"取信号');
-  assert(!('r' in CORE_FIRST_TEACH_DAY) && !('n' in CORE_FIRST_TEACH_DAY),
-    'r/n 不应出现在本合成周的 FIRST_TEACH_DAY 里（它们不是本周新教，点亮态来自更早的周，不在本 fixture 范围内）');
-  console.log('PASS synthetic-ai 墙/newPatterns/FIRST_TEACH_DAY：wallLetters 展开为 3 个可解析字位，newPatterns 与 FIRST_TEACH_DAY 键均只含 ai');
+  // 真正的核心断言：用真实 DATA-WALL-01 判定链证明"只有 ai 是本周新点亮态"——
+  // 构造两周记录：上一周（week-1）已教 r/n，本周（CORE_META.week）只新教 ai。
+  // computeTeachingOrder 按周序累计各周 newPatterns 拼出独立教学顺序真相源（同周
+  // 内按数组自身顺序追加），expectedWallOrder 过滤不上墙项，diffWallLetters 判定
+  // wallIds 是否与这条真相源完全一致（顺序/缺项/额外项/重复项四类独立诊断，
+  // 与 check_data.js §⑤ 完全同一套判据）。这条断言依赖真实生产函数对两周输入的
+  // 计算结果，不是把字面量与自身比对。
+  const priorWeekRecords = [{ week: CORE_META.week - 1, newPatterns: ['r', 'n'] }];
+  const weekRecords = priorWeekRecords.concat([{ week: CORE_META.week, newPatterns: CORE_META.newPatterns }]);
+  const teachingOrder = computeTeachingOrder(weekRecords);
+  assert.deepEqual(teachingOrder, ['r', 'n', 'ai'],
+    `独立教学顺序真相源应是上一周已教的 r/n 在前、本周新教的 ai 追加在最后：${JSON.stringify(teachingOrder)}`);
+  const expectedOrder = expectedWallOrder(teachingOrder, CORE_SOUNDS);
+  const diff = diffWallLetters(wallIds, expectedOrder);
+  assert.deepEqual(diff.missing, [], `wallLetters 不应缺少独立教学顺序序列里应上墙的字位：${JSON.stringify(diff.missing)}`);
+  assert.deepEqual(diff.extra, [], `wallLetters 不应含独立教学顺序序列之外的额外字位：${JSON.stringify(diff.extra)}`);
+  assert.deepEqual(diff.duplicates, [], `wallLetters 不应含重复字位：${JSON.stringify(diff.duplicates)}`);
+  assert.equal(diff.orderMatches, true,
+    `wallLetters 顺序应与独立教学顺序序列（r/n 已教在前，本周新教的 ai 在后）一致。期望：` +
+    `${JSON.stringify(expectedOrder)}，实际：${JSON.stringify(wallIds)}`);
+
+  // 第二重证据（DATA-WALL-01 断言②，真实 setsEqual）：FIRST_TEACH_DAY 的键集合应与
+  // newPatterns 完全相等。newPatterns 只含 ai，因此这条同时确认了 r/n 不在
+  // FIRST_TEACH_DAY 里——它们的首教日来自更早的周，不是本合成周的一次性义务。
+  assert.equal(setsEqual(Object.keys(CORE_FIRST_TEACH_DAY), CORE_META.newPatterns), true,
+    `FIRST_TEACH_DAY 键集合应与 newPatterns 完全相等（真实 setsEqual）。FIRST_TEACH_DAY 键：` +
+    `${JSON.stringify(Object.keys(CORE_FIRST_TEACH_DAY))}，newPatterns：${JSON.stringify(CORE_META.newPatterns)}`);
+
+  console.log('PASS synthetic-ai 墙/newPatterns/FIRST_TEACH_DAY：真实 DATA-WALL-01 判定链' +
+    '（computeTeachingOrder/expectedWallOrder/diffWallLetters/setsEqual）证明 wallLetters 顺序与教学顺序一致、' +
+    'FIRST_TEACH_DAY 与 newPatterns 完全相等——只有 ai 是本周新点亮态');
+}
+
+/* 「改坏副本」验证（HIGH1）：把 tools/validation/wall_order.js 里 computeTeachingOrder
+ * 追加教学顺序的那一行从 `order.push(id)`（按周序、同周内按 newPatterns 自身顺序
+ * 追加）改成 `order.unshift(id)`（改成头插）——这会让"更早教的字位排在更后面"，
+ * 本周新教的 ai 不再必然排在序列末尾。needle 只出现 1 次（computeTeachingOrder
+ * 内），精确对应上面「只有 ai 是本周新点亮态、且排在末尾」这条核心断言依赖的排序
+ * 逻辑。用 Node 的 Module 系统在 wall_order.js 的真实路径下编译改坏后的源码文本
+ * （该文件内部还有 require('./load_data') 等相对路径依赖，必须让它在原目录下被
+ * 求值才能正确解析，不能简单 vm.Script 到独立上下文），再用与上面完全相同的合成
+ * weekRecords/wallIds 跑一遍，断言 diffWallLetters 的 orderMatches 从 true 变成
+ * false——证明上面那条核心断言确实依赖 computeTeachingOrder 的追加顺序，不是恒真式。 */
+function testBreakTheCopyProvesWallOrderDiscriminates() {
+  const wallOrderPath = path.join(ROOT, 'tools', 'validation', 'wall_order.js');
+  const realSrc = fs.readFileSync(wallOrderPath, 'utf8');
+  const needle = 'order.push(id);';
+  const occurrences = realSrc.split(needle).length - 1;
+  assert.equal(occurrences, 1,
+    `破坏点定位失败：wall_order.js 里 "${needle}" 应恰好出现 1 次（computeTeachingOrder 内的追加顺序），` +
+    `实际 ${occurrences} 次——源码已漂移，需要重新核实破坏点是否仍作用在教学顺序的追加逻辑上`);
+  const brokenSrc = realSrc.replace(needle, 'order.unshift(id);');
+  assert.notEqual(brokenSrc, realSrc, '破坏点替换未生效（needle 未匹配到任何文本）');
+
+  const NodeModule = require('module');
+  const mod = new NodeModule(wallOrderPath, module);
+  mod.filename = wallOrderPath;
+  mod.paths = NodeModule._nodeModulePaths(path.dirname(wallOrderPath));
+  mod._compile(brokenSrc, wallOrderPath);
+  const broken = mod.exports;
+
+  const wallIds = core.sandbox.normalizeIdList(CORE_META.wallLetters);
+  const priorWeekRecords = [{ week: CORE_META.week - 1, newPatterns: ['r', 'n'] }];
+  const weekRecords = priorWeekRecords.concat([{ week: CORE_META.week, newPatterns: CORE_META.newPatterns }]);
+  const teachingOrder = broken.computeTeachingOrder(weekRecords);
+  const expectedOrder = broken.expectedWallOrder(teachingOrder, CORE_SOUNDS);
+  const diff = broken.diffWallLetters(wallIds, expectedOrder);
+  assert.equal(diff.orderMatches, false,
+    `改坏副本（追加改成头插）下，wallLetters 不应再与教学顺序序列吻合——证明上面「只有 ai 是本周新点亮态、` +
+    `且排在末尾」这条断言确实会因为这个具体退化（computeTeachingOrder 的追加顺序被改坏）而转红，不是恒真式。` +
+    `改坏后 teachingOrder：${JSON.stringify(teachingOrder)}，wallIds：${JSON.stringify(wallIds)}`);
+  console.log('PASS synthetic-ai 改坏副本验证：wall_order.js 的 computeTeachingOrder 追加顺序改坏后，' +
+    'wallLetters 与教学顺序不再吻合，证明「只有 ai 新点亮且排在末尾」这条断言确实有分辨力');
 }
 
 // ----------------------------------------------------------------------------
@@ -619,6 +712,151 @@ function testAmbiguitySurfacesThroughRealConsumerFunctions() {
 }
 
 // ============================================================================
+// 共存表下三个游戏真跑一次初始化（MEDIUM5 修复，内部预筛 2026-09-10）：CORE 场景
+// 刻意只留 r/ai/n（不含单字母 a/i），"消费者级歧义"一节也只喂给
+// graphemesOf/colorStrictWord 两个包装函数——initG2/initG4/initG5 从未在
+// "a、i、ai 同时可选"的真实 rack 下跑过一次，而这正是 W5 的真实形态（锚点记录的
+// 盲区提醒：rackG4/rackG5 里同时有 a、i、ai 时，G5 自由摆词的表面串判定会出现
+// "摆 a+i 与摆 ai 得到相同表面串"的新情形）。这里用同一张 r/a/i/n/ai 共存表构造
+// rackG4/rackG5（5 块可选，不是 CORE 场景的 3 块），断言：
+//   - G2 对 rain（显式 segments）仍拆 3 块——G2 走 graphemesOf(word)，不读 rack，
+//     rack 变大不影响它。
+//   - G4 建 3 槽（按 wordIds.length，同样不受 rack 变大影响）；rack 里同时有
+//     a/i/ai 时，只有严格按 r+ai+n 摆才拼对——按 r+a+i 摆（同样填满 3 槽，但漏了
+//     n）应判定为拼错，不应被误判成拼对。已实测确认：G4 的槽数锁定为目标词的
+//     规范分词长度（3），rain 的 4 个组成字符 r/a/i/n 塞不进 3 个槽，凑不出另一条
+//     同样能拼出 'rain' 的 3 元组，所以 G4 的固定槽数设计本身就结构性地避免了
+//     "ai 与 a+i 同表面串"的碰撞——这条不是缺陷，是设计上的天然免疫，下面用
+//     "摆 r+a+i 应判错"证实。
+//   - G5（自由摆词，槽数 2/3/4 可切换）没有这层免疫：slotCount=3 摆 r+ai+n 与
+//     slotCount=4 摆 r+a+i+n，surfaceOf 拼接结果同样是 'rain'，两条路径都应被
+//     判定为拼出同一个真词——这正是锚点提醒的"新情形"本身。已实测确认这是 G5
+//     "自由摆词、按最终拼接字符串查表"的既有契约（不要求必须按规范分词摆），
+//     行为符合预期，不是需要停下报告的真实缺陷。
+// ============================================================================
+const COEXIST_RACK_SOUNDS = {
+  r: { grapheme: 'r', type: 'c' }, a: { grapheme: 'a', type: 'v' }, i: { grapheme: 'i', type: 'v' },
+  n: { grapheme: 'n', type: 'c' }, ai: { grapheme: 'ai', type: 'v' }
+};
+const COEXIST_RACK_W = { rain: { zh: '雨（合成测试词，不对应任何正式周）', art: null, segments: ['r', 'ai', 'n'] } };
+const COEXIST_RACK_META = {
+  week: 99, storageKey: 'synthetic-ai-coexist-rack-test', groupedRack: false,
+  rackG4: ['r', 'a', 'i', 'n', 'ai'], rackG5: ['r', 'a', 'i', 'n', 'ai']
+};
+const COEXIST_RACK_DAYS = [{ n: 1, wd: '一', title: '', goal: '', steps: [{ t: '', min: 30, blocks: [{ b: 'exam' }] }] }];
+
+function buildCoexistRackSandbox() {
+  return buildSandbox({
+    SOUNDS: COEXIST_RACK_SOUNDS, META: COEXIST_RACK_META, W: COEXIST_RACK_W, RESERVED: [],
+    G4_WORDS: ['rain'], G5_WHITELIST: ['rain'], FIRST_TEACH_DAY: {}, DAYS: COEXIST_RACK_DAYS
+  });
+}
+
+async function testGamesRunUnderCoexistingSoundsRack() {
+  // ---- G2：rain 仍拆 3 块（不受 rack 扩大到 5 块影响，G2 不读 rack）----
+  {
+    const { sandbox: sb, roots } = buildCoexistRackSandbox();
+    const root = new El('div', { 'data-g2': 'rain' });
+    root.registerNamed('[data-nav]', new El('div'));
+    const body = root.registerNamed('[data-body]', new El('div'));
+    roots.length = 0; roots.push(root);
+    sb.initG2();
+    const tileMatches = [...body.innerHTML.matchAll(/<div class="tile (tile--[cv]) tile--lg">([^<]*)<\/div>/g)];
+    assert.equal(tileMatches.length, 3, `共存表下 G2 仍应拆成 3 块积木（r/ai/n）：${body.innerHTML}`);
+    assert.deepEqual(tileMatches.map(m => m[2]), ['r', 'ai', 'n'],
+      '共存表下 G2 三块积木仍应是 r / ai / n（不受 rack 扩大到 5 块影响，G2 不读 rack）');
+    console.log('PASS synthetic-ai 共存表下 G2：rack 扩大到 5 块（r/a/i/n/ai）不影响 G2，rain 仍拆 3 块 r/ai/n');
+  }
+
+  // ---- G4：建 3 槽；rack 里同时有 a/i/ai 时，只有按 r+ai+n 摆才拼对，
+  //      按 r+a+i 摆（填满 3 槽但漏了 n）应正确判定拼错，不是假阳性 ----
+  async function mountG4Coexist() {
+    const { sandbox: sb, roots } = buildCoexistRackSandbox();
+    const root = new El('div', { 'data-g4': '' });
+    root.registerNamed('[data-g4-orders]', new El('div'));
+    const body = root.registerNamed('[data-g4-body]', new El('div'));
+    roots.length = 0; roots.push(root);
+    sb.initG4();
+    root.fire('click', { target: new El('button', { 'data-g4-order': 'rain' }) });
+    await flushMicrotasks();
+    return { root, body };
+  }
+  {
+    const { root, body } = await mountG4Coexist();
+    const slotIds = [...body.innerHTML.matchAll(/data-g4-slot="(\d+)"/g)].map(m => m[1]);
+    assert.deepEqual(slotIds, ['0', '1', '2'],
+      `共存表下 G4 仍应按字位数（3）建 3 槽，不受 rack 扩大到 5 块影响：${body.innerHTML}`);
+    const tiles = [...body.innerHTML.matchAll(/data-g4-tile="(\d+)" data-g4-letter="([^"]*)"/g)]
+      .map(m => ({ idx: m[1], letter: m[2] }));
+    assert.deepEqual(tiles.map(t => t.letter).sort(), ['a', 'ai', 'i', 'n', 'r'],
+      `共存表下 G4 积木架应展示全部 5 块（r/a/i/n/ai）：${JSON.stringify(tiles)}`);
+    for (const letter of ['r', 'ai', 'n']) {
+      const t = tiles.find(x => x.letter === letter);
+      root.fire('click', { target: new El('button', { 'data-g4-tile': t.idx, 'data-g4-letter': t.letter }) });
+    }
+    const filledSlots = [...body.innerHTML.matchAll(/data-g4-slot="\d+">([^<]*)</g)].map(m => m[1]);
+    assert.deepEqual(filledSlots, ['r', 'ai', 'n'], `共存表下按 r+ai+n 摆，三个槽应分别摆入 r/ai/n：${body.innerHTML}`);
+    assert(/拼对了/.test(body.innerHTML), `共存表下按真正的目标分词 r+ai+n 摆满 3 槽，应判定为拼对：${body.innerHTML}`);
+  }
+  {
+    const { root, body } = await mountG4Coexist();
+    const tiles = [...body.innerHTML.matchAll(/data-g4-tile="(\d+)" data-g4-letter="([^"]*)"/g)]
+      .map(m => ({ idx: m[1], letter: m[2] }));
+    // r+a+i：3 槽填满，但漏了 n（surfaceOf(['r','a','i'])==='rai'≠'rain'）。rack
+    // 扩大到 5 块（含 a/i/ai）并不会让"另一条同样能凑出 3 元组且拼出 rain"的
+    // 路径出现——rain 的 4 个组成字符 r/a/i/n 塞不进 3 个槽——所以这里必须判定为
+    // 拼错，这是本节要挡住的假阳性。
+    for (const letter of ['r', 'a', 'i']) {
+      const t = tiles.find(x => x.letter === letter);
+      root.fire('click', { target: new El('button', { 'data-g4-tile': t.idx, 'data-g4-letter': t.letter }) });
+    }
+    const filledSlots = [...body.innerHTML.matchAll(/data-g4-slot="\d+">([^<]*)</g)].map(m => m[1]);
+    assert.deepEqual(filledSlots, ['r', 'a', 'i'], `按 r+a+i 摆，三个槽应分别摆入 r/a/i：${body.innerHTML}`);
+    assert(/摆错了/.test(body.innerHTML),
+      `核心断言（MEDIUM5）：共存表下按 r+a+i 摆满 3 槽（漏了 n，拼接结果是 rai≠rain）应判定为拼错，` +
+      `不应被误判成拼对——证明 G4 的固定槽数设计本身就结构性地避免了"ai 与 a+i 同表面串"的碰撞：${body.innerHTML}`);
+    assert(!/拼对了/.test(body.innerHTML), '按 r+a+i 摆不应同时出现"拼对了"文案（两者互斥）');
+  }
+  console.log('PASS synthetic-ai 共存表下 G4：rack 扩大到 5 块（r/a/i/n/ai）后仍建 3 槽，只有按真正的目标分词 r+ai+n 摆才判定拼对，r+a+i（漏 n）正确判定拼错，无假阳性');
+
+  // ---- G5：自由摆词，slotCount=3 摆 r+ai+n 与 slotCount=4 摆 r+a+i+n 应拼出同一个
+  //      表面串 'rain'，均判定为真词——锚点提醒的"新情形"，已实测确认符合既有契约 ----
+  {
+    const { sandbox: sb, roots } = buildCoexistRackSandbox();
+    sb.state.days[1] = { checks: { '1-0-0': true } }; // 解锁（同 testG5SurfaceLookupFindsWord）
+    const root = new El('div', { 'data-g5': '', 'data-g5-day': '1' });
+    const body = root.registerNamed('[data-g5-body]', new El('div'));
+    roots.length = 0; roots.push(root);
+    sb.initG5();
+
+    let tiles = [...body.innerHTML.matchAll(/data-g5-tile="(\d+)" data-g5-letter="([^"]*)"/g)]
+      .map(m => ({ idx: m[1], letter: m[2] }));
+    assert.deepEqual(tiles.map(t => t.letter).sort(), ['a', 'ai', 'i', 'n', 'r'],
+      `共存表下 G5 积木架应展示全部 5 块（r/a/i/n/ai）：${JSON.stringify(tiles)}`);
+    for (const letter of ['r', 'ai', 'n']) {
+      const t = tiles.find(x => x.letter === letter);
+      root.fire('click', { target: new El('button', { 'data-g5-tile': t.idx, 'data-g5-letter': t.letter }) });
+    }
+    assert(/拼出一个词！读读看/.test(body.innerHTML), `G5 默认 3 槽按 r+ai+n 摆应拼出 rain（真词）：${body.innerHTML}`);
+
+    // 切到 4 槽（setSlotCount 会重置 slots/usedTileIdx，不需要另外清空），改摆
+    // r -> a -> i -> n。
+    root.fire('click', { target: new El('button', { 'data-g5-len': '4' }) });
+    tiles = [...body.innerHTML.matchAll(/data-g5-tile="(\d+)" data-g5-letter="([^"]*)"/g)]
+      .map(m => ({ idx: m[1], letter: m[2] }));
+    for (const letter of ['r', 'a', 'i', 'n']) {
+      const t = tiles.find(x => x.letter === letter);
+      root.fire('click', { target: new El('button', { 'data-g5-tile': t.idx, 'data-g5-letter': t.letter }) });
+    }
+    assert(/拼出一个词！读读看/.test(body.innerHTML),
+      `核心断言（MEDIUM5，锚点记录的盲区）：G5 4 槽按 r+a+i+n 摆，拼接结果同样是 'rain'，应与 3 槽按` +
+      ` r+ai+n 摆一样被判定为拼出同一个真词——这正是"摆 ai 与摆 a+i 得到相同表面串"的新情形，已实测确认` +
+      `符合 G5"按最终拼接字符串自由摆词、不要求按规范分词摆"的既有契约，不是需要停下报告的真实缺陷：${body.innerHTML}`);
+  }
+  console.log('PASS synthetic-ai 共存表下 G5：slotCount=3 按 r+ai+n 与 slotCount=4 按 r+a+i+n 摆出同一个表面串 rain，均正确判定为真词——锚点记录的"ai 与 a+i 同表面串"新情形已实测确认符合既有契约，未发现真实缺陷');
+}
+
+// ============================================================================
 // 执行
 // ============================================================================
 (async () => {
@@ -626,9 +864,11 @@ function testAmbiguitySurfacesThroughRealConsumerFunctions() {
   await testBreakTheCopyProvesG4SlotCountDiscriminates();
   testG5SurfaceLookupFindsWord();
   testWallDataAndNewPatterns();
+  testBreakTheCopyProvesWallOrderDiscriminates();
   testTemplateRoundTrip();
   await testDuplicateGraphemeConsumedByIndexNotSet();
   await testBreakTheCopyProvesDiscriminatingPower();
   testAmbiguitySurfacesThroughRealConsumerFunctions();
-  console.log('PASS synthetic-ai integration contract: G2/G4/G5/墙/模板往返/重复字位索引消耗/改坏副本/消费者级歧义 全部按预期通过');
+  await testGamesRunUnderCoexistingSoundsRack();
+  console.log('PASS synthetic-ai integration contract: G2/G4/G5/墙/模板往返/重复字位索引消耗/改坏副本/消费者级歧义/共存表下三游戏初始化 全部按预期通过');
 })().catch(e => { console.error(e); process.exit(1); });
