@@ -366,9 +366,9 @@ function initG4(){
   document.querySelectorAll('[data-g4]').forEach(root=>{
     const orders = root.querySelector('[data-g4-orders]');
     const body = root.querySelector('[data-g4-body]');
-    // META.rackG4 第 7 步起是字位 ID 数组；normalizeIdList 在数组输入下只是浅拷贝，
-    // 不再需要旧格式兼容选项（那只用于展开旧格式字符串，第 7 步前的过渡形态）。
-    const RACK_LETTERS = normalizeIdList(META.rackG4);
+    // META.rackG4 第 7 步起是字位 ID 数组；第 8 步 normalizeIdList 已收口为
+    // assertIdList，除了浅拷贝还逐项验证每个 ID 都在 SOUNDS 里存在。
+    const RACK_LETTERS = assertIdList(META.rackG4, SOUNDS);
     // wordIds：当前订单词的字位 ID 序列（方案 §2.2「槽位长度」行——槽数必须按
     // 字位数建，不是按字符数，否则 rain 建四槽却只有三块积木永远填不满）。
     // slots 存放的是字位 ID，不是字符。
@@ -629,8 +629,8 @@ function initG5(){
   document.querySelectorAll('[data-g5]').forEach(root=>{
     const body = root.querySelector('[data-g5-body]');
     const day = +root.dataset.g5Day;
-    // META.rackG5 第 7 步起是字位 ID 数组，同上 initG4 不再需要旧格式兼容选项。
-    const RACK_LETTERS = normalizeIdList(META.rackG5);
+    // META.rackG5 第 7 步起是字位 ID 数组，同上 initG4，assertIdList 逐项验证存在性。
+    const RACK_LETTERS = assertIdList(META.rackG5, SOUNDS);
     let slotCount = 3;
     let slots = new Array(slotCount).fill(null);
     let usedTileIdx = [];

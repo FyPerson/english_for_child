@@ -26,7 +26,7 @@ const isHTML = SRC.toLowerCase().endsWith('.html');
 
 const {loadData} = require('./load_data');
 const {validateAssessment} = require('./assessment_contract');
-const {normalizeIdList, segmentWord, surfaceOf, validateSoundsSchema} = require('../../frontend/src/shared/graphemes');
+const {assertIdList, segmentWord, surfaceOf, validateSoundsSchema} = require('../../frontend/src/shared/graphemes');
 const {computeTeachingOrder, gatherWeekRecordsUpTo, expectedWallOrder, diffWallLetters, setsEqual} = require('./wall_order');
 let box;
 try { box = loadData(raw, isHTML); } catch(e) { console.error(e.message); process.exit(2); }
@@ -182,11 +182,14 @@ function idsForWord(word){
   const explicit = (entry && Array.isArray(entry.segments)) ? entry.segments : undefined;
   return segmentWord(word, SOUNDS, explicit);
 }
-/* canSpellIds(ids, rackValue)：rack 第 7 步起是字位 ID 数组，经 normalizeIdList
- * 消耗成 ID 多重集——保留重复项（方案 §2.3「rack 是多重集，不是集合」）。 */
-function canSpellIds(ids, rackValue){
-  const pool = normalizeIdList(rackValue);
-  for (const id of ids) { const i = pool.indexOf(id); if (i < 0) return false; pool.splice(i, 1); }
+/* canSpellIds(ids, pool)：pool 是已经过 safeAssertIdList 校验（数组 + 每项在 SOUNDS
+ * 里存在）的字位 ID 数组，直接消耗成 ID 多重集——保留重复项（方案 §2.3「rack 是
+ * 多重集，不是集合」）。第 8 步收紧后校验只在 safeAssertIdList 做一次，这里不必
+ * 每检查一个词就重复调用 assertIdList（G4_WORDS/G5_WHITELIST 合计约 40 个词，逐词
+ * 重复校验同一份 rack 只会重复同一条失败消息）。 */
+function canSpellIds(ids, pool){
+  const remaining = pool.slice();
+  for (const id of ids) { const i = remaining.indexOf(id); if (i < 0) return false; remaining.splice(i, 1); }
   return true;
 }
 function checkSpellable(word, rackValue, rackLabel){
@@ -195,38 +198,44 @@ function checkSpellable(word, rackValue, rackLabel){
   catch (e) { ok(false, `${rackLabel} "${word}" 无法按字位分词（${e.code || 'error'}）：${e.message}`); return; }
   ok(canSpellIds(ids, rackValue), `${rackLabel} "${word}" 用 rack "${rackValue}" 摆不出来`);
 }
-/* M-5（里程碑 2 收口批 送审）：rackG4/rackG5 与下面的 wallLetters 同批（第 7 步）迁成
- * 字位 ID 数组，但只有 newPatterns 当初补了 Array.isArray 守卫（见下方断言②上方）——
- * 这两个字段若拿到迁移期遗留的旧字符串形态，会直接从 normalizeIdList() 内部抛出未捕获
- * 的 GraphemeError('id-list-legacy-string-rejected')，整个 Node 进程带栈退出，check_data.js
- * 剩余全部断言一条都不会跑。副机（GPT）沿用旧字符串形态写第五周数据层最可能踩到这个坑，
- * 拿到的会是一段陌生的栈，而不是一条"这个字段现在要写成数组"的清晰错误。加守卫后改成
- * 一条正常的 ok(false, ...) 失败，其余检查照常继续跑。 */
+/* safeAssertIdList(value, label)：先守卫再校验（M-5 同款道理，第 8 步延续到收紧后的
+ * assertIdList）。rackG4/rackG5/wallLetters 若拿到迁移期遗留的旧字符串形态、数组
+ * 元素非字符串、或含 SOUNDS 里不存在的 ID，会从 assertIdList() 内部抛出未捕获的
+ * GraphemeError（id-list-legacy-string-rejected / id-list-invalid / unknown-id），
+ * 整个 Node 进程带栈退出，check_data.js 剩余全部断言一条都不会跑。副机（GPT）沿用
+ * 旧字符串形态或手滑写错 ID 写第五周数据层最可能踩到这个坑，拿到的会是一段陌生的
+ * 栈，而不是一条清晰的错误。这里统一捕获、转成一条正常的 ok(false, ...) 失败并
+ * 返回空数组占位，其余检查照常继续跑。
+ * 第 8 步收紧后 assertIdList 已经把"数组元素是否都在 SOUNDS 里"这层校验收了进去，
+ * 调用方不必再另外逐项 ok(SOUNDS[c], ...) 复查——safeAssertIdList 成功返回的数组
+ * 里每一项已保证存在于 SOUNDS，再查一遍是恒真的死断言（不产生任何新信号）。 */
+function safeAssertIdList(value, label){
+  try {
+    return assertIdList(value, SOUNDS);
+  } catch (e) {
+    ok(false, `${label} 未通过字位 ID 校验（${e.code || 'error'}）：${e.message}`);
+    return [];
+  }
+}
 const rackG4Valid = Array.isArray(META.rackG4);
 ok(rackG4Valid, 'META.rackG4 必须是字位 ID 数组（迁移期不再接受旧的单字符串）');
-const rackG4Safe = rackG4Valid ? META.rackG4 : [];
+const rackG4Safe = rackG4Valid ? safeAssertIdList(META.rackG4, 'META.rackG4') : [];
 const rackG5Valid = Array.isArray(META.rackG5);
 ok(rackG5Valid, 'META.rackG5 必须是字位 ID 数组（迁移期不再接受旧的单字符串）');
-const rackG5Safe = rackG5Valid ? META.rackG5 : [];
+const rackG5Safe = rackG5Valid ? safeAssertIdList(META.rackG5, 'META.rackG5') : [];
 G4_WORDS.forEach(w => checkSpellable(w, rackG4Safe, 'G4 订单'));
 G5_WHITELIST.forEach(w => {
   checkSpellable(w, rackG5Safe, 'G5 白名单');
   ok(W[w], `G5 白名单 "${w}" 不在 W 里`);
 });
-for (const c of new Set([...normalizeIdList(rackG4Safe), ...normalizeIdList(rackG5Safe)])) {
-  ok(SOUNDS[c], `积木架字母 "${c}" 不在 SOUNDS 里（aria-label 会崩）`);
-}
 
 head('⑤ 点亮墙与首教日（DATA-WALL-01：三条集合与顺序断言 + M-6 两条补充，里程碑 2 第 7 步启用）');
-/* wallLetters/rackG4/rackG5 第 7 步起是字位 ID 数组，不再需要旧格式兼容选项
- * （那只用于展开旧格式字符串，第 7 步前的过渡形态；normalizeIdList 本身的双读
- * 能力留到第 8 步才收紧为 assertIdList，本步只是这些调用点不再用得到它）。
- * M-5：与上面 rackG4/rackG5 同理，先守卫再传给 normalizeIdList——旧字符串形态
- * 若直接传入会让整个 CLI 带栈崩溃，守卫后改成一条清晰的 ok(false, ...)。 */
+/* wallLetters 第 7 步起是字位 ID 数组，第 8 步起经 safeAssertIdList（同上④）校验，
+ * 与旧格式兼容选项无关——normalizeIdList 的迁移期双读已在第 8 步删除，收口为只收
+ * 数组、逐项验证存在性的 assertIdList。 */
 const wallLettersValid = Array.isArray(META.wallLetters);
 ok(wallLettersValid, 'META.wallLetters 必须是字位 ID 数组（迁移期不再接受旧的单字符串）');
-const wallIds = wallLettersValid ? normalizeIdList(META.wallLetters) : [];
-for (const c of wallIds) ok(SOUNDS[c], `点亮墙字位 "${c}" 不在 SOUNDS 里`);
+const wallIds = wallLettersValid ? safeAssertIdList(META.wallLetters, 'META.wallLetters') : [];
 
 ok(Array.isArray(META.newPatterns), 'META.newPatterns 必须是字位 ID 数组（本周新点亮的积木，教新字位的周非空，否则空数组）');
 

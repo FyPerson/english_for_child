@@ -1336,7 +1336,7 @@ function renderHome(){
       <h1>六个声音，<br>拼出第一本书</h1>
       <p class="hero__lede">这一周只教六个字母音：<b class="en">s a t i p n</b>。为什么是这六个——因为它们能组合出二十多个真单词。<b>第二天孩子就能读出人生第一个自己拼出来的英文词，第六天读完第一本书。</b></p>
       <div class="tiles-demo">
-        ${normalizeIdList(META.wallLetters).map(c=>{
+        ${assertIdList(META.wallLetters, SOUNDS).map(c=>{
           // 墙语义统一后 wallLetters 是累计全集（方案 §2.4）：本周之前教过的字位不在
           // FIRST_TEACH_DAY 里（该字段现在只含本周首教日，规范 v2.0 §3「唯一模型」），
           // 只有本周新教的才按 dayDone 判点亮态，其余（更早几周教过的）恒为已点亮。

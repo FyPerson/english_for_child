@@ -433,10 +433,9 @@ function testG5SurfaceLookupFindsWord() {
 // ----------------------------------------------------------------------------
 // 墙 / newPatterns / FIRST_TEACH_DAY（HIGH1 修复，内部预筛 2026-09-10：改前 4 条
 // 断言里有 2 条把 CORE_META/CORE_FIRST_TEACH_DAY 这两个 150 行前定义的测试字面量
-// 与它们自身的定义值比对——恒真，不接触任何生产代码；normalizeIdList 传数组时的
-// {legacy:true} 也是摆设，它宣称要挡的"被展开成更多字符"只存在于字符串分支，本
-// fixture 永远走不到；examRecorded(1) 断言的是本文件 STUB_ENV 里自己写的桩，不是
-// 生产代码。改法：喂给第 7 步已接入 check_data.js 的真实 DATA-WALL-01 判定链——
+// 与它们自身的定义值比对——恒真，不接触任何生产代码；examRecorded(1) 断言的是本
+// 文件 STUB_ENV 里自己写的桩，不是生产代码。改法：喂给第 7 步已接入 check_data.js
+// 的真实 DATA-WALL-01 判定链——
 // wall_order.js 的 computeTeachingOrder/expectedWallOrder/diffWallLetters/
 // setsEqual，与 check_data.js §⑤ 完全同源——用两条合成 weekRecords（上一周已教
 // r/n，本周只新教 ai）证明这些真实函数对"wallLetters 顺序应与累计教学顺序一致、
@@ -444,10 +443,11 @@ function testG5SurfaceLookupFindsWord() {
 // testBreakTheCopyProvesWallOrderDiscriminates。）
 // ----------------------------------------------------------------------------
 function testWallDataAndNewPatterns() {
-  // 与 check_data.js:211 完全一致的调用形态：META.wallLetters 第 7 步起是字位 ID
-  // 数组，不再需要 legacy 选项（那只用于展开旧格式字符串，本 fixture 从未落进
-  // 那个分支）。
-  const wallIds = core.sandbox.normalizeIdList(CORE_META.wallLetters);
+  // 与 check_data.js §⑤ 概念上一致的取值形态：META.wallLetters 第 7 步起是字位 ID
+  // 数组，第 8 步 normalizeIdList 已收口为 assertIdList(value, sounds)，逐项验证每个
+  // ID 在 CORE_SOUNDS 里存在——直接调用（不走 check_data.js 那层 safeAssertIdList
+  // 防崩溃包装），本 fixture 的 wallLetters 恒是合法数组，不需要那层防御。
+  const wallIds = core.sandbox.assertIdList(CORE_META.wallLetters, CORE_SOUNDS);
   // 每个上墙字位都必须真的可解析（graphemeLabel/soundType 不抛）——"可上墙"的最低要求。
   for (const id of wallIds) {
     const label = core.sandbox.graphemeLabel(id, CORE_SOUNDS);
@@ -519,7 +519,7 @@ function testBreakTheCopyProvesWallOrderDiscriminates() {
   mod._compile(brokenSrc, wallOrderPath);
   const broken = mod.exports;
 
-  const wallIds = core.sandbox.normalizeIdList(CORE_META.wallLetters);
+  const wallIds = core.sandbox.assertIdList(CORE_META.wallLetters, CORE_SOUNDS);
   const priorWeekRecords = [{ week: CORE_META.week - 1, newPatterns: ['r', 'n'] }];
   const weekRecords = priorWeekRecords.concat([{ week: CORE_META.week, newPatterns: CORE_META.newPatterns }]);
   const teachingOrder = broken.computeTeachingOrder(weekRecords);

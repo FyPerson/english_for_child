@@ -367,71 +367,49 @@ function scanForLResidue(files, patterns, excludedEntries) {
 }
 
 // ============================================================================
-// M4（里程碑 2 收口批，2026-09-09）：normalizeIdList(value, {legacy:true}) 静态清单门槛。
+// M4（里程碑 2 收口批，2026-09-09 建立 / 2026-09-10 第 8 步终态）：
+// normalizeIdList(value, {legacy:true}) 静态清单门槛。
 // codex 原话：「三段式签名把迁移状态传播到每个消费者：4b 要逐点决定传不传
 // legacy:true，第 7/8 步又要逐点撤销，任何漏撤都是长期兼容后门」。
-// 裁定（见任务书 M4）：本批不做结构性重构（把转换集中到加载边界是 4b 的事，现在动
-// 会与 4b 撞车）。只建立静态清单 + 门槛：列出当前全部传 legacy:true 的调用点（下方
-// 常量），并断言生产代码（frontend/src/ 与 tools/ 下非测试文件；tools/legacy/ 归档
-// 目录不算生产代码，与 sounds_grapheme_adapter.js 等排除清单同一套判断口径）里的
-// legacy:true 都在 KNOWN_LEGACY_TRUE_CALL_SITES 登记范围内——第 4b 步接线前生产代码
-// 是 0 处，接线后新增的每一处都必须先登记（带 count 与撤销说明）才能通过，未登记的
-// 命中仍会被判失败。**第 8 步**（方案 §3.5：「第 2 步引入，第 8 步收紧为
-// assertIdList」——不是第 7 步，第 7 步只做数据迁移+启用 DATA-WALL-01，不收紧兼容层）
-// 把 "legacy 字符串展开" 分支本身删除（normalizeIdList 收口为 assertIdList）时，这道
-// 门槛要连测试代码也一起管——届时 KNOWN_LEGACY_TRUE_CALL_SITES 应清空，下面的扫描
-// 范围也要去掉 `rel.startsWith('tests/')` 这条豁免。
-// 2026-09-09 里程碑 2 第 7 步更新：四个字段（wallLetters/rackG4/rackG5）已迁成 ID
-// 数组，下方生产代码条目（games.js 2 处、四个模板各 1 处、check_data.js 4 处，各自
-// revertOn 字段写的正是这个动作）已按各自的撤销说明删除 legacy:true——那些字段
-// 现在恒是数组，normalizeIdList 不再需要 legacy:true 才能消费它们。这些条目本身
-// 保留在清单里（不删除，只是 count 归零/整条撤销），作为"这条调用点历史上为什么
-// 存在过、现在为什么不再需要"的可追溯记录；若未来这些文件又出现新的 legacy:true，
-// 门槛会正常报未登记命中，不会被这些已撤销的旧条目静默放行。
+// 沿革：本门槛建立时（第 4b 步前）只做静态清单 + 门槛，不做结构性重构——列出当时
+// 全部传 legacy:true 的调用点，断言生产代码（frontend/src/ 与 tools/ 下非测试
+// 文件；tools/legacy/ 归档目录不算生产代码）里的 legacy:true 都在
+// KNOWN_LEGACY_TRUE_CALL_SITES 登记范围内，未登记的命中判失败。第 7 步数据迁成
+// 数组后，当时登记的 5 条生产代码条目逐一撤销（count 归零，条目保留作历史记录）。
+//
+// **第 8 步终态（方案 §3.5：「第 2 步引入，第 8 步收紧为 assertIdList」）**：
+// normalizeIdList 的 "legacy 字符串展开" 分支与 legacy 选项本身已被整体删除、
+// 函数收口改名为 assertIdList(value, sounds)——不再有任何调用形态能合法携带
+// legacy:true（第二个参数的含义已改成 sounds 表，传 `{legacy:true}` 会被
+// resolveSoundEntry 当成非法 sounds 参数报错，而不是被特殊处理）。据此：
+//   - KNOWN_LEGACY_TRUE_CALL_SITES 与 LEGACY_TRUE_DOC_MENTIONS 均清空为空数组——
+//     全仓（frontend/src/、tools/、tests/unit/ 的两处历史调用点）已同步把
+//     `normalizeIdList(x, {legacy:true})` 改成 `assertIdList(x, sounds)`，不再有
+//     字面量 legacy:true 需要登记豁免。
+//   - scanForLegacyTrue 去掉 `rel.startsWith('tests/')` 豁免——这道门槛此后连
+//     测试代码也一起管，不再区分"生产代码"与"测试代码"两套标准。
+// 这两个常量与 scanForLegacyTrue 本身**继续保留**（不随选项一起删除）：它们是
+// 通用的文本模式扫描器，与 assertIdList 当前是否支持 legacy 无关——即使 API 层面
+// 已经不存在这个选项，仍然值得作为一道永久回归门槛，防止未来有人从旧文档/历史
+// commit 里复制粘贴出 `{legacy:true}` 这种写法（那会被 resolveSoundEntry 当场
+// 抛错，但抛出的是相对含糊的 sounds-invalid/unknown-id，不如这道静态门槛的提示
+// 直接）。
 // ============================================================================
 
-/* KNOWN_LEGACY_TRUE_CALL_SITES：当前全部传 `{ legacy: true }` 的调用点静态清单。
- * 前两条是测试代码（`tests/` 整体豁免，不需要 count，见 scanForLegacyTrue）；
- * 2026-09-09 里程碑 2 第 4b 步「消费者兼容层」接线后新增了一批生产代码调用点
- * （games.js 的 G4/G5 RACK_LETTERS、四个模板的 hero 积木墙、check_data.js 的墙/
- * 积木架校验）——这些**带 `count`**，按精确命中数消耗（与 EXCLUDED_ENTRIES/
- * LEGACY_TRUE_DOC_MENTIONS 同一套判据，见 scanForLegacyTrue），超出声明数的命中会
- * 正常报出为 hits，不会被整条豁免悄悄放过将来新增的调用点。
- * 每条生产代码条目都写明**第 7 步数据改数组后要怎么撤销**——这正是这条 medium 要的
- * 效果：把"新增一处长期兼容后门"变成一个会被看见、需要说明理由和撤销路径的动作。 */
-const KNOWN_LEGACY_TRUE_CALL_SITES = Object.freeze([
-  { file: 'tests/unit/test_migration_diff.js', reason: '差分测试读取真实 W1-W4 的 box.META.rackG4/rackG5 做"新侧"对照，用 legacy:true 声明这条调用点可能收到旧格式字符串——数组输入下 legacy:true 无影响，保留是防御性写法，不是必须撤销的技术债（测试文件整体豁免，见下方 tests/ 判据）' },
-  { file: 'tests/unit/test_graphemes.js', reason: 'normalizeIdList 自身的单测，构造旧格式字符串输入验证 legacy 分支行为' },
-  /* 2026-09-09 里程碑 2 第 7 步：以下 5 条生产代码条目已按各自 revertOn 撤销——
-   * wallLetters/rackG4/rackG5 三个字段迁成 ID 数组后，这些调用点不再需要 legacy:true
-   * 才能消费它们，已逐处删除。count 字段改为 0（不是删除整条记录）：留作可追溯的
-   * 历史记录，说明这条调用点为什么存在过、现在为什么不需要——若这些文件将来又
-   * 出现新的 legacy:true，门槛会按未登记命中正常报红，不会被这些已撤销的旧配额
-   * 静默放行（count:0 意味着零配额，任何命中都会被计入 hits）。 */
-  { file: 'frontend/src/shared/games.js', count: 0, reason: '（已撤销）G4/G5 的 RACK_LETTERS 曾用 legacy:true 展开 META.rackG4/rackG5 字符串；第 7 步字段改数组后两处均已删除 legacy:true，直接消费数组（保留重复项，方案 §2.3）' },
-  { file: 'frontend/src/weeks/week01.template.html', count: 0, reason: '（已撤销）hero 积木墙曾读硬编码字面量 \'satipn\'；第 7 步已改读 META.wallLetters（数组）并删除 legacy:true' },
-  { file: 'frontend/src/weeks/week02.template.html', count: 0, reason: '（已撤销）同 week01，hero 积木墙曾读硬编码字面量 \'ckehrmd\'；第 7 步已改读 META.wallLetters（数组）并删除 legacy:true' },
-  { file: 'frontend/src/weeks/week03.template.html', count: 0, reason: '（已撤销）同 week01，hero 积木墙曾读硬编码字面量 \'goulfb\'；第 7 步已改读 META.wallLetters（数组）并删除 legacy:true' },
-  { file: 'frontend/src/weeks/week04.template.html', count: 0, reason: '（已撤销）hero 积木墙已读 META.wallLetters，但字段本身曾仍是字符串；第 7 步字段改数组后已删除 legacy:true' },
-  { file: 'tools/validation/check_data.js', count: 0, reason: '（已撤销）④⑤ 两个 head 块（积木架 canSpellIds、点亮墙 wallIds）曾用 legacy:true 双读 META.rackG4/rackG5/wallLetters；第 7 步四个字段改数组后四处均已删除 legacy:true，直接消费数组' }
-]);
+/* KNOWN_LEGACY_TRUE_CALL_SITES：第 8 步终态下应为空——见上方门槛头注释。保留这个
+ * 常量（而不是删掉整套机制）是为了让 scanForLegacyTrue 的登记/消耗逻辑对未来
+ * 可能出现的新 legacy:true 误用仍然可用，不必届时重新搭建。 */
+const KNOWN_LEGACY_TRUE_CALL_SITES = Object.freeze([]);
 
-/* LEGACY_TRUE_DOC_MENTIONS：graphemes.js 里两处提到 `legacy:true` 的地方（一处是
- * options.legacy 的行为文档注释，一处是 id-list-legacy-string-rejected 错误消息里
- * 指导调用方"如果确实是旧格式数据请显式传 {legacy:true}"）——它们是**文档/错误提示
- * 文案提及这个选项名**，不是"这处代码自己调用时传了 legacy:true"，与生产代码真的
- * 调用 normalizeIdList(value, {legacy:true}) 是两回事，不该被本门槛当成调用点误伤。
- * 同样按精确命中数消耗（与 EXCLUDED_ENTRIES 同一套判据，避免"该文件将来新增任何
- * 真实调用点都被整体放行"），不是整文件豁免。 */
-const LEGACY_TRUE_DOC_MENTIONS = Object.freeze([
-  { file: 'frontend/src/shared/graphemes.js', count: 2, reason: '两处均为文档注释/错误提示文案提及选项名，不是调用点（见 normalizeIdList 头注释与 id-list-legacy-string-rejected 错误消息）' }
-]);
+/* LEGACY_TRUE_DOC_MENTIONS：第 8 步终态下应为空——graphemes.js 里 assertIdList 的
+ * 文档注释与 id-list-legacy-string-rejected 错误消息均已改写，不再提及字面量
+ * "legacy:true"（见 assertIdList 头注释与错误消息文案）。 */
+const LEGACY_TRUE_DOC_MENTIONS = Object.freeze([]);
 
 const LEGACY_TRUE_PATTERN = /\blegacy\s*:\s*true\b/;
-/* KNOWN_CALL_SITE_COUNTS：KNOWN_LEGACY_TRUE_CALL_SITES 里带 count 的生产代码条目，
- * 按 file 建索引供 scanForLegacyTrue 消耗（与 LEGACY_TRUE_DOC_MENTIONS 同一套按行
- * 数消耗的判据）。不带 count 的条目（tests/ 下两条）不在这里出现——它们靠下面
- * scanForLegacyTrue 的 `rel.startsWith('tests/')` 整体豁免，不需要精确计数。 */
+/* KNOWN_CALL_SITE_COUNTS：KNOWN_LEGACY_TRUE_CALL_SITES 里带 count 的条目按 file 建
+ * 索引供 scanForLegacyTrue 消耗（与 LEGACY_TRUE_DOC_MENTIONS 同一套按行数消耗的
+ * 判据）。第 8 步终态下 KNOWN_LEGACY_TRUE_CALL_SITES 为空，这里自然也是空 Map。 */
 const KNOWN_CALL_SITE_COUNTS = new Map(
   KNOWN_LEGACY_TRUE_CALL_SITES.filter(e => typeof e.count === 'number').map(e => [e.file, e.count])
 );
@@ -439,8 +417,7 @@ function scanForLegacyTrue(files) {
   const docByFile = new Map(LEGACY_TRUE_DOC_MENTIONS.map(e => [e.file, e.count]));
   const hits = [];
   for (const rel of files) {
-    if (rel.startsWith('tests/')) continue; // 测试代码不在本批门槛范围内，见上方 KNOWN_LEGACY_TRUE_CALL_SITES 头注释
-    if (rel.startsWith('tools/legacy/')) continue; // 归档目录，与 normalizeIdList 的 legacy 选项无关（同名巧合）
+    if (rel.startsWith('tools/legacy/')) continue; // 归档目录，与 assertIdList 的历史 legacy 选项无关（同名巧合）
     const raw = fs.readFileSync(path.join(REPO, rel), 'utf8');
     // 一行可能同时命中"文档提及"与"已登记调用点"两类豁免——两个配额独立消耗，
     // 不共用同一个 remaining（一行只会被计数一次，但两个计数来源都可能覆盖它）。
@@ -474,7 +451,7 @@ function scanForLegacyTrue(files) {
 // 坏源码文本，证明门槛真的会红。
 {
   const fakeRel = 'frontend/src/__synthetic__/fake-consumer.js';
-  const fakeSource = "normalizeIdList(box.META.rackG4, { legacy: true });";
+  const fakeSource = "assertIdList(box.META.rackG4, { legacy: true });"; // 第 8 步后这是一处误用（第二参数应是 sounds），仍应被本门槛按字面模式命中
   const originalReadFileSync = fs.readFileSync;
   fs.readFileSync = function (p, enc) {
     if (String(p).replace(/\\/g, '/').endsWith(fakeRel)) return fakeSource;
@@ -582,7 +559,7 @@ function scanForLegacyTrue(files) {
 }
 {
   const fakeRel = 'frontend/src/__synthetic__/fake-two-legacy-per-line.js';
-  const fakeSource = "const a = normalizeIdList(x, { legacy: true }), b = normalizeIdList(y, { legacy: true });"; // 同一行两处 legacy:true
+  const fakeSource = "const a = assertIdList(x, { legacy: true }), b = assertIdList(y, { legacy: true });"; // 同一行两处 legacy:true
   const originalReadFileSync = fs.readFileSync;
   fs.readFileSync = function (p, enc) {
     if (String(p).replace(/\\/g, '/').endsWith(fakeRel)) return fakeSource;
@@ -597,4 +574,71 @@ function scanForLegacyTrue(files) {
   assert.equal(hits.length, 2,
     'M4 反例：同一行两处 legacy:true，未登记调用点时应报 2 处 hits（改前的行级判据只会报 1 处）');
   console.log('PASS grapheme migration（M4 反例②，内存构造，不落盘）：scanForLegacyTrue 对同一行两处 legacy:true 精确计数为 2');
+}
+
+// ============================================================================
+// M5（里程碑 2 第 8 步，2026-09-10）：load_data.js「HTML 反解析」入口拒绝旧格式
+// （方案 §3.8 + §4 第 8 行验收：「HTML 反解析与数据层 JS 两条入口各有一条"拒绝
+// 旧格式"失败测试」——本节是前者，后者见 tests/unit/test_graphemes.js 里
+// assertIdList 对字符串输入的拒绝测试）。
+//
+// load_data.js 曾在 html=true 且找不到内联 `const META = {...};` 声明时，用正则从
+// 旧版 HTML 结构里重建 rackG4/rackG5/wallLetters——重建出的是**字符串**，字位 ID
+// 含多字母时（如 'ai'）会被拆成单字符，wallLetters 缺 wall 正则命中时甚至退化成
+// `Object.keys(FIRST_TEACH_DAY).join('')`，产出不可反解析的拼接串（'ai'+'j' -> 'aij'）
+// ——这正是里程碑 2 要消灭的旧形态。第 8 步已删除这条兜底，改为固定错误码拒绝。
+// ============================================================================
+{
+  const { loadData } = require('../../tools/validation/load_data');
+
+  // 反例①：完全没有 META、也没有任何旧版 HTML 结构痕迹的最小 HTML——应拒绝。
+  {
+    const minimalHtml = '<!doctype html><html><body>no META, no legacy markers</body></html>';
+    let caught = null;
+    try { loadData(minimalHtml, true); } catch (e) { caught = e; }
+    assert(caught, 'loadData：缺内联 META 的 HTML（无任何旧版结构痕迹）应抛错，实际未抛');
+    assert.equal(caught.code, 'legacy-html-fallback-rejected', 'loadData：缺内联 META 时错误码应为 legacy-html-fallback-rejected');
+  }
+
+  // 反例②：更贴近真实历史场景——带着旧版 RACK_LETTERS/wall 正则能命中的结构，但仍然
+  // 没有内联 META。第 8 步前的实现会"成功"从这些片段重建出字符串 META；第 8 步后
+  // 必须同样拒绝，不能因为"旧结构齐全"就悄悄放行——证明删除的是整条兜底，不是只删了
+  // 触发条件的一部分。
+  {
+    const legacyStyleHtml = [
+      '<html><body>',
+      "const KEY = 'soundblocks-w1-v1';",
+      "const RACK_LETTERS = 'satipn'.split('');",
+      "const RACK_LETTERS = 'satipn'.split('');",
+      "${'satipn'.split('').map(c=>{",
+      '</body></html>'
+    ].join('\n');
+    let caught = null;
+    try { loadData(legacyStyleHtml, true); } catch (e) { caught = e; }
+    assert(caught, 'loadData：旧版 RACK_LETTERS/wall 正则片段齐全但缺内联 META 时应抛错，实际未抛（说明兜底重建仍在悄悄生效）');
+    assert.equal(caught.code, 'legacy-html-fallback-rejected', 'loadData：旧结构齐全但缺内联 META 时错误码仍应为 legacy-html-fallback-rejected（不因旧结构齐全就放行）');
+  }
+
+  // 正例：真实现役产物（build/week01.html）都内联了 META，不应受影响——方案 §3.8：
+  // 「四周现有产物都内联了 META，拒绝不影响任何现役路径」。
+  {
+    const week01Path = path.join(REPO, 'build', 'week01.html');
+    assert(fs.existsSync(week01Path),
+      `loadData M5 正例依赖 ${week01Path} 存在（先跑一次构建）——找不到该文件说明构建产物缺失，这本身就是需要暴露的问题，不应静默跳过`);
+    const realRaw = fs.readFileSync(week01Path, 'utf8');
+    const box = loadData(realRaw, true);
+    assert(box.META && typeof box.META.week === 'number',
+      'loadData：真实 build/week01.html（内联 META）应正常加载，不受第 8 步拒绝旧格式的影响');
+  }
+
+  // html=false（数据层 JS 入口）路径不受这条拒绝逻辑影响：兜底分支本就以 `&& html`
+  // 为条件，html=false 时从不触发，缺 META 时 box.META 就是 undefined，交给调用方
+  // 自己的守卫处理（不是本节要测的"HTML 反解析"场景，这里只confirm 边界没被误伤）。
+  {
+    const noMetaDataLayer = "const SOUNDS = { s: {grapheme:'s', type:'c'} };";
+    const box2 = loadData(noMetaDataLayer, false);
+    assert.equal(box2.META, undefined, 'loadData(raw, false)：数据层 JS 入口缺 META 时不触发 HTML 兜底拒绝，box.META 保持 undefined（交给调用方守卫，不是本节的拒绝对象）');
+  }
+
+  console.log('PASS grapheme migration（M5：load_data HTML 反解析拒绝旧格式，方案 §3.8）：缺内联 META 的 HTML（含/不含旧结构痕迹）均报 legacy-html-fallback-rejected；真实现役产物与 html=false 数据层入口均不受影响');
 }

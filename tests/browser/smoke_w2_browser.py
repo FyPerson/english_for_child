@@ -42,7 +42,7 @@ with sync_playwright() as p:
     # 累计全集（本周之前教过的字母也在，恒点亮）+ 1 个示例词按钮，不再是"本周新音+1"。
     # 判据必须来自数据本身（wallLetters 的长度），不能写死 7/8——第一周只有本周=累计，
     # 数字碰巧对得上；第二周墙扩到 13 块后再写死旧数字就是这条断言错的根源。
-    wall_letters = pg.evaluate("normalizeIdList(META.wallLetters)")
+    wall_letters = pg.evaluate("assertIdList(META.wallLetters, SOUNDS)")
     ok(pg.locator(".tiles-demo .tile").count() == len(wall_letters) + 1,
        f"hero 积木不是墙上 {len(wall_letters)} 块累计字母 + 1 个示例词"
        f"（实际 {pg.locator('.tiles-demo .tile').count()}）")

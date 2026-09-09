@@ -6,7 +6,7 @@
  * frontend/src/shared/graphemes.js 本体，不是 tools/validation/ 下的另一份拷贝。 */
 const assert = require('node:assert/strict');
 const {
-  segmentWord, surfaceOf, graphemeLabel, soundType, normalizeIdList,
+  segmentWord, surfaceOf, graphemeLabel, soundType, assertIdList,
   isValidGraphemeId, assertValidGraphemeId,
   escapeHtmlText, escapeHtmlAttribute, encodeIdListAttribute
 } = require('../../frontend/src/shared/graphemes');
@@ -298,50 +298,55 @@ const BAD_TYPE_TABLE = Object.assign({}, RAIN_TABLE, { weird: { grapheme: 'w', t
 assertThrows(() => soundType('weird', BAD_TYPE_TABLE), e => assert.equal(e.code, 'sound-type-invalid'), 'soundType 对已知 ID 但 type 非法报 sound-type-invalid（不是 unknown-id）');
 console.log('PASS graphemes: soundType 的 type 字段非法用独立错误码，不与 unknown-id 混用');
 
-// ---- normalizeIdList(value, options) 签名收口（2026-09-09 P4）----
-// {legacy:true}：字符串按旧单字符 schema 展开，行为与收口前一致。
-assert.deepEqual(normalizeIdList('satipn', { legacy: true }), ['s', 'a', 't', 'i', 'p', 'n'], 'normalizeIdList {legacy:true} 字符串入口（旧单字符 schema 展开）');
-// 不传 options：字符串一律拒绝，且是新错误码，不是 id-list-invalid。
-assertThrows(() => normalizeIdList('satipn'), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList 不传 options 时字符串被拒');
-// 传空对象：同上，等价于不传。
-assertThrows(() => normalizeIdList('satipn', {}), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList 传空 options 时字符串被拒');
-// 显式 {legacy:false}：同上。
-assertThrows(() => normalizeIdList('satipn', { legacy: false }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList {legacy:false} 时字符串被拒');
-// options 传了别的键但没有 legacy：同上（不能靠"传了 options 对象"这件事本身放行）。
-assertThrows(() => normalizeIdList('satipn', { foo: true }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList options 无 legacy 键时字符串被拒');
-// L1（预筛 low：「只覆盖了 undefined/{}/{legacy:false}/{foo:true}，没覆盖 truthy-非-true」）
-// ——graphemes.js:343 现状已用 `options.legacy !== true` 严格判等，不是宽松的
-// `if (options && options.legacy)`，预筛核实过当前实现没有洞。这里纯粹是补测试：
-// 把这条"严格等于 true"的契约用三种 truthy-但-不是-true 的值钉住，将来有人手滑把
-// 判据改成宽松真值检查（`options.legacy` 而不是 `options.legacy === true`），这几条
-// 断言会立刻转红——不加的话现有断言全绿，改动不会被发现。
-assertThrows(() => normalizeIdList('satipn', { legacy: 'true' }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList {legacy:\'true\'}（字符串 "true"，truthy 但不是布尔 true）应仍被拒');
-assertThrows(() => normalizeIdList('satipn', { legacy: 1 }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList {legacy:1}（数字 1，truthy 但不是布尔 true）应仍被拒');
-assertThrows(() => normalizeIdList('satipn', { legacy: [] }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList {legacy:[]}（空数组，truthy 但不是布尔 true）应仍被拒');
-console.log('PASS graphemes（L1）：normalizeIdList 对 legacy:\'true\'/1/[] 三种 truthy-非-true 值仍严格拒绝，锁住 "=== true" 而非宽松真值判据');
-// 数组输入：在两种 options 下行为完全一致，不受 legacy 影响。
-for (const opts of [undefined, {}, { legacy: true }, { legacy: false }]) {
-  assert.deepEqual(normalizeIdList(['r', 'ai', 'n'], opts), ['r', 'ai', 'n'], 'normalizeIdList 数组入口在 options=' + JSON.stringify(opts) + ' 下行为一致（原样保留）');
-}
+// ---- assertIdList(value, sounds) 收口（里程碑 2 第 8 步：方案 §3.5，删除 legacy
+// 字符串展开分支，函数由 normalizeIdList 改名收口）----
+// 字符串输入一律拒绝：不再有任何选项能让它通过（旧 {legacy:true} 逃生舱已删除）。
+// 错误码沿用 id-list-legacy-string-rejected（历史命名延续，语义不变）。
+assertThrows(() => assertIdList('satipn', BASE), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'assertIdList 字符串输入一律拒绝（旧单字符 schema 已无兼容路径，不再需要传任何选项声明）');
+// "数据层 JS" 入口拒绝旧格式的核心场景：字符串 "ai" 恰好是合法 grapheme 名，但绝不能
+// 被误当成两个 ID 'a'+'i'（方案 §3.5：「反解析侧同样要能区分新旧格式，不能把字符串
+// "ai" 错当成两个 ID」）——字符串输入无条件拒绝，从根上堵死这条误判路径。
+assertThrows(() => assertIdList('rain', RAIN_TABLE), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'assertIdList 字符串输入一律拒绝，"rain" 不会被当成 [\'r\',\'a\',\'i\',\'n\'] 或其它拆法');
+// 回归钉子：收口前 normalizeIdList(value, {legacy:true}) 会把这个字符串展开成
+// ['s','a','t','i','p','n']（旧逃生舱行为）。第二个参数现在的含义已改成 sounds，
+// 传 {legacy:true} 形状的对象不会被特殊识别、更不会让字符串通过——这条断言钉住
+// "旧调用形态残留在代码里也不会悄悄复活旧行为"，不只是"默认不传选项时拒绝"。
+assertThrows(() => assertIdList('satipn', { legacy: true }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'assertIdList("satipn", {legacy:true})：旧逃生舱形状的调用不会被特殊识别，字符串仍无条件拒绝（第二参数现在的含义是 sounds，不是 options）');
+console.log('PASS graphemes（第 8 步）：assertIdList 字符串输入无条件拒绝，不再有 legacy 逃生舱（含旧调用形态残留回归钉子）');
+
+// 数组输入：逐项验证每个 ID 在 sounds 里存在，返回浅拷贝。
+assert.deepEqual(assertIdList(['s', 'a', 't'], BASE), ['s', 'a', 't'], 'assertIdList 数组入口原样保留（全部 ID 均存在于 sounds）');
+assert.deepEqual(assertIdList(['r', 'ai', 'n'], RAIN_TABLE), ['r', 'ai', 'n'], 'assertIdList 支持多字母 ID（"ai" 存在于 sounds 即通过，不逐字符拆开）');
 (() => {
-  const src = ['a', 'b'];
-  const out = normalizeIdList(src, { legacy: true });
-  src.push('c');
-  assert.equal(out.length, 2, 'normalizeIdList 数组入口返回浅拷贝，不与调用方数组共享引用（legacy 选项不影响这条）');
+  const src = ['s', 'a'];
+  const out = assertIdList(src, BASE);
+  src.push('t');
+  assert.equal(out.length, 2, 'assertIdList 数组入口返回浅拷贝，不与调用方数组共享引用');
 })();
-// 非字符串非数组：无论 options 怎么传都按原样拒绝（id-list-invalid，不是新错误码）。
-assertThrows(() => normalizeIdList(123), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList 非字符串非数组');
-assertThrows(() => normalizeIdList(123, { legacy: true }), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList 非字符串非数组，legacy:true 也不改变这条');
-assertThrows(() => normalizeIdList([1, 2, 3]), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList 数组含非字符串元素');
-// L1 补注（预筛 low）：`new String('ab')` 是装箱的 String 对象，`typeof` 结果是
-// 'object' 不是 'string'，落进的是 id-list-invalid（"非字符串非数组"分支），不是
-// id-list-legacy-string-rejected——与上方"两个错误码的分工"说明（前者管字符串输入、
-// 后者管非字符串非数组或数组元素非法）字面上略有出入：装箱字符串在语义上"看起来
-// 是个字符串"，但判据是 typeof，所以按"非字符串"处理。这不是 bug（本仓与调用方
-// 从不构造装箱 String 对象，真出现多半是笔误），只是把这条边界情况用测试钉住、
-// 加这行注释说明，不改判据本身。
-assertThrows(() => normalizeIdList(new String('ab')), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList(new String(\'ab\'))：装箱 String 对象 typeof 是 object，落进 id-list-invalid 而非 legacy 错误码（见上方注释）');
-console.log('PASS graphemes: normalizeIdList(value, {legacy}) 签名收口 —— legacy 展开 / 默认拒绝字符串 / 数组两种 options 下行为一致 / 非法输入');
+console.log('PASS graphemes: assertIdList 数组入口原样保留（含多字母 ID）、返回浅拷贝');
+
+// 数组元素非字符串：id-list-invalid，与收口前一致。
+assertThrows(() => assertIdList([1, 2, 3], BASE), e => assert.equal(e.code, 'id-list-invalid'), 'assertIdList 数组含非字符串元素');
+// 非字符串非数组：id-list-invalid，与收口前一致。
+assertThrows(() => assertIdList(123, BASE), e => assert.equal(e.code, 'id-list-invalid'), 'assertIdList 非字符串非数组');
+// L1 补注（预筛 low，沿用自收口前）：`new String('ab')` 是装箱的 String 对象，
+// `typeof` 结果是 'object' 不是 'string'，落进的是 id-list-invalid（"非字符串非
+// 数组"分支），不是 id-list-legacy-string-rejected——本仓与调用方从不构造装箱
+// String 对象，真出现多半是笔误，这里只是把这条边界情况用测试钉住。
+assertThrows(() => assertIdList(new String('ab'), BASE), e => assert.equal(e.code, 'id-list-invalid'), 'assertIdList(new String(\'ab\'))：装箱 String 对象 typeof 是 object，落进 id-list-invalid 而非 legacy 错误码（见上方注释）');
+console.log('PASS graphemes: assertIdList 对非法类型输入（非字符串数组元素 / 非字符串非数组 / 装箱 String）照常报错');
+
+// ---- assertIdList 收口新增的一层校验：逐项验证 ID 真的在 sounds 里存在 ----
+// （收口前的 normalizeIdList 明确声明"不校验展开/传入的每个字符是否真的是 sounds
+// 里的 ID"，把这层校验留给消费方自己；第 8 步把它收进了 assertIdList 本身，复用
+// resolveSoundEntry 同一套判据、同一个错误码 unknown-id——与 surfaceOf/graphemeLabel/
+// soundType 对未知 ID 的报错口径一致，见方案 §3.2。）
+assertThrows(() => assertIdList(['s', 'zz'], BASE), e => assert.equal(e.code, 'unknown-id'), 'assertIdList 逐项验证 ID 在 sounds 里存在：数组含未知 ID 报 unknown-id（不是 id-list-invalid）');
+assertThrows(() => assertIdList(['ai'], BASE), e => assert.equal(e.code, 'unknown-id'), 'assertIdList 用只含单字母的 BASE 表验证含 "ai" 的数组：ai 不在 BASE 里，报 unknown-id（多字母 ID 本身合法，缺项才是问题）');
+// sounds 本身形状非法时，逐项校验会先在 resolveSoundEntry 内部报 sounds-invalid——
+// 这条顺带确认 assertIdList 不会在 sounds 缺失/非法时把"找不到 ID"误报成 unknown-id。
+assertThrows(() => assertIdList(['s'], undefined), e => assert.equal(e.code, 'sounds-invalid'), 'assertIdList(value, sounds) 的 sounds 参数缺失/非法时报 sounds-invalid，不是 unknown-id');
+console.log('PASS graphemes（第 8 步新增）：assertIdList 逐项验证 ID 在 sounds 里存在，未知 ID / sounds 非法分别报出对应错误码');
 
 // ---- ID 字符集与编码：引号 / 尖括号 / & / 非法 ID 四类失败 fixture ----
 assert.equal(isValidGraphemeId('r'), true, 'isValidGraphemeId 正例（单字母）');

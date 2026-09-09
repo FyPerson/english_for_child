@@ -1,15 +1,16 @@
 """里程碑 2 收口批 内部预筛 M-5：wallLetters/rackG4/rackG5 三个字段第 7 步迁成字位 ID
 数组后缺 Array.isArray 守卫（只有同批的 newPatterns 补了）。
 
-背景：这三个字段都会被直接传进 frontend/src/shared/graphemes.js 的 normalizeIdList()。
-若拿到迁移期遗留的旧字符串形态，normalizeIdList 会抛出未捕获的
-GraphemeError('id-list-legacy-string-rejected')，整个 Node 进程带栈退出——
-check_data.js 剩余全部断言（⑥—⑫）一条都不会跑。副机（GPT）沿用旧字符串形态写
-第五周数据层时，拿到的会是一段陌生的栈，而不是一条"这个字段现在要写成数组"的
-清晰错误。
+背景：这三个字段都会被直接传进 frontend/src/shared/graphemes.js 的 assertIdList()
+（里程碑 2 第 8 步已把 normalizeIdList 收口改名为 assertIdList，签名也从
+(value, options) 改成 (value, sounds)）。若拿到迁移期遗留的旧字符串形态，
+assertIdList 会抛出未捕获的 GraphemeError('id-list-legacy-string-rejected')，
+整个 Node 进程带栈退出——check_data.js 剩余全部断言（⑥—⑫）一条都不会跑。副机
+（GPT）沿用旧字符串形态写第五周数据层时，拿到的会是一段陌生的栈，而不是一条
+"这个字段现在要写成数组"的清晰错误。
 
 本文件按本项目"改坏副本证明会红"的规矩，走真实 CLI 入口（`node tools/validation/
-check_data.js <文件>`），不直接调 normalizeIdList——那只证明库函数会拒绝字符串，
+check_data.js <文件>`），不直接调 assertIdList——那只证明库函数会拒绝字符串，
 证明不了生产入口（check_data.js）现在能不能扛住这种输入而不崩溃。
 """
 import re
@@ -84,7 +85,7 @@ class ArrayFieldGuardTests(unittest.TestCase):
             f'{field} 的守卫消息应出现在输出里，给出清晰指引而不是让人去看一段 Node 原生栈')
         # 修复前，崩溃会把未捕获异常的类名/堆栈写到 stderr；守卫生效后不应再看到它。
         self.assertNotIn('GraphemeError', result.stderr,
-            f'{field} 仍在 stderr 触发未捕获的 GraphemeError，说明守卫没有真正拦住 normalizeIdList')
+            f'{field} 仍在 stderr 触发未捕获的 GraphemeError，说明守卫没有真正拦住 assertIdList')
         self.assertNotIn('id-list-legacy-string-rejected', result.stderr,
             f'{field} 的 stderr 仍带着底层错误码，说明进程还是崩了，不是清晰的 ok(false, ...) 失败')
 
@@ -96,6 +97,73 @@ class ArrayFieldGuardTests(unittest.TestCase):
 
     def test_rackG5_legacy_string_reported_cleanly(self):
         self._assert_poison_reported_cleanly('rackG5')
+
+
+def poison_to_unknown_id(raw, field):
+    """把 META 里 "<field>": [...] 的第一个元素换成 SOUNDS 里不存在的 ID 'zz'。
+
+    里程碑 2 第 8 步给 assertIdList 新增了一层校验：数组每一项都要真的在 sounds 里
+    存在，不存在则抛 GraphemeError('unknown-id')。这是本文件之前没有覆盖过的
+    校验层——之前只测过"整个字段是字符串"这一种坏输入，没测过"字段是合法数组，
+    但数组里混进一个不存在的 ID"这种新坏输入是否也会被 check_data.js 的
+    safeAssertIdList 妥善捕获而不是带栈崩溃。"""
+    pattern = re.compile(r'"%s":\s*\[([^\]]*)\]' % re.escape(field))
+    m = pattern.search(raw)
+    assert m, f'fixture 里找不到 "{field}": [...] 声明'
+    items = [a or b for a, b in re.findall(r"'([^']*)'|\"([^\"]*)\"", m.group(1))]
+    assert items, f'{field} 数组为空，检查 fixture 格式'
+    poisoned_items = ['zz'] + items[1:]
+    replacement = '"%s": [%s]' % (field, ','.join(f"'{x}'" for x in poisoned_items))
+    assert raw.count(m.group(0)) == 1, f'"{field}": [...] 应恰好出现一次，避免误替换'
+    return raw.replace(m.group(0), replacement, 1)
+
+
+class UnknownIdGuardTests(unittest.TestCase):
+    """第 8 步新增的 safeAssertIdList 防崩溃包装：同 ArrayFieldGuardTests 的规矩，
+    走真实 CLI 入口证明「数组含未知 ID 时进程仍能跑到底、给出清晰失败」，而不是
+    像 assertIdList 未被包装时那样带栈崩溃、让 ⑥—⑫ 剩余断言一条都不跑。"""
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.baseline_text = FIXTURE.read_text(encoding='utf-8')
+        baseline_result = run_check_data(FIXTURE)
+        self.assertEqual(baseline_result.returncode, 0,
+            f'基线 fixture 应全部通过：{baseline_result.stdout[-500:]}')
+        _, self.baseline_fail = count_pass_fail(baseline_result.stdout)
+        self.assertEqual(self.baseline_fail, 0)
+
+    def _assert_unknown_id_reported_cleanly(self, field):
+        injected = poison_to_unknown_id(self.baseline_text, field)
+        self.assertNotEqual(injected, self.baseline_text, '替换应生效（否则测试没有真正改动文件）')
+        target = Path(self.tmpdir.name) / f'week02-data-{field}-unknown-id.js'
+        target.write_text(injected, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertNotEqual(result.returncode, 0, f'{field} 含未知 ID 时应以非 0 退出')
+        # 核心断言：进程必须跑到底、打印出通过/失败摘要——不能带栈崩溃让剩余断言不跑。
+        _, f = count_pass_fail(result.stdout)
+        self.assertGreater(f, self.baseline_fail,
+            f'{field} 含未知 ID 应比基线（{self.baseline_fail}）多至少一条失败')
+        self.assertIn(f'{field} 未通过字位 ID 校验（unknown-id）', result.stdout,
+            f'{field} 含未知 ID 时应出现 safeAssertIdList 的清晰失败消息，而不是让人去看一段 Node 原生栈')
+        self.assertIn('zz', result.stdout, '失败消息应点名具体的未知 ID zz')
+        # 修复前（若没有 safeAssertIdList 包装），崩溃会把未捕获异常的类名/堆栈写到 stderr。
+        self.assertNotIn('GraphemeError', result.stderr,
+            f'{field} 仍在 stderr 触发未捕获的 GraphemeError，说明 safeAssertIdList 没有真正拦住 unknown-id')
+        self.assertNotIn('unknown-id', result.stderr,
+            f'{field} 的 stderr 仍带着底层错误码，说明进程还是崩了，不是清晰的 ok(false, ...) 失败')
+
+    def test_wallLetters_unknown_id_reported_cleanly(self):
+        self._assert_unknown_id_reported_cleanly('wallLetters')
+
+    def test_rackG4_unknown_id_reported_cleanly(self):
+        # META.rackG4 是字位 ID 的多重集（保留重复项，方案 §2.3），poison_to_unknown_id
+        # 只替换第一个元素，不影响"多重集"这个形状本身，仍是合法的坏输入构造。
+        self._assert_unknown_id_reported_cleanly('rackG4')
+
+    def test_rackG5_unknown_id_reported_cleanly(self):
+        self._assert_unknown_id_reported_cleanly('rackG5')
 
 
 if __name__ == '__main__':

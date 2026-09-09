@@ -10,7 +10,7 @@
 
 var GRAPHEME_ID_PATTERN = /^[a-z][a-z0-9_]*$/;
 
-/* ---- 结构化错误（segmentWord/surfaceOf/graphemeLabel/soundType/normalizeIdList/
+/* ---- 结构化错误（segmentWord/surfaceOf/graphemeLabel/soundType/assertIdList/
    ID 校验与编码函数共用同一种错误形状：{code, message, ...细节字段}） ---- */
 function GraphemeError(code, message, details) {
   var err = new Error(message);
@@ -326,52 +326,52 @@ function soundType(id, sounds) {
   return entry.type;
 }
 
-/* normalizeIdList(value, options) -> string[]：迁移期双读（方案 §3.5）。
- * 只按 value 的类型与显式声明的 options 分派，不靠内容猜版本。
+/* assertIdList(value, sounds) -> string[]：收紧后的最终形态（方案 §3.5 + §4 第 8 行，
+ * 2026-09-09/10 里程碑 2 第 8 步「收紧兼容层」）。
  *
- * 签名收口（2026-09-09 用户拍板·里程碑 2 段 2 P4）：现在就把签名定成
- * `normalizeIdList(value, {legacy})`，不等第 8 步。理由是此刻还没有任何消费方接线
- * （第 4b 步才开始接线），改签名成本最低；等第 4b 步把全部消费方接完线之后再改签名，
- * 就是方案 §3.5 明确要避免的"第二次破坏性变更"。
+ * 沿革：第 2 步引入时函数名为 normalizeIdList(value, options)，靠 `options.legacy`
+ * 双读——字符串按旧单字符 schema 展开、数组原样保留——供第 4b～7 步的迁移期消费者
+ * 兼容新旧两种数据形态。第 7 步四个字段（wallLetters/rackG4/rackG5/newPatterns）已
+ * 全部迁成 ID 数组，迁移期双读的存在理由随之消失。本步删除"legacy 字符串展开"这个
+ * 分支本身（连同 legacy 选项一起删除），函数收口改名为 assertIdList：
  *
- * - `options.legacy === true`：字符串按旧单字符 schema 逐字符展开（迁移期双读，
- *   保留原有行为）；数组仍按 ID 原样保留（浅拷贝，不修改调用方数组）。
- * - 不传 options、传空对象、传 `{legacy:false}`、或传其他非 true 的 legacy 值：
- *   字符串输入一律拒绝——这是本次收口新加的行为，用**独立错误码**
- *   `id-list-legacy-string-rejected`，不复用 `id-list-invalid`：前者的语义是"你传了
- *   字符串但没有显式声明这是旧格式数据"，后者的语义是"你传的值类型压根不对（非字符
- *   串非数组）或数组元素不合法"，两者的补救方式不同（前者要么加 legacy:true 要么
- *   说明调用点本就该传数组），混用一个错误码会让调用方没法区分该怎么修。
- * - 数组输入的行为完全不受 options 影响，与收口前一致。
- * - 既不是字符串也不是数组：拒绝（`id-list-invalid`），与收口前一致。
+ * - **只接受数组**：字符串输入一律拒绝，不再有任何选项能让它通过——错误码沿用
+ *   `id-list-legacy-string-rejected`（历史命名延续，语义不变："你传了字符串"）。
+ *   反解析/数据层入口若把 "ai" 这样的字符串误当成 ID 数组传进来，这里会直接拒绝，
+ *   不会被静默拆成 ['a','i'] 两个字符（方案 §3.5：「反解析侧同样要能区分新旧格式，
+ *   不能把字符串 "ai" 错当成两个 ID」）。
+ * - **数组元素必须都是字符串**：否则 `id-list-invalid`，与收口前一致。
+ * - **逐项验证每个 ID 在 sounds 里存在**：这是本步新加的一层校验（收口前的
+ *   normalizeIdList 明确声明"不校验展开/传入的每个字符是否真的是 sounds 里的
+ *   ID"，把这层校验留给消费方自己——现在收进来了）。复用 resolveSoundEntry 同一套
+ *   判据（ID 是自有键、entry 含合法 grapheme），未知 ID 抛同一种结构化错误
+ *   `unknown-id`，与 surfaceOf/graphemeLabel/soundType 未知 ID 时的错误码一致
+ *   （方案 §3.2：「遇到未知 ID 一律抛同一种结构化错误」）。
+ * - **既不是字符串也不是数组**：拒绝（`id-list-invalid`），与收口前一致。
+ * - 返回值是浅拷贝（不修改调用方数组），与收口前一致。
  *
- * 第 8 步会再收紧一次（方案 §3.5）：那一步删除的是"legacy 字符串展开"这个分支本身
- * （连同 legacy 选项一起删除），函数收口/改名为 `assertIdList`——只收数组、逐项验证
- * 每个 ID 在 sounds 里存在。到那时全部调用方传参数应该都已经是数组，不再需要
- * legacy 选项；本次的 options 形态是通向那一步的过渡台阶，不是最终形态。
- *
- * 注意：无论哪个分支，都不校验展开/传入的每个字符是否真的是 sounds 里的 ID——那属于
- * 消费方自己的校验职责（比如 segmentWord 的 explicitSegments 分支），第 8 步的
- * `assertIdList` 才把这一层校验收进来。 */
-function normalizeIdList(value, options) {
+ * 调用方因此必须能拿到一份 sounds 表——四处生产调用点（games.js 两处、四个模板各
+ * 一处）都在能访问全局 SOUNDS 的作用域内调用，check_data.js 的调用点本就持有从
+ * box 解构出的 SOUNDS，无需额外改造。 */
+function assertIdList(value, sounds) {
   if (typeof value === 'string') {
-    if (!options || options.legacy !== true) {
-      throw GraphemeError(
-        'id-list-legacy-string-rejected',
-        'normalizeIdList 不再无条件接受字符串输入：如果这是旧单字符 schema 的迁移期数据，' +
-          '显式传 {legacy:true}；如果调用点本该传 ID 数组，请先修正上游数据',
-        { value: value }
-      );
-    }
-    return value.split('');
+    throw GraphemeError(
+      'id-list-legacy-string-rejected',
+      'assertIdList 不再接受字符串输入：里程碑 2 第 8 步已删除旧单字符 schema 的迁移期兼容' +
+        '（不再有选项可以声明"这是旧格式数据"），请把上游数据迁成 ID 数组',
+      { value: value }
+    );
   }
-  if (Array.isArray(value)) {
-    if (!value.every(function (item) { return typeof item === 'string'; })) {
-      throw GraphemeError('id-list-invalid', 'normalizeIdList 的数组元素必须都是字符串', { value: value });
-    }
-    return value.slice();
+  if (!Array.isArray(value)) {
+    throw GraphemeError('id-list-invalid', 'assertIdList 只接受 ID 数组', { value: value });
   }
-  throw GraphemeError('id-list-invalid', 'normalizeIdList 只接受字符串或数组', { value: value });
+  value.forEach(function (id, index) {
+    if (typeof id !== 'string') {
+      throw GraphemeError('id-list-invalid', 'assertIdList 的数组元素必须都是字符串（第 ' + index + ' 项）', { value: value, index: index });
+    }
+  });
+  value.forEach(function (id) { resolveSoundEntry(sounds, id); });
+  return value.slice();
 }
 
 /* ---- ID 字符集与属性编码（方案 §5「ID 字符集与属性编码」，第 2 步开始前冻结） ---- */
@@ -647,7 +647,7 @@ if (typeof module !== 'undefined' && module.exports) {
     surfaceOf: surfaceOf,
     graphemeLabel: graphemeLabel,
     soundType: soundType,
-    normalizeIdList: normalizeIdList,
+    assertIdList: assertIdList,
     isValidGraphemeId: isValidGraphemeId,
     assertValidGraphemeId: assertValidGraphemeId,
     escapeHtmlText: escapeHtmlText,

@@ -76,7 +76,7 @@ with sync_playwright() as p:
     # 对不上语义，wall.count()>=6 也从"恰好本周 6 块"退化成对 19 块恒真。改成按 ID
     # 定位：从 META.wallLetters（数据本身，不是读被测代码再算一遍）里查出每个新音
     # 在墙上的真实索引，再去对应位置的元素判类型，不假设新音排在最前面。
-    wall_letters = pg.evaluate("normalizeIdList(META.wallLetters)")
+    wall_letters = pg.evaluate("assertIdList(META.wallLetters, SOUNDS)")
     all_tiles = pg.locator(".tiles-demo .tile")
     ok(all_tiles.count() == len(wall_letters) + 1,
        f"点亮墙积木数应为墙上 {len(wall_letters)} 块累计字母 + 1 个示例词（实际 {all_tiles.count()}）")

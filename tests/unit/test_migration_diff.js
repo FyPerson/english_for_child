@@ -39,7 +39,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { segmentWord, surfaceOf, graphemeLabel, soundType, normalizeIdList } = require('../../frontend/src/shared/graphemes');
+const { segmentWord, surfaceOf, graphemeLabel, soundType, assertIdList } = require('../../frontend/src/shared/graphemes');
 const { collectWordConsumption, ENTRY_KINDS } = require('../../tools/validation/word_consumers');
 const { withGraphemeFallback } = require('../../tools/validation/sounds_grapheme_adapter');
 const { loadData } = require('../../tools/validation/load_data');
@@ -129,9 +129,9 @@ function resolveOrSkip(word, sounds, box) {
 //        逐字符相等；check_data.js:138-142 canSpell 的"字符多重集消耗"。
 //        （只实现了这两处——games.js:451/:710 的 retractSlot 单块撤回不是"比较"逻辑，
 //        没有对应的新旧算法可差分，不在本项范围内，头注释不再声称覆盖它）
-// 新侧：ID 数组逐项相等；rack 多重集消耗改按字位 ID（rack 当前仍是旧格式字符串，
-//        用 graphemes.js 已导出的 normalizeIdList 按§3.5 契约展开成 ID 数组，
-//        这正是它在第 4b/7 步接线时会被消费者调用的方式，这里只读不改）。
+// 新侧：ID 数组逐项相等；rack 多重集消耗改按字位 ID（rack 第 7 步起已迁成字位 ID
+//        数组，用 graphemes.js 已导出的 assertIdList——第 8 步收口后的最终形态
+//        （方案 §3.5），逐项验证后原样消费，这里只读不改）。
 // ============================================================================
 function canSpellOldChars(word, rackValue) {
   // 照抄 tools/validation/check_data.js:138-142——但那段代码写的时候 rack 还是字符串。
@@ -162,11 +162,11 @@ function diffSpellingComparison() {
   let n = 0;
   for (const { box, sounds } of WEEKS) {
     const corpusWords = new Set(collectWordConsumption(box).map(r => r.word.toLowerCase()));
-    // box.META.rackG4/rackG5 目前仍是第 7 步迁移前的旧格式字符串（真实周数据尚未迁移），
-    // 属"尚未迁移的旧格式数据"，按 normalizeIdList(value, {legacy}) 收口后的签名（2026-09-09
-    // P4）显式传 {legacy:true}——不传会被新的 id-list-legacy-string-rejected 拒绝。
-    const rackG4Ids = normalizeIdList(box.META.rackG4, { legacy: true }); // 逐字符展开，当前数据下 = split('')
-    const rackG5Ids = normalizeIdList(box.META.rackG5, { legacy: true });
+    // box.META.rackG4/rackG5 第 7 步起已迁成字位 ID 数组（真实周数据）。第 8 步
+    // normalizeIdList 收口为 assertIdList(value, sounds)：不再有 legacy 选项，
+    // 第二参数改为 sounds，逐项验证每个 ID 真的在 sounds 里存在。
+    const rackG4Ids = assertIdList(box.META.rackG4, sounds);
+    const rackG5Ids = assertIdList(box.META.rackG5, sounds);
     for (const word of corpusWords) {
       const resolved = resolveOrSkip(word, sounds, box);
       if (!resolved) continue; // segment-unknown：未知字位跳过，不是本项差分要测的东西
@@ -248,11 +248,10 @@ function diffFirstGrapheme() {
         for (const b of step.blocks) {
           if (b.b !== 'initialpick') continue;
           // b.letters（initialpick 块）现状已经是"已经是 ID 数组"的新格式（真实数据里
-          // 就是字面量数组，如 letters:['s','t','p','n']，不是拼接字符串）——按
-          // normalizeIdList(value, {legacy}) 收口后的判据不加 {legacy:true}：数组输入
-          // 不受 legacy 影响，且不加 legacy 更安全——万一这个字段将来被误改成字符串，
-          // 会被新签名的默认拒绝行为当场抓到，而不是被 legacy:true 悄悄展开成字符数组。
-          const letterIds = normalizeIdList(b.letters);
+          // 就是字面量数组，如 letters:['s','t','p','n']，不是拼接字符串）。第 8 步
+          // normalizeIdList 收口为 assertIdList(value, sounds)：只接受数组，若这个
+          // 字段将来被误改成字符串，会被 id-list-legacy-string-rejected 当场抓到。
+          const letterIds = assertIdList(b.letters, sounds);
           for (const word of b.words) {
             const resolved = resolveOrSkip(word, sounds, box);
             if (!resolved) continue;

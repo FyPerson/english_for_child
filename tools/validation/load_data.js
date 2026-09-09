@@ -18,10 +18,25 @@ function loadData(raw, html = true) {
   const box = {};
   vm.runInNewContext(chunks.join('\n') + '\n' + NAMES.map(n => `if(typeof ${n} !== 'undefined') result.${n} = ${n};`).join('\n'), {result:box}, {timeout:1000});
   if (!box.META && html) {
-    const racks = [...raw.matchAll(/const RACK_LETTERS = '([a-z]+)'\.split\(''\)/g)].map(m=>m[1]);
-    const key = raw.match(/const KEY = '([^']+)'/)[1];
-    const wall = raw.match(/\$\{'([a-z]+)'\.split\(''\)\.map\(c=>\{/);
-    box.META = {week:Number(key.match(/w(\d+)/)[1]),storageKey:key,rackG4:racks[0],rackG5:racks[1],wallLetters:wall ? wall[1] : Object.keys(box.FIRST_TEACH_DAY).join('')};
+    /* 里程碑 2 第 8 步（方案 §3.8）：此处曾在缺内联 META 时用正则从旧版 HTML 结构
+     * 里重建 rackG4/rackG5/wallLetters——三审 M-9 指出这是"两条入口拒绝旧格式"判据
+     * 留的一条后门：重建出的是**字符串**（`racks[0]`/`racks[1]` 直接取正则捕获组，
+     * wallLetters 缺 wall 正则命中时甚至退化成 `Object.keys(FIRST_TEACH_DAY).join('')`），
+     * 一旦 SOUNDS 里出现多字母字位（如 'ai'），`join('')` 会把键拼成 'aij' 这类无法
+     * 反解析回原键集合的字符串——这正是里程碑 2 要消灭的旧形态。
+     * 处置（四审 M-6 写死，不留二选一）：拒绝，不重建。四周现役产物（build/*.html）
+     * 都内联了 META（declaration() 能找到 `const META = {...};`），这条拒绝不影响
+     * 任何现役路径——见 tests/unit/test_grapheme_migration.js「M5：load_data HTML
+     * 反解析拒绝旧格式」一节的回归证明。 */
+    const err = new Error(
+      'loadData: 输入 HTML 缺少内联的 META 声明（未找到 "const META = ...;"）。' +
+        '里程碑 2 第 8 步已移除从旧版 HTML 结构正则重建 META 的兼容兜底（方案 §3.8）：' +
+        '那条兜底重建出的 rackG4/rackG5/wallLetters 是字符串，字位 ID 含多字母时' +
+        '（如 "ai"）会被拆成单字符或拼接成无法反解析的字符串。请确认输入的 HTML 由' +
+        '当前构建工具（tools/build_lessons.py）生成，且内联了 META。'
+    );
+    err.code = 'legacy-html-fallback-rejected';
+    throw err;
   }
   return box;
 }
