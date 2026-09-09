@@ -1288,6 +1288,7 @@ function derivedTrophies(){
    RENDER — blocks
    ================================================================== */
 const vowels = 'aeiou';
+<!-- @include shared/graphemes.js -->
 <!-- @include shared/render-blocks.js -->
 function renderDots(cur){
   document.getElementById('dots').innerHTML = DAYS.map(d=>{
@@ -1336,9 +1337,10 @@ function renderHome(){
       <h1>六个声音，<br>拼出第一本书</h1>
       <p class="hero__lede">这一周只教六个字母音：<b class="en">s a t i p n</b>。为什么是这六个——因为它们能组合出二十多个真单词。<b>第二天孩子就能读出人生第一个自己拼出来的英文词，第六天读完第一本书。</b></p>
       <div class="tiles-demo">
-        ${'satipn'.split('').map(c=>{
+        ${normalizeIdList('satipn', {legacy:true}).map(c=>{
           const lit = dayDone(FIRST_TEACH_DAY[c]);   // 积木点亮墙：不存状态，现算首教日是否已完成
-          return `<button class="tile ${vowels.includes(c)?'tile--v':'tile--c'} ${lit?'tile--wallon':'tile--walloff'}" data-sayph="${c}" aria-label="听 ${SOUNDS[c].ipa} 的发音${lit?'（已点亮）':''}">${c}</button>`;
+          const label = graphemeLabel(c, SOUNDS);
+          return `<button class="tile ${soundType(c,SOUNDS)==='v'?'tile--v':'tile--c'} ${lit?'tile--wallon':'tile--walloff'}" data-sayph="${c}" aria-label="听 ${SOUNDS[c].ipa} 的发音${lit?'（已点亮）':''}">${escapeHtmlText(label)}</button>`;
         }).join('')}
         <span style="font-size:28px;color:var(--ink-3);margin:0 6px">→</span>
         <button class="tile tile--c" data-say="sat" style="width:auto;padding:0 22px;font-size:34px">sat</button>
@@ -1482,8 +1484,8 @@ function renderWall(){
         const hint = WALL_HINT[w];
         const lit = trophies.has(w);
         return `<button class="wcard wcard--wall ${lit?'':'wcard--trophy-off'}" data-say="${w}"${hint && hint.say ? ` data-phrase="${hint.en}"` : ''}>
-          <div class="wcard__art wcard__art--lg">${d.art?illHTML(d.art,112):`<div style="font-family:var(--en);font-size:36px;font-weight:700">${colorWord(w)}</div>`}</div>
-          <div class="wcard__w">${colorWord(w)}</div>
+          <div class="wcard__art wcard__art--lg">${d.art?illHTML(d.art,112):`<div style="font-family:var(--en);font-size:36px;font-weight:700">${colorStrictWord(w, wordColorCtx())}</div>`}</div>
+          <div class="wcard__w">${colorStrictWord(w, wordColorCtx())}</div>
           ${hint
             ? `<div class="wall-hint"><span class="wall-hint__en">${hint.en}</span><span class="wall-hint__zh">${hint.zh}</span></div>`
             : `<div class="wcard__zh">${d.zh}</div>`}
@@ -1643,13 +1645,13 @@ function printBook(){
     el.className = 'printbook';
     el.innerHTML = `
       <div class="pb-page">
-        <div class="pb-cover-t">${colorWord(BOOK.title)}</div>
+        <div class="pb-cover-t">${colorPlainText(BOOK.title, wordColorCtx())}</div>
         <div class="pb-cover-zh">${BOOK.zh}</div>
         <div class="pb-zh">我自己读完的第一本英文书</div>
       </div>
       ${BOOK.pages.map(pg=>`<div class="pb-page">
         <img class="pb-art" src="${BOOK_IMG[pg.art]}" alt="">
-        <div class="pb-line">${colorWord(pg.line)}</div>
+        <div class="pb-line">${colorPlainText(pg.line, wordColorCtx())}</div>
         <div class="pb-zh">${pg.zh}</div>
       </div>`).join('')}
       <div class="pb-page">

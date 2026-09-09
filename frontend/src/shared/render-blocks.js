@@ -1,13 +1,35 @@
-function colorWord(w){
-  return w.split('').map(ch => vowels.includes(ch.toLowerCase()) ? `<span class="v word-vowel">${ch}</span>` : ch).join('');
+/* ---- 字位着色/展示的消费者兼容层（里程碑 2 第 4b 步）----
+ * colorWord 已拆分为 colorStrictWord/colorPlainText（graphemes.js 导出，方案
+ * §3.3）：42 个原 colorWord 调用点已逐个改走其中一条，分类清单见收口报告。
+ * explicitSegmentsFor/wordColorCtx/graphemesOf 是三个游戏 + 模板共用的桥接层，
+ * 把"从 W[word].segments 取显式消歧"这件事收在一处，不让每个调用点各自实现一遍
+ * （方案 §3.2 ctx 契约：「着色器先用唯一的 normalizeWord 得到查表键再调用」）。 */
+function explicitSegmentsFor(normalizedWord){
+  const entry = (typeof W !== 'undefined' && W && Object.prototype.hasOwnProperty.call(W, normalizedWord)) ? W[normalizedWord] : null;
+  return (entry && Array.isArray(entry.segments)) ? entry.segments : undefined;
 }
-function tileHTML(ch, cls, live){
-  const t = vowels.includes(ch.toLowerCase()) ? 'tile--v' : 'tile--c';
+function wordColorCtx(){
+  return { sounds: SOUNDS, segmentsOf: explicitSegmentsFor };
+}
+/* graphemesOf(word) -> string[]：供 G2/G4/G5 等"拆词摆积木"场景取字位 ID 序列，
+ * 走与 colorStrictWord 相同的显式消歧查找（W[word.toLowerCase()].segments），
+ * 不能分/歧义时把 segmentWord 的结构化错误原样抛出——这些词本该是当周已教字位
+ * 能拼出的教学词，抛错就是数据错误，不该被这里静默吞掉。 */
+function graphemesOf(word){
+  const normalized = normalizeWord(word);
+  return segmentWord(word, SOUNDS, explicitSegmentsFor(normalized));
+}
+function tileHTML(id, cls, live){
+  // id 是字位 ID（SOUNDS 的键），不是字形——一律用 graphemeLabel 取显示文字
+  // （方案 §3.1「tileHTML 一律收 ID，内部用 graphemeLabel(id) 取显示文字，禁止
+  // 调用方先转成字形」）。soundType 判元音/辅音替代原来的 vowels.includes(字符)。
+  const t = soundType(id, SOUNDS) === 'v' ? 'tile--v' : 'tile--c';
+  const label = escapeHtmlText(graphemeLabel(id, SOUNDS));
   // live 时积木是发音按钮（真人录音）。默认纯 div——button 不能嵌 button，
   // 日卡这类本身就是按钮的容器里必须用 div。
   // 只有真人录音在的音才做成发音按钮；没录音的积木保持静态，不做点了没反应的哑巴按钮（铁律 8）
-  if(live && SOUNDS[ch] && hasPhoneme(ch)) return `<button class="tile ${t} ${cls||''}" data-sayph="${ch}" aria-label="听 ${SOUNDS[ch].ipa} 的发音">${ch}</button>`;
-  return `<div class="tile ${t} ${cls||''}">${ch}</div>`;
+  if(live && SOUNDS[id] && hasPhoneme(id)) return `<button class="tile ${t} ${cls||''}" data-sayph="${id}" aria-label="听 ${SOUNDS[id].ipa} 的发音">${label}</button>`;
+  return `<div class="tile ${t} ${cls||''}">${label}</div>`;
 }
 function artHTML(key, size){
   return illHTML(key, size);
@@ -43,7 +65,7 @@ function blockHTML(b, ctx){
     );
     return `<div class="sound">
       <div class="sound__hd">
-        ${forms.map(f => tileHTML(SOUNDS[f].grapheme,'tile--lg',true)).join('')}
+        ${forms.map(f => tileHTML(f,'tile--lg',true)).join('')}
         <div class="sound__meta">
           <div class="sound__ipa ${isV?'is-v':'is-c'}">${s.ipa}</div>
           <div class="sound__hint">${isV?'元音':'辅音'} · ${hasPhoneme(b.s) ? (forms.length>1 ? forms.map(f=>SOUNDS[f].grapheme).join(' 和 ')+' 发同一个音，点哪块都能听' : '点字母积木听真人示范') : '真人示范音待补，先按下面的口令示范'}</div>
@@ -87,7 +109,7 @@ function blockHTML(b, ctx){
           <div class="wordrow">
             ${s.demo.map(([w,zh])=>`<button class="wordchip" data-say="${w}">
               <span class="spk">${ART.spk}</span>
-              <span class="wordchip__w en">${colorWord(w)}</span>
+              <span class="wordchip__w en">${colorStrictWord(w, wordColorCtx())}</span>
               <span class="wordchip__zh">${zh}</span></button>`).join('')}
           </div>
         </div>
@@ -114,8 +136,8 @@ function blockHTML(b, ctx){
         return `<button class="wcard" data-say="${w}">
           <div class="wcard__art">${hasIll(d.art)
             ? illHTML(d.art,72)
-            : `<div style="font-family:var(--en);font-size:30px;font-weight:700;color:var(--ink-3)">${colorWord(w)}</div>`}</div>
-          <div class="wcard__w">${colorWord(w)}</div>
+            : `<div style="font-family:var(--en);font-size:30px;font-weight:700;color:var(--ink-3)">${colorStrictWord(w, wordColorCtx())}</div>`}</div>
+          <div class="wcard__w">${colorStrictWord(w, wordColorCtx())}</div>
           <div class="wcard__zh">${d.zh}</div>
         </button>`;
       }).join('')}
@@ -136,7 +158,7 @@ function blockHTML(b, ctx){
     return `<div style="display:flex;flex-direction:column;gap:10px">
       ${b.items.map(([en,zh])=>`<button class="checkitem" data-say="${en}" style="align-items:center">
         <span class="spk">${ART.spk}</span>
-        <span class="checkitem__t"><span class="en" style="font-size:21px;font-weight:700">${colorWord(en)}</span><small>${zh}</small></span>
+        <span class="checkitem__t"><span class="en" style="font-size:21px;font-weight:700">${colorPlainText(en, wordColorCtx())}</span><small>${zh}</small></span>
       </button>`).join('')}
     </div>`;
 
@@ -146,13 +168,13 @@ function blockHTML(b, ctx){
     if(mode === 'family'){
       cards = b.families.map(f=>{
         return `<section class="wordforge__family">
-          <div class="wordforge__family-title">固定词尾 <b>${colorWord(f.tail)}</b>，点一块头积木</div>
+          <div class="wordforge__family-title">固定词尾 <b>${colorStrictWord(f.tail, wordColorCtx())}</b>，点一块头积木</div>
           <div class="wordforge__equation-rows">
             ${f.heads.map(head=>{
               const word = head + f.tail;
               const zh = (W[word] || {}).zh || '';
               return `<div class="wordforge__equation-choice">
-                <span class="wordforge__equation"><button class="wordforge__brick wordforge__head-button" data-wf-word="${word}" aria-label="点击 ${head}，听 ${word}">${head}${ART.spk}</button><span class="wordforge__plus">＋</span><span class="wordforge__brick wordforge__brick--tail">${colorWord(f.tail)}</span><span class="wordforge__equation-arrow">→</span><span class="wordforge__equation-word">${colorWord(word)}</span></span>
+                <span class="wordforge__equation"><button class="wordforge__brick wordforge__head-button" data-wf-word="${word}" aria-label="点击 ${head}，听 ${word}">${head}${ART.spk}</button><span class="wordforge__plus">＋</span><span class="wordforge__brick wordforge__brick--tail">${colorStrictWord(f.tail, wordColorCtx())}</span><span class="wordforge__equation-arrow">→</span><span class="wordforge__equation-word">${colorStrictWord(word, wordColorCtx())}</span></span>
                 <span class="wordforge__equation-meta"><small>${zh}</small></span>
               </div>`;
             }).join('')}
@@ -163,13 +185,13 @@ function blockHTML(b, ctx){
       cards = b.pairs.map(([from,word])=>{
         const tail = from.slice(1);
         return `<section class="wordforge__family wordforge__swap-family">
-          <div class="wordforge__family-title">固定词尾 <b>${colorWord(tail)}</b>，轮流点两个头</div>
+          <div class="wordforge__family-title">固定词尾 <b>${colorStrictWord(tail, wordColorCtx())}</b>，轮流点两个头</div>
           <div class="wordforge__equation-rows">
             ${[from,word].map(candidate=>{
               const head = candidate.charAt(0);
               const zh = (W[candidate] || {}).zh || '';
               return `<div class="wordforge__equation-choice">
-                <span class="wordforge__equation"><button class="wordforge__brick wordforge__head-button" data-wf-word="${candidate}" aria-label="点击 ${head}，听 ${candidate}">${head}${ART.spk}</button><span class="wordforge__plus">＋</span><span class="wordforge__brick wordforge__brick--tail">${colorWord(tail)}</span><span class="wordforge__equation-arrow">→</span><span class="wordforge__equation-word">${colorWord(candidate)}</span></span>
+                <span class="wordforge__equation"><button class="wordforge__brick wordforge__head-button" data-wf-word="${candidate}" aria-label="点击 ${head}，听 ${candidate}">${head}${ART.spk}</button><span class="wordforge__plus">＋</span><span class="wordforge__brick wordforge__brick--tail">${colorStrictWord(tail, wordColorCtx())}</span><span class="wordforge__equation-arrow">→</span><span class="wordforge__equation-word">${colorStrictWord(candidate, wordColorCtx())}</span></span>
                 <span class="wordforge__equation-meta"><small>${zh}</small></span>
               </div>`;
             }).join('')}
@@ -205,7 +227,7 @@ function blockHTML(b, ctx){
             const d = W[w] || {zh:'', art:null};
             return `<div class="pairbtn" style="pointer-events:none">
               ${hasIll(d.art)?illHTML(d.art,56):''}
-              <span class="pairbtn__w">${colorWord(w)}</span>
+              <span class="pairbtn__w">${colorStrictWord(w, wordColorCtx())}</span>
               <span class="wcard__zh">${d.zh}</span>
             </div>`;
           }).join('')}
@@ -333,7 +355,7 @@ function blockHTML(b, ctx){
       </div></div>
       <div class="wcards" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
         ${RESERVED.map(w=>`<div class="wcard" style="pointer-events:none">
-          <div class="wcard__w" style="font-size:28px;margin:10px 0 2px">${colorWord(w)}</div>
+          <div class="wcard__w" style="font-size:28px;margin:10px 0 2px">${colorStrictWord(w, wordColorCtx())}</div>
           <div class="wcard__zh">${W[w].zh}</div></div>`).join('')}
       </div>
       <p class="lead" style="font-size:13.5px">把这五个词写在纸上给孩子读，<b>你先不要发音</b>。读完由你自己核对对错——如果哪个音拿不准，可以回到第 1–6 天的音素卡片，自己先拼读一遍确认。</p>

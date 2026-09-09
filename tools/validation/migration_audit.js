@@ -48,10 +48,22 @@ const LEGACY_ARRAY_FIELDS = ['wallLetters', 'rackG4', 'rackG5'];
  * 这一种更宽松的 unknown 解释。下面 pushFinding 那段的 status 判据与 note 文案
  * 已同步改写，别让后人以为它还在找 `L`。 */
 const L_FIELD_CONSUMER_SPECS = [
-  { id: 'render-blocks-tileHTML', file: 'frontend/src/shared/render-blocks.js', pattern: /SOUNDS\[f\]\.grapheme\s*,/, label: 'tileHTML(SOUNDS[f].grapheme, …) 传字形' },
+  /* 2026-09-09 里程碑 2 第 4b 步「消费者兼容层」后四条 pattern 再次更新（H2 之后的
+     第二次语义变化，不是清单过期）：
+     - render-blocks-tileHTML：4b 步把 tileHTML 改成「一律收 ID，内部用 graphemeLabel
+       取显示文字」（方案 §3.1），调用点不再自己读 .grapheme，改传字位 ID 本身——
+       这是比 H2 那次更彻底的迁移终态，pattern 相应改指向新的调用形状。
+     - render-blocks-forms-join：4b 未改这一行（它是纯展示拼接，不经 tileHTML），
+       pattern 不变，只是行号随文件改动漂移。
+     - games-flash-display：同上，4b 未改这一行，只是行号漂移。
+     - check-data-schema-gate：4b 把 check_data.js 内联的 `s.grapheme && s.ipa` 真值
+       检查抽成共享校验器 validateSoundsSchema（graphemes.js 导出，外审 medium 落点），
+       pattern 相应改指向新的调用形状——检测的是"check_data.js 是否已改走共享校验器"
+       而不是"是否还保留内联真值检查"。 */
+  { id: 'render-blocks-tileHTML', file: 'frontend/src/shared/render-blocks.js', pattern: /tileHTML\(f,\s*'tile--lg',\s*true\)/, label: 'tileHTML(f, ...) 传字位 ID，内部经 graphemeLabel 取字形' },
   { id: 'render-blocks-forms-join', file: 'frontend/src/shared/render-blocks.js', pattern: /forms\.map\(f\s*=>\s*SOUNDS\[f\]\.grapheme\)\.join/, label: 'forms.map(f=>SOUNDS[f].grapheme).join(\' 和 \')' },
   { id: 'games-flash-display', file: 'frontend/src/shared/games.js', pattern: /\$\{s\.grapheme\}/, label: 'flash 卡面显示 s.grapheme' },
-  { id: 'check-data-schema-gate', file: 'tools/validation/check_data.js', pattern: /s\.grapheme\s*&&\s*s\.ipa/, label: 'SOUNDS 条目字段齐全门槛（缺 grapheme 就报错）' }
+  { id: 'check-data-schema-gate', file: 'tools/validation/check_data.js', pattern: /validateSoundsSchema\(SOUNDS,\s*\{requireTeachingFields:\s*true\}\)/, label: 'SOUNDS 条目字段齐全门槛改走共享 validateSoundsSchema（4b 步并入）' }
 ];
 
 const STATUS_VALUES = new Set(['pass', 'fail', 'not-applicable', 'unknown']);

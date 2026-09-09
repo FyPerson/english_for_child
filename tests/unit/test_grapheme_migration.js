@@ -352,23 +352,33 @@ function scanForLResidue(files, patterns, excludedEntries) {
 // 裁定（见任务书 M4）：本批不做结构性重构（把转换集中到加载边界是 4b 的事，现在动
 // 会与 4b 撞车）。只建立静态清单 + 门槛：列出当前全部传 legacy:true 的调用点（下方
 // 常量），并断言生产代码（frontend/src/ 与 tools/ 下非测试文件；tools/legacy/ 归档
-// 目录不算生产代码，与 sounds_grapheme_adapter.js 等排除清单同一套判断口径）里不得
-// 出现 legacy:true——现在应为 0 处（唯一的两处调用点都在 tests/unit/ 下，是测试用旧
-// 格式合成数据核对 normalizeIdList 自身行为，不是生产消费方）。第 7 步（方案 §3.5）
-// 把全部消费方接完线、"legacy 字符串展开"分支本身被删除（normalizeIdList 收口为
-// assertIdList）时，这道门槛要连测试代码也一起管——届时 KNOWN_LEGACY_TRUE_CALL_SITES
-// 应清空，下面的扫描范围也要去掉 `rel.startsWith('tests/')` 这条豁免。
+// 目录不算生产代码，与 sounds_grapheme_adapter.js 等排除清单同一套判断口径）里的
+// legacy:true 都在 KNOWN_LEGACY_TRUE_CALL_SITES 登记范围内——第 4b 步接线前生产代码
+// 是 0 处，接线后新增的每一处都必须先登记（带 count 与撤销说明）才能通过，未登记的
+// 命中仍会被判失败。第 7 步（方案 §3.5）把全部消费方接完线、"legacy 字符串展开"分支
+// 本身被删除（normalizeIdList 收口为 assertIdList）时，这道门槛要连测试代码也一起
+// 管——届时 KNOWN_LEGACY_TRUE_CALL_SITES 应清空，下面的扫描范围也要去掉
+// `rel.startsWith('tests/')` 这条豁免。
 // ============================================================================
 
-/* KNOWN_LEGACY_TRUE_CALL_SITES：当前全部传 `{ legacy: true }` 的调用点静态清单
- * （均为测试代码，不是生产代码——生产代码目前是 0 处，这正是下面门槛断言要守住的）。
- * 4b 步接线开始后，生产代码里每新增一处 legacy:true 都不会自动进这份清单，而是会被
- * 下面"生产代码不得出现 legacy:true"的断言拦下，逼人显式来这里登记、并写明为什么
- * 这次接线必须传 legacy:true（这正是这条 medium 要的效果——把"新增一处长期兼容后门"
- * 变成一个会被看见、需要说明理由的动作，而不是随手加一个选项）。 */
+/* KNOWN_LEGACY_TRUE_CALL_SITES：当前全部传 `{ legacy: true }` 的调用点静态清单。
+ * 前两条是测试代码（`tests/` 整体豁免，不需要 count，见 scanForLegacyTrue）；
+ * 2026-09-09 里程碑 2 第 4b 步「消费者兼容层」接线后新增了一批生产代码调用点
+ * （games.js 的 G4/G5 RACK_LETTERS、四个模板的 hero 积木墙、check_data.js 的墙/
+ * 积木架校验）——这些**带 `count`**，按精确命中数消耗（与 EXCLUDED_ENTRIES/
+ * LEGACY_TRUE_DOC_MENTIONS 同一套判据，见 scanForLegacyTrue），超出声明数的命中会
+ * 正常报出为 hits，不会被整条豁免悄悄放过将来新增的调用点。
+ * 每条生产代码条目都写明**第 7 步数据改数组后要怎么撤销**——这正是这条 medium 要的
+ * 效果：把"新增一处长期兼容后门"变成一个会被看见、需要说明理由和撤销路径的动作。 */
 const KNOWN_LEGACY_TRUE_CALL_SITES = Object.freeze([
   { file: 'tests/unit/test_migration_diff.js', reason: '差分测试读取真实 W1-W4 的 box.META.rackG4/rackG5，现状仍是迁移前旧格式字符串，用 legacy:true 展开成 ID 数组做差分对照（本文件差分 1，见 diffSpellingComparison）' },
-  { file: 'tests/unit/test_graphemes.js', reason: 'normalizeIdList 自身的单测，构造旧格式字符串输入验证 legacy 分支行为' }
+  { file: 'tests/unit/test_graphemes.js', reason: 'normalizeIdList 自身的单测，构造旧格式字符串输入验证 legacy 分支行为' },
+  { file: 'frontend/src/shared/games.js', count: 2, reason: 'G4/G5 的 RACK_LETTERS 仍读 META.rackG4/rackG5 字符串（4b 只接线消费者，字段本身留到第 7 步才改数组），用 legacy:true 双读展开成 ID 数组消费（保留重复项，方案 §2.3）', revertOn: '第 7 步 rackG4/rackG5 迁成数组后，两处改为直接消费数组（或收口后的 assertIdList），删除 legacy:true' },
+  { file: 'frontend/src/weeks/week01.template.html', count: 1, reason: 'hero 积木墙读硬编码字面量 \'satipn\'，第 7 步前墙的 SOURCE 仍是字符串（改读 META.wallLetters 数组是第 7 步「前三周模板改读 META.wallLetters」的事），用 legacy:true 展开成 ID 数组供 graphemeLabel/soundType 消费', revertOn: '第 7 步模板改读 META.wallLetters（数组）后删除 legacy:true，直接消费数组' },
+  { file: 'frontend/src/weeks/week02.template.html', count: 1, reason: '同 week01，hero 积木墙读硬编码字面量 \'ckehrmd\'', revertOn: '同 week01' },
+  { file: 'frontend/src/weeks/week03.template.html', count: 1, reason: '同 week01，hero 积木墙读硬编码字面量 \'goulfb\'', revertOn: '同 week01' },
+  { file: 'frontend/src/weeks/week04.template.html', count: 1, reason: 'hero 积木墙已读 META.wallLetters，但字段本身此刻仍是字符串（第 7 步才改数组），用 legacy:true 双读', revertOn: '第 7 步 META.wallLetters 改数组后删除 legacy:true' },
+  { file: 'tools/validation/check_data.js', count: 3, reason: '④⑤ 两个 head 块（积木架 canSpellIds、点亮墙 wallIds）消费 META.rackG4/rackG5/wallLetters 三个仍是字符串的字段，用 legacy:true 双读展开成 ID 数组/多重集', revertOn: '第 7 步四个字段改数组后，三处改为直接消费数组，删除 legacy:true' }
 ]);
 
 /* LEGACY_TRUE_DOC_MENTIONS：graphemes.js 里两处提到 `legacy:true` 的地方（一处是
@@ -383,6 +393,13 @@ const LEGACY_TRUE_DOC_MENTIONS = Object.freeze([
 ]);
 
 const LEGACY_TRUE_PATTERN = /\blegacy\s*:\s*true\b/;
+/* KNOWN_CALL_SITE_COUNTS：KNOWN_LEGACY_TRUE_CALL_SITES 里带 count 的生产代码条目，
+ * 按 file 建索引供 scanForLegacyTrue 消耗（与 LEGACY_TRUE_DOC_MENTIONS 同一套按行
+ * 数消耗的判据）。不带 count 的条目（tests/ 下两条）不在这里出现——它们靠下面
+ * scanForLegacyTrue 的 `rel.startsWith('tests/')` 整体豁免，不需要精确计数。 */
+const KNOWN_CALL_SITE_COUNTS = new Map(
+  KNOWN_LEGACY_TRUE_CALL_SITES.filter(e => typeof e.count === 'number').map(e => [e.file, e.count])
+);
 function scanForLegacyTrue(files) {
   const docByFile = new Map(LEGACY_TRUE_DOC_MENTIONS.map(e => [e.file, e.count]));
   const hits = [];
@@ -390,11 +407,15 @@ function scanForLegacyTrue(files) {
     if (rel.startsWith('tests/')) continue; // 测试代码不在本批门槛范围内，见上方 KNOWN_LEGACY_TRUE_CALL_SITES 头注释
     if (rel.startsWith('tools/legacy/')) continue; // 归档目录，与 normalizeIdList 的 legacy 选项无关（同名巧合）
     const raw = fs.readFileSync(path.join(REPO, rel), 'utf8');
-    let remaining = docByFile.has(rel) ? docByFile.get(rel) : 0;
+    // 一行可能同时命中"文档提及"与"已登记调用点"两类豁免——两个配额独立消耗，
+    // 不共用同一个 remaining（一行只会被计数一次，但两个计数来源都可能覆盖它）。
+    let docRemaining = docByFile.has(rel) ? docByFile.get(rel) : 0;
+    let callSiteRemaining = KNOWN_CALL_SITE_COUNTS.has(rel) ? KNOWN_CALL_SITE_COUNTS.get(rel) : 0;
     raw.split('\n').forEach((lineText, idx) => {
       if (lineText.length > LONG_LINE_THRESHOLD) return; // 同 M1：跳过 base64 等超长行
       if (!LEGACY_TRUE_PATTERN.test(lineText)) return;
-      if (remaining > 0) { remaining--; return; } // 消耗掉已登记的文档提及，不计入 hits
+      if (docRemaining > 0) { docRemaining--; return; } // 消耗掉已登记的文档提及，不计入 hits
+      if (callSiteRemaining > 0) { callSiteRemaining--; return; } // 消耗掉 KNOWN_LEGACY_TRUE_CALL_SITES 登记的调用点
       hits.push({ file: rel, line: idx + 1 });
     });
   }
@@ -404,11 +425,11 @@ function scanForLegacyTrue(files) {
   const files = listTrackedJsFiles().filter(f => f.startsWith('frontend/src/') || f.startsWith('tools/'));
   const hits = scanForLegacyTrue(files);
   assert.equal(hits.length, 0,
-    `生产代码（frontend/src/ 与 tools/ 下非测试文件、非 tools/legacy/ 归档目录）中不得出现 ` +
-    `legacy:true（应为 0 处——已知的全部调用点都应只在 tests/unit/ 下，见 ` +
-    `KNOWN_LEGACY_TRUE_CALL_SITES），实际发现：\n` +
+    `生产代码（frontend/src/ 与 tools/ 下非测试文件、非 tools/legacy/ 归档目录）中出现` +
+    `未登记的 legacy:true（应为 0 处——生产代码里的每一处都必须先登记进 ` +
+    `KNOWN_LEGACY_TRUE_CALL_SITES 并声明精确命中数），实际发现：\n` +
     hits.map(h => `  ${h.file}:${h.line}`).join('\n'));
-  console.log(`PASS grapheme migration（M4 静态清单门槛）：生产代码 0 处 legacy:true（已知调用点清单 ${KNOWN_LEGACY_TRUE_CALL_SITES.length} 项，均在 tests/unit/ 下）`);
+  console.log(`PASS grapheme migration（M4 静态清单门槛）：生产代码 legacy:true 全部在 KNOWN_LEGACY_TRUE_CALL_SITES 登记范围内（${KNOWN_LEGACY_TRUE_CALL_SITES.length} 项，含 ${KNOWN_CALL_SITE_COUNTS.size} 个带精确计数的生产文件）`);
 }
 // 分辨力验证（改坏，内存构造，不落盘）：构造一段生产代码路径下、内嵌 legacy:true 的
 // 坏源码文本，证明门槛真的会红。

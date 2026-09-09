@@ -1350,6 +1350,7 @@ function derivedTrophies(){
    RENDER — blocks
    ================================================================== */
 const vowels = 'aeiou';
+<!-- @include shared/graphemes.js -->
 <!-- @include shared/render-blocks.js -->
 function renderDots(cur){
   document.getElementById('dots').innerHTML = DAYS.map(d=>{
@@ -1398,16 +1399,17 @@ function renderHome(){
       <h1>十九块积木，<br>这周拼得更稳</h1>
       <p class="hero__lede">这周<b>不教新音</b>。把学过的十九块积木重新拼一拼，复读前三本小书，让孩子先读、再核对。第七天留下第一份<b>十词解码基线</b>和月测阅读记录，决定怎样进入下一阶段。</p>
       <div class="tiles-demo">
-        ${META.wallLetters.split('').map(c=>{
+        ${normalizeIdList(META.wallLetters, {legacy:true}).map(c=>{
           const lit = true;   // 积木点亮墙：不存状态，现算首教日是否已完成
           const canHear = hasPhoneme(c);
+          const label = graphemeLabel(c, SOUNDS);
           // 降级不是"删掉属性"，是"换一种元素"：没有录音的积木不能仍然是 button，
           // 否则可聚焦、可点击却没有任何反应，对读屏和触屏都是误导（codex H-1）。
-          const cls = `tile ${vowels.includes(c)?'tile--v':'tile--c'} ${lit?'tile--wallon':'tile--walloff'}`;
-          const lab = `${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${c}`}${lit?'（已点亮）':''}`;
+          const cls = `tile ${soundType(c,SOUNDS)==='v'?'tile--v':'tile--c'} ${lit?'tile--wallon':'tile--walloff'}`;
+          const lab = `${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${label}`}${lit?'（已点亮）':''}`;
           return canHear
-            ? `<button class="${cls}" data-sayph="${c}" aria-label="${lab}">${c}</button>`
-            : `<div class="${cls}" role="img" aria-label="${lab}">${c}</div>`;
+            ? `<button class="${cls}" data-sayph="${c}" aria-label="${lab}">${escapeHtmlText(label)}</button>`
+            : `<div class="${cls}" role="img" aria-label="${lab}">${escapeHtmlText(label)}</div>`;
         }).join('')}
         <span style="font-size:28px;color:var(--ink-3);margin:0 6px">→</span>
         <button class="tile tile--c" data-say="dog" style="width:auto;padding:0 22px;font-size:34px">dog</button>
@@ -1512,8 +1514,8 @@ function renderWall(){
         return `<button class="wcard wcard--wall ${lit?'':'wcard--trophy-off'}" data-say="${w}"${hint && hint.say ? ` data-phrase="${hint.en}"` : ''}>
           <div class="wcard__art wcard__art--lg">${hasIll(d.art)
             ? illHTML(d.art,112)
-            : `<div style="font-family:var(--en);font-size:36px;font-weight:700">${colorWord(w)}</div>`}</div>
-          <div class="wcard__w">${colorWord(w)}</div>
+            : `<div style="font-family:var(--en);font-size:36px;font-weight:700">${colorStrictWord(w, wordColorCtx())}</div>`}</div>
+          <div class="wcard__w">${colorStrictWord(w, wordColorCtx())}</div>
           ${hint
             ? `<div class="wall-hint"><span class="wall-hint__en">${hint.en}</span><span class="wall-hint__zh">${hint.zh}</span></div>`
             : `<div class="wcard__zh">${d.zh}</div>`}
@@ -1693,8 +1695,8 @@ function initWordForge(){
       const d = W[word] || {};
       clearPicture(false);
       result.innerHTML = hasIll(d.art)
-        ? `<div class="wordforge__picture" data-wf-picture data-wf-picture-word="${word}">${illHTML(d.art,104)}<span class="wordforge__picture-label"><b>${colorWord(word)}</b><small>${d.zh || ''}</small></span></div>`
-        : `<b>${colorWord(word)}</b>　${d.zh || ''}`;
+        ? `<div class="wordforge__picture" data-wf-picture data-wf-picture-word="${word}">${illHTML(d.art,104)}<span class="wordforge__picture-label"><b>${colorStrictWord(word, wordColorCtx())}</b><small>${d.zh || ''}</small></span></div>`
+        : `<b>${colorStrictWord(word, wordColorCtx())}</b>　${d.zh || ''}`;
       pictureTimer = setTimeout(()=>clearPicture(true), 1500);
     }
 
@@ -1720,13 +1722,13 @@ function printBook(){
     el.className = 'printbook';
     el.innerHTML = `
       <div class="pb-page">
-        <div class="pb-cover-t">${colorWord(BOOK.title)}</div>
+        <div class="pb-cover-t">${colorPlainText(BOOK.title, wordColorCtx())}</div>
         <div class="pb-cover-zh">${BOOK.zh}</div>
         <div class="pb-zh">我自己复读的三本英文书</div>
       </div>
       ${BOOK.pages.map(pg=>`<div class="pb-page">
         ${BOOK_IMG[pg.art] ? `<img class="pb-art" src="${BOOK_IMG[pg.art]}" alt="">` : ''}
-        <div class="pb-line">${colorWord(pg.line)}</div>
+        <div class="pb-line">${colorPlainText(pg.line, wordColorCtx())}</div>
         <div class="pb-zh">${pg.zh}</div>
       </div>`).join('')}
       <div class="pb-page">

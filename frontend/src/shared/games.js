@@ -16,16 +16,18 @@ function initG2(){
       const d = W[w] || {zh:'', art:null};
       return hasIll(d.art)
         ? illHTML(d.art, size)
-        : `<div style="font-family:var(--en);font-size:${Math.round(size*0.55)}px;font-weight:700">${colorWord(w)}</div>`;
+        : `<div style="font-family:var(--en);font-size:${Math.round(size*0.55)}px;font-weight:700">${colorStrictWord(w, wordColorCtx())}</div>`;
     }
     function stageHTML(w, merged){
-      return `<div class="blender__stage ${merged?'is-merged':''}">${w.split('').map(c=>tileHTML(c,'tile--lg',!merged)).join('')}</div>`;
+      // G2 积木态：按字位 ID 拆词，不是按字符（方案 §2.2「分词」行，rain 这类双字母
+      // 字位词才拆得出正确的三块而不是四块）。
+      return `<div class="blender__stage ${merged?'is-merged':''}">${graphemesOf(w).map(id=>tileHTML(id,'tile--lg',!merged)).join('')}</div>`;
     }
     function revealHTML(w){
       const d = W[w] || {zh:''};
       return `<div class="g2__reveal">
         <div class="g2__art">${meaningArt(w, 96)}</div>
-        <div class="g2__word"><span class="en" style="font-size:26px;font-weight:700">${colorWord(w)}</span>　<b>${d.zh}</b></div>
+        <div class="g2__word"><span class="en" style="font-size:26px;font-weight:700">${colorStrictWord(w, wordColorCtx())}</span>　<b>${d.zh}</b></div>
       </div>`;
     }
     // D6：参数化 w，调用处显式传"当前要播哪个词"，不再隐式读闭包里的 words[cur]——
@@ -170,7 +172,7 @@ function initG3(){
       const art = (showArt && hasIll(d.art)) ? illHTML(d.art, 56) : '';
       return `<button class="pairbtn ${cls||''}" data-g3-door="${w}" ${disabled?'disabled':''}>
         ${art}
-        <span class="pairbtn__w">${colorWord(w)}</span>
+        <span class="pairbtn__w">${colorStrictWord(w, wordColorCtx())}</span>
         <span class="wcard__zh">${d.zh}</span>
       </button>`;
     }
@@ -339,8 +341,14 @@ function initG4(){
   document.querySelectorAll('[data-g4]').forEach(root=>{
     const orders = root.querySelector('[data-g4-orders]');
     const body = root.querySelector('[data-g4-body]');
-    const RACK_LETTERS = META.rackG4.split('');
-    let word = null, slots = [], usedTileIdx = [], errorCount = 0;
+    // META.rackG4 此刻仍是旧格式字符串（四个字段改数组是第 7 步的事），这里经
+    // normalizeIdList 双读展开成 ID 数组消费——单字母阶段展开结果与旧的 split('')
+    // 逐字符等价，为第 7 步真正的数组接入打好接口（方案 §3.5）。
+    const RACK_LETTERS = normalizeIdList(META.rackG4, {legacy:true});
+    // wordIds：当前订单词的字位 ID 序列（方案 §2.2「槽位长度」行——槽数必须按
+    // 字位数建，不是按字符数，否则 rain 建四槽却只有三块积木永远填不满）。
+    // slots 存放的是字位 ID，不是字符。
+    let word = null, wordIds = [], slots = [], usedTileIdx = [], errorCount = 0;
     let uiState = 'idle';   // idle|playing|placing|feedback|audioFailed|interrupted
     let roundToken = 0;
     let feedbackTimer = null;   // F1（P2 末审）：600ms 摆错回退计时器句柄，供换词/重置时主动清掉
@@ -356,7 +364,7 @@ function initG4(){
       const rows = G4_WORDS.map(w=>{
         const confirmed = !!(state.games.confirms[w] && state.games.confirms[w].g4);
         const active = w === word;
-        return `<button class="btn ${active?'':'btn--ghost'}" style="padding:8px 16px;font-size:14px" data-g4-order="${w}">${confirmed?ART.tick+' ':''}${colorWord(w)}</button>`;
+        return `<button class="btn ${active?'':'btn--ghost'}" style="padding:8px 16px;font-size:14px" data-g4-order="${w}">${confirmed?ART.tick+' ':''}${colorStrictWord(w, wordColorCtx())}</button>`;
       }).join('');
       orders.innerHTML = rows + (correctWords.size >= 3
         ? `<p class="g1__progress" style="width:100%;color:var(--ok)">今天的建议量完成啦，还想玩可以继续</p>`
@@ -366,16 +374,20 @@ function initG4(){
     function rackHTML(){
       const tiles = RACK_LETTERS.map((c,i)=>{
         const used = usedTileIdx.includes(i);
-        const cls = vowels.includes(c) ? 'tile--v' : 'tile--c';
+        // c 是字位 ID：辅音/元音分类改用 soundType，显示文字改用 graphemeLabel
+        // （方案 §3.1「tileHTML 一律收 ID」同一原则，这里是手写裸 ID 直显点，
+        // 不经 tileHTML，故各自单独换）。
+        const cls = soundType(c, SOUNDS) === 'v' ? 'tile--v' : 'tile--c';
+        const label = graphemeLabel(c, SOUNDS);
         // 积木同时带 data-sayph（走既有全局委托听音素，G2 同款惯例）与本游戏
         // 自己的 data-g4-tile/data-g4-letter（入槽逻辑），互不冲突。
         const canHear = hasPhoneme(c);
-        return `<button class="tile ${cls}" ${canHear?`data-sayph="${c}"`:''} data-g4-tile="${i}" data-g4-letter="${c}" ${used?'disabled':''} aria-label="${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${c}`}">${c}</button>`;
+        return `<button class="tile ${cls}" ${canHear?`data-sayph="${c}"`:''} data-g4-tile="${i}" data-g4-letter="${c}" ${used?'disabled':''} aria-label="${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${label}`}">${escapeHtmlText(label)}</button>`;
       });
       return groupedRackHTML(RACK_LETTERS, tiles);
     }
     function slotsHTML(cls){
-      return slots.map((c,i)=>`<button class="tile tile--lg ${c?'':'tile--empty'} ${cls||''}" data-g4-slot="${i}">${c||''}</button>`).join('');
+      return slots.map((c,i)=>`<button class="tile tile--lg ${c?'':'tile--empty'} ${cls||''}" data-g4-slot="${i}">${c?escapeHtmlText(graphemeLabel(c,SOUNDS)):''}</button>`).join('');
     }
 
     function renderIdle(){
@@ -387,8 +399,8 @@ function initG4(){
       body.innerHTML = `
         <div class="g4__slots">${slotsHTML()}</div>
         <div class="g4__rack">${rackHTML()}</div>
-        <p class="g1__hint">听到的词是 ${word.length} 个字母，摆一摆</p>
-        ${errorCount >= 2 ? `<p class="g1__hint">提示：第一个字母是 <b class="en">${word[0]}</b></p>` : ''}
+        <p class="g1__hint">听到的词是 ${wordIds.length} 块积木，摆一摆</p>
+        ${errorCount >= 2 ? `<p class="g1__hint">提示：第一块是 <b class="en">${escapeHtmlText(graphemeLabel(wordIds[0], SOUNDS))}</b></p>` : ''}
       `;
     }
     function renderAudioFailed(){
@@ -427,14 +439,15 @@ function initG4(){
       clearFeedbackTimer();   // F1：换词时若上一词还挂着摆错回退计时器，直接作废
       cancelG4LongPress();    // 复审 low#1：换单前取消未完成长按
       word = w;
-      slots = new Array(w.length).fill(null);
+      wordIds = graphemesOf(w);   // 槽数按字位数建，不是按字符数（方案 §2.2「槽位长度」行）
+      slots = new Array(wordIds.length).fill(null);
       usedTileIdx = [];
       errorCount = 0;
       renderOrders();
       playQuestion();
     }
 
-    function placeLetter(tileIdx, letter){
+    function placeLetter(tileIdx, letter){   // letter 现在实际是字位 ID
       if(uiState !== 'placing') return;
       const emptyIdx = slots.indexOf(null);
       if(emptyIdx === -1) return;
@@ -480,7 +493,7 @@ function initG4(){
          仅 word===myWord 的值比对拦不住陈旧回调（G2 cancelG2LongPress 同款模式） */
       cancelG4LongPress();
       root._g4Cancel = bindLongPress(body.querySelector('.g4__confirm'), ()=>{
-        if(word !== myWord || uiState !== 'feedback' || slots.join('') !== myWord) return;   // 状态级三要素复核
+        if(word !== myWord || uiState !== 'feedback' || surfaceOf(slots, SOUNDS) !== myWord) return;   // 状态级三要素复核
         confirmWord(myWord, 'g4');
         renderOrders();
         renderConfirmFeedback();   // 切到"已确认+撤销"视图，不是简单文案替换
@@ -488,7 +501,7 @@ function initG4(){
     }
 
     function validate(){
-      const spelled = slots.join('');
+      const spelled = surfaceOf(slots, SOUNDS);   // 摆词比较（方案 §2.2「摆词比较」行）：ID 数组拼出的表面串
       const isRight = spelled === word;
       uiState = 'feedback';
       if(isRight){
@@ -521,7 +534,7 @@ function initG4(){
       roundToken++;
       clearFeedbackTimer();
       cancelG4LongPress();   // 复审 low#1：折叠/复位前取消未完成长按
-      word = null; slots = []; usedTileIdx = []; errorCount = 0;
+      word = null; wordIds = []; slots = []; usedTileIdx = []; errorCount = 0;
       renderOrders();
       renderIdle();
     }
@@ -580,7 +593,9 @@ function initG4(){
 function groupedRackHTML(letters, tiles){
   if(!META.groupedRack) return tiles.join('');
   const v = [], c = [];
-  letters.forEach((ch, i) => (vowels.includes(ch) ? v : c).push(tiles[i]));
+  // letters 现在是字位 ID 数组：分类改用 soundType，不再用 vowels.includes(字符)
+  // （方案 §3.6「分组固定位与 tile class」——vowels.includes('ai') 必然失配）。
+  letters.forEach((ch, i) => (soundType(ch, SOUNDS) === 'v' ? v : c).push(tiles[i]));
   const group = (label, cls, arr) => arr.length
     ? `<div class="rack__group ${cls}"><span class="rack__label">${label}</span>${arr.join('')}</div>` : '';
   return group('元音', 'rack__group--v', v) + group('辅音', 'rack__group--c', c);
@@ -590,7 +605,7 @@ function initG5(){
   document.querySelectorAll('[data-g5]').forEach(root=>{
     const body = root.querySelector('[data-g5-body]');
     const day = +root.dataset.g5Day;
-    const RACK_LETTERS = META.rackG5.split('');
+    const RACK_LETTERS = normalizeIdList(META.rackG5, {legacy:true});
     let slotCount = 3;
     let slots = new Array(slotCount).fill(null);
     let usedTileIdx = [];
@@ -612,14 +627,15 @@ function initG5(){
     function rackHTML(){
       const tiles = RACK_LETTERS.map((c,i)=>{
         const used = usedTileIdx.includes(i);
-        const cls = vowels.includes(c) ? 'tile--v' : 'tile--c';
+        const cls = soundType(c, SOUNDS) === 'v' ? 'tile--v' : 'tile--c';
+        const label = graphemeLabel(c, SOUNDS);
         const canHear = hasPhoneme(c);
-        return `<button class="tile ${cls}" ${canHear?`data-sayph="${c}"`:''} data-g5-tile="${i}" data-g5-letter="${c}" ${used?'disabled':''} aria-label="${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${c}`}">${c}</button>`;
+        return `<button class="tile ${cls}" ${canHear?`data-sayph="${c}"`:''} data-g5-tile="${i}" data-g5-letter="${c}" ${used?'disabled':''} aria-label="${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${label}`}">${escapeHtmlText(label)}</button>`;
       });
       return groupedRackHTML(RACK_LETTERS, tiles);
     }
     function slotsHTML(){
-      return slots.map((c,i)=>`<button class="tile tile--lg ${c?'':'tile--empty'}" data-g5-slot="${i}">${c||''}</button>`).join('');
+      return slots.map((c,i)=>`<button class="tile tile--lg ${c?'':'tile--empty'}" data-g5-slot="${i}">${c?escapeHtmlText(graphemeLabel(c,SOUNDS)):''}</button>`).join('');
     }
     // 假词与保留词共用同一个函数产出同一份 DOM——不是分别写的两处相似文案。
     function neutralFeedbackHTML(){
@@ -670,7 +686,7 @@ function initG5(){
       const full = slots.every(c=>c!==null);
       let spelled = null, isRealWord = false;
       if(full){
-        spelled = slots.join('');
+        spelled = surfaceOf(slots, SOUNDS);   // 摆词比较：ID 数组拼出的表面串（方案 §2.2「摆词比较」行）
         // 判定顺序（规格明文）：Guard.isReserved 前置，命中就走假词分支
         // （下面的三元里 isRealWord=false 直接落到 neutralFeedbackHTML，
         // 与真正的假词是同一条代码路径，不是并列判断两次）。
@@ -688,7 +704,7 @@ function initG5(){
       if(full && isRealWord && !(state.games.confirms[spelled] && state.games.confirms[spelled].g5)){
         const mySpelled = spelled;
         bindLongPress(body.querySelector('.g5__confirm'), ()=>{
-          if(slots.join('') !== mySpelled) return;   // 长按期间已经撤回/清空/换槽数，不落到别的词上
+          if(surfaceOf(slots, SOUNDS) !== mySpelled) return;   // 长按期间已经撤回/清空/换槽数，不落到别的词上
           confirmWord(mySpelled, 'g5');
           render();
         }, 1000);
@@ -763,7 +779,7 @@ function initG5(){
       const act = e.target.closest('[data-g5-act]');
       if(act){
         if(act.dataset.g5Act === 'clear'){ clearAll(); return; }
-        if(act.dataset.g5Act === 'unconfirm'){ unconfirmWord(slots.join(''), 'g5'); render(); return; }
+        if(act.dataset.g5Act === 'unconfirm'){ unconfirmWord(surfaceOf(slots, SOUNDS), 'g5'); render(); return; }
       }
     });
   });
@@ -805,7 +821,7 @@ function initInitialPick(){
       const d = W[word] || {zh:'', art:null};
       return `<div class="initialpick__feedback">
         ${hasIll(d.art) ? illHTML(d.art,72) : ''}
-        <span><b>${colorWord(word)}</b><br>${d.zh}</span>
+        <span><b>${colorStrictWord(word, wordColorCtx())}</b><br>${d.zh}</span>
       </div>`;
     }
     function restartBtn(){
@@ -958,12 +974,14 @@ function initG1(){
 
     // 气球直接显示本轮目标字母；元音沿用红色、辅音沿用青色。
     function targetInner(){
-      const vowelClass = vowels.includes(roundKey) ? ' g1__target-letter--vowel' : '';
-      return `<span class="g1__target-letter${vowelClass}">${roundKey}</span>`;
+      // roundKey 是字位 ID（G1_ROUNDS 的键）：手写裸 ID 直显点，改用 soundType/graphemeLabel
+      // 而不是 vowels.includes(字符)/直接插值 ID（方案 §4 第 4b 行「11 处手写裸 ID 直显点」之一）。
+      const vowelClass = soundType(roundKey, SOUNDS) === 'v' ? ' g1__target-letter--vowel' : '';
+      return `<span class="g1__target-letter${vowelClass}">${escapeHtmlText(graphemeLabel(roundKey, SOUNDS))}</span>`;
     }
     function meaningChip(word){
       const d = W[word] || {zh:'', art:null};
-      return `<div class="g1__meaning">${hasIll(d.art)?illHTML(d.art,56):''}<div><b class="en">${colorWord(word)}</b>　${d.zh}</div></div>`;
+      return `<div class="g1__meaning">${hasIll(d.art)?illHTML(d.art,56):''}<div><b class="en">${colorStrictWord(word, wordColorCtx())}</b>　${d.zh}</div></div>`;
     }
     function progressLine(){ return `<p class="g1__progress">第 ${qi+1} / ${queue.length} 题　对 ${correct}</p>`; }
     function restartBtn(){ return `<button class="btn btn--ghost" data-g1-act="restart">重新开始这一轮</button>`; }
@@ -1147,7 +1165,7 @@ function initFlash(){
     function drawCard(){
       const it = items[i];
       if(it.k === 'w'){
-        face.innerHTML = `<span class="en">${colorWord(it.v)}</span>`;
+        face.innerHTML = `<span class="en">${colorStrictWord(it.v, wordColorCtx())}</span>`;
         tip.innerHTML = `孩子读出来之后，点这里核对 → <button class="btn btn--ghost" style="padding:6px 14px;font-size:13px" data-say="${it.v}">${ART.spk} 听一下</button>`;
       }else{
         const s = SOUNDS[it.k];
@@ -1281,7 +1299,7 @@ function initBook(){
     const artHTML = bookArt(pageData.art);
     art.innerHTML = artHTML;
     art.hidden = !artHTML;
-    line.innerHTML = colorWord(pageData.line);
+    line.innerHTML = colorPlainText(pageData.line, wordColorCtx());
     line.dataset.say = pageData.line.replace(/[""]/g,'');
     zh.textContent = pageData.zh;
     pg.textContent = `${p+1} / ${pages.length}　·　${BOOK.title}`;

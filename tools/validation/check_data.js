@@ -26,6 +26,7 @@ const isHTML = SRC.toLowerCase().endsWith('.html');
 
 const {loadData} = require('./load_data');
 const {validateAssessment} = require('./assessment_contract');
+const {normalizeIdList, segmentWord, surfaceOf, validateSoundsSchema} = require('../../frontend/src/shared/graphemes');
 let box;
 try { box = loadData(raw, isHTML); } catch(e) { console.error(e.message); process.exit(2); }
 const { RESERVED, SOUNDS, W, WALL_HINT, BOOK, FIRST_TEACH_DAY, G1_ROUNDS, G1_THEME, G3_PAIRS, G4_WORDS, G5_WHITELIST, DAYS, META } = box;
@@ -78,11 +79,21 @@ for (const w of usedWords) ok(W[w] || SIGHT.has(w.toLowerCase()) || (META.week =
 for (const s of usedSounds) ok(SOUNDS[s], `音 "${s}" 在课程里用到，但 SOUNDS 里没有`);
 for (const w of RESERVED) ok(META.week >= 4 || W[w], `保留词 "${w}" 不在 W 里（周检块会读 W[w].zh）`);
 for (const p of BOOK.pages) ok(typeof p.line === 'string' && p.zh && p.art, `小书页缺字段：${p.line}`);
+/* SOUNDS schema 校验改走共享校验器 validateSoundsSchema（2026-09-09 外审 medium，
+ * 第 4b 步并入）：grapheme 合法性、ID 字符集、遗留 L 字段、ipa/type/教学字段完整性
+ * 原先分散在这里的内联真值检查与 sounds_grapheme_adapter.js 的冲突检测两处，同一份
+ * SOUNDS 经不同入口会得到不同严格程度的结论。现在两处共用一份判据，check_data.js
+ * 只按 id 分组把 issue 转回原有的逐键 ok() 报告粒度，不改变对外可见的失败信息颗粒度。 */
+const soundsIssuesByKey = {};
+for (const issue of validateSoundsSchema(SOUNDS, {requireTeachingFields: true})) {
+  (soundsIssuesByKey[issue.id] = soundsIssuesByKey[issue.id] || []).push(issue);
+}
 for (const k of Object.keys(SOUNDS)) {
-  const s = SOUNDS[k];
-  ok(s.grapheme && s.ipa && (s.type === 'c' || s.type === 'v'), `SOUNDS.${k} 缺 grapheme/ipa/type`);
-  ok(s.mem && s.cue && s.challenge && s.try && s.pass && s.how && s.warn && Array.isArray(s.demo),
-     `SOUNDS.${k} 缺教学字段（mem/cue/challenge/try/pass/how/warn/demo）`);
+  const issues = soundsIssuesByKey[k] || [];
+  const teaching = issues.filter(i => i.code === 'teaching-field-missing');
+  const schema = issues.filter(i => i.code !== 'teaching-field-missing');
+  ok(schema.length === 0, `SOUNDS.${k} 缺 grapheme/ipa/type（${schema.map(i => i.message).join('；')}）`);
+  ok(teaching.length === 0, `SOUNDS.${k} 缺教学字段（mem/cue/challenge/try/pass/how/warn/demo）（${teaching.map(i => i.message).join('；')}）`);
 }
 
 /* 所有会显示给孩子看的英文文本（含 SOUNDS 可见字段、表格、说明），统一扫一遍。
@@ -134,28 +145,50 @@ for (const w of [...usedWords, ...RESERVED]) {
   ok(bad.length === 0, `"${w}" 含未教字母 [${bad}]`);
 }
 
-head('④ 积木架能摆出题库里的词');
-const canSpell = (w, rack) => {
-  const pool = rack.split('');
-  for (const c of w) { const i = pool.indexOf(c); if (i < 0) return false; pool.splice(i, 1); }
+head('④ 积木架能摆出题库里的词（字位安全，方案 §2.2「摆词比较/积木架」行）');
+/* idsForWord(word)：按字位分词，优先用 W[word].segments 显式消歧（与
+ * render-blocks.js 的 graphemesOf 同一套逻辑，只是这里是 Node 侧独立实现，
+ * 不 require 浏览器专用的 wordColorCtx）。 */
+function idsForWord(word){
+  const key = word.toLowerCase();
+  const entry = W && Object.prototype.hasOwnProperty.call(W, key) ? W[key] : null;
+  const explicit = (entry && Array.isArray(entry.segments)) ? entry.segments : undefined;
+  return segmentWord(word, SOUNDS, explicit);
+}
+/* canSpellIds(ids, rackValue)：rack 此刻仍是旧格式字符串（四个字段改数组是第 7
+ * 步的事），经 normalizeIdList 双读展开成 ID 多重集消耗——保留重复项，单字母阶段
+ * 与旧的 rack.split('') 逐字符消耗等价（方案 §2.3「rack 是多重集，不是集合」）。 */
+function canSpellIds(ids, rackValue){
+  const pool = normalizeIdList(rackValue, {legacy:true});
+  for (const id of ids) { const i = pool.indexOf(id); if (i < 0) return false; pool.splice(i, 1); }
   return true;
-};
-G4_WORDS.forEach(w => ok(canSpell(w, META.rackG4), `G4 订单 "${w}" 用 rack "${META.rackG4}" 摆不出来`));
+}
+function checkSpellable(word, rackValue, rackLabel){
+  let ids;
+  try { ids = idsForWord(word); }
+  catch (e) { ok(false, `${rackLabel} "${word}" 无法按字位分词（${e.code || 'error'}）：${e.message}`); return; }
+  ok(canSpellIds(ids, rackValue), `${rackLabel} "${word}" 用 rack "${rackValue}" 摆不出来`);
+}
+G4_WORDS.forEach(w => checkSpellable(w, META.rackG4, 'G4 订单'));
 G5_WHITELIST.forEach(w => {
-  ok(canSpell(w, META.rackG5), `G5 白名单 "${w}" 用 rack "${META.rackG5}" 摆不出来`);
+  checkSpellable(w, META.rackG5, 'G5 白名单');
   ok(W[w], `G5 白名单 "${w}" 不在 W 里`);
 });
-for (const c of new Set([...META.rackG4, ...META.rackG5])) {
+for (const c of new Set([...normalizeIdList(META.rackG4, {legacy:true}), ...normalizeIdList(META.rackG5, {legacy:true})])) {
   ok(SOUNDS[c], `积木架字母 "${c}" 不在 SOUNDS 里（aria-label 会崩）`);
 }
 
 head('⑤ 点亮墙与首教日');
-for (const c of META.wallLetters) {
+/* wallLetters 此刻仍是旧格式字符串，经 normalizeIdList 双读归一成 ID 数组——单字符
+ * 字符串归一后 for...of 与 includes 语义仍与旧模型等价（方案 §4 第 4b 行验收项）。
+ * 本步只换消费方式，不启用 DATA-WALL-01 新校验（复审 H-4，留给第 7 步）。 */
+const wallIds = normalizeIdList(META.wallLetters, {legacy:true});
+for (const c of wallIds) {
   ok(META.consolidation || FIRST_TEACH_DAY[c] != null, `点亮墙字母 "${c}" 没有首教日`);
   ok(SOUNDS[c], `点亮墙字母 "${c}" 不在 SOUNDS 里`);
 }
 for (const [c, day] of Object.entries(FIRST_TEACH_DAY)) {
-  ok(META.wallLetters.includes(c), `首教日有 "${c}" 但点亮墙没显示`);
+  ok(wallIds.includes(c), `首教日有 "${c}" 但点亮墙没显示`);
   const d = DAYS[day - 1];
   ok(d && d.sounds.includes(c), `"${c}" 标称第 ${day} 天首教，但那天的 sounds 里没有它`);
 }

@@ -401,6 +401,144 @@ function encodeIdListAttribute(ids) {
   return JSON.stringify(ids);
 }
 
+/* ---- 消费者兼容层新增导出（里程碑 2 第 4b 步）---- */
+
+/* normalizeWord(word) -> string：着色器与拆词消费方共用的唯一规范化函数
+ * （方案 §3.2「着色器先用唯一的 normalizeWord 得到查表键再调用」）。目前只是
+ * toLowerCase，但集中成一个函数是为了不让 colorStrictWord/colorPlainText/
+ * 未来的消费方各自选择不同的规范化方式——那样显式消歧仍会因为查表键不一致而丢
+ * （方案 §3.2 五审 H-4）。 */
+function normalizeWord(word) {
+  if (typeof word !== 'string') {
+    throw GraphemeError('word-invalid', 'word 必须是字符串', { value: word });
+  }
+  return word.toLowerCase();
+}
+
+/* colorizeToken(word, ctx) -> string：单个"词"token（不含空白/标点）的字位着色，
+ * strict 与 plain 两条路径共用。ctx.segmentsOf 的返回值按契约（方案 §3.2）不得被
+ * 就地修改：这里只读，交给 segmentWord 自己 slice。 */
+function colorizeToken(word, ctx) {
+  var normalized = normalizeWord(word);
+  var explicit = ctx.segmentsOf(normalized);
+  var ids = segmentWord(word, ctx.sounds, explicit);
+  return ids.map(function (id) {
+    var text = escapeHtmlText(graphemeLabel(id, ctx.sounds));
+    return soundType(id, ctx.sounds) === 'v' ? '<span class="v word-vowel">' + text + '</span>' : text;
+  }).join('');
+}
+
+/* colorStrictWord(word, ctx) -> string：单个词（词卡/tile/G2 积木态）。分不出来是
+ * 数据错误，直接把 segmentWord 的结构化错误原样抛出，不在这里吞（方案 §3.3）。 */
+function colorStrictWord(word, ctx) {
+  if (typeof word !== 'string') {
+    throw GraphemeError('word-invalid', 'word 必须是字符串', { value: word });
+  }
+  return colorizeToken(word, ctx);
+}
+
+/* colorPlainText(text, ctx) -> string：含空格标点的整句（书名、书页正文）。
+ * 按"保留分隔符地切词"（方案 §3.3）：用捕获组 split 出 [非词, 词, 非词, 词, ...]
+ * 交替序列（偶数下标恒为非词分隔符，奇数下标恒为词，split 的固定语义，见下方
+ * WORD_TOKEN_PATTERN 注释）。词 token 尝试严格分词着色，失败（含未知片段与歧义）
+ * 一律降级为原样输出（转义后）——句子里出现的专有名词、语气词等不认识的片段，
+ * 换的是渲染方式，不是删掉着色能力（方案 §3.3「降级要换形态」）。非词的每一段
+ * （空格、标点）必须 HTML 转义后再拼回，不能假设分隔符天然安全。
+ * 禁止对整句做严格分词——这正是本函数与 colorStrictWord 分开存在的原因。 */
+var WORD_TOKEN_PATTERN = /([A-Za-z]+)/;
+function colorPlainText(text, ctx) {
+  if (typeof text !== 'string') {
+    throw GraphemeError('word-invalid', 'text 必须是字符串', { value: text });
+  }
+  var parts = text.split(WORD_TOKEN_PATTERN);
+  var out = '';
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i];
+    if (part === '') continue;
+    var isWordToken = i % 2 === 1; // String#split 用捕获组时，奇数下标恒为捕获组命中的词
+    if (!isWordToken) { out += escapeHtmlText(part); continue; }
+    try {
+      out += colorizeToken(part, ctx);
+    } catch (e) {
+      out += escapeHtmlText(part); // 降级：不能分的词原样输出（转义后）
+    }
+  }
+  return out;
+}
+
+/* colorRichText(html, ctx) -> string：受限富文本（允许 <b>/<span class="en">/<br>
+ * 白名单标签的字段）。**本批（里程碑 2 第 4b 步）挂起，不实现**——它依赖"Node 侧
+ * 怎么做 DOM 解析"这个尚未裁定的设计选择（方案 §5「Node 侧 DOM 解析」：本项目零
+ * 外部依赖、Node 无原生 DOMParser，②-a 手写白名单片段解析器 vs ②-b 不走 DOM 改用
+ * 两端共享的字符串扫描哪条路，属安全边界，按停机条款交给外审/用户裁定，2026-09-09
+ * 已送审、结果未回）。四周现有数据的 line/title 实测都不含标签，42 个调用点里没有
+ * 一处走这条路径（见 4b 收口报告「模板内字位展示来源清单」），所以本次不实现不阻塞
+ * 任何现役消费点。裁定回来后在这里补白名单解析 + 只对文本节点着色的实现，
+ * 判据：解析顺序固定为「先解析→再检查解析后的元素与属性→最后受控序列化输出」
+ * （方案 §3.3 四审 M-7），白名单是完整结构不只是标签名（三审 M-8）。 */
+function colorRichText(html, ctx) {
+  throw GraphemeError(
+    'rich-text-not-implemented',
+    'colorRichText 尚未实现：Node 侧 DOM 解析方案（方案 §5「Node 侧 DOM 解析」）未裁定，' +
+      '里程碑 2 第 4b 步按停机条款挂起本接口，见 graphemes.js 头注释与该函数上方说明',
+    { html: html }
+  );
+}
+
+/* validateSoundsSchema(sounds, options) -> Array<{code,id,message}>：SOUNDS 表的
+ * 共享 schema 校验器（2026-09-09 外审 medium，四周迁移方案 §4 第 4b 行并入）。
+ * 收集式返回全部问题而不是遇错即抛——check_data.js 的 ok(...) 消费模式需要拿到
+ * "这个键有哪些问题"逐条报告，不能像 segmentWord 建索引前的 validateSoundsTable
+ * 那样第一条不合法就中断（那个函数服务的是分词内部，两者用途不同、都保留）。
+ * 现在 grapheme/非法字符集/遗留 L 字段这三类检测散落在 sounds_grapheme_adapter.js
+ * （冲突/遗留检测，服务对象是"L→grapheme 迁移期适配"）与 check_data.js（内联的
+ * `s.grapheme && s.ipa && ...` 真值检查）两处，同一份 SOUNDS 经不同入口得到不同
+ * 严格程度的结论。本函数把"grapheme 字段是否合法"“ID 是否合法字位 ID”“是否仍有
+ * 遗留自有键 L”这三条抽成共享判据，check_data.js／未来的生成器／审计工具共同调用；
+ * L→grapheme 迁移期"两值不一致时报冲突、允许旧数据兜底派生"这类真正的旧数据派生
+ * 逻辑不下放到这里——那是 sounds_grapheme_adapter.js 明确命名的 legacy 辅助职责，
+ * 本函数只管"这份 sounds 现在合不合规"，不管"怎么把旧形态兼容成新形态"。
+ * options.requireTeachingFields === true 时额外校验 check_data.js 现有的教学字段
+ * 完整性（mem/cue/challenge/try/pass/how/warn/demo），供 check_data.js 复用同一遍
+ * 遍历，不必再自己重写一份键存在性检查。 */
+function validateSoundsSchema(sounds, options) {
+  options = options || {};
+  var issues = [];
+  function issue(code, id, message) { issues.push({ code: code, id: id || null, message: message }); }
+  if (Object.prototype.toString.call(sounds) !== '[object Object]') {
+    issue('sounds-invalid', null, 'sounds 必须是普通映射对象');
+    return issues;
+  }
+  var ids = Object.keys(sounds);
+  ids.forEach(function (id) {
+    var entry = sounds[id];
+    if (!isValidGraphemeId(id)) {
+      issue('sound-id-invalid', id, 'SOUNDS 的键不是合法字位 ID（须匹配 ^[a-z][a-z0-9_]*$）：' + id);
+    }
+    if (!entry || typeof entry !== 'object') {
+      issue('grapheme-invalid', id, 'SOUNDS.' + id + ' 必须是对象');
+      return;
+    }
+    var hasOwnGrapheme = Object.prototype.hasOwnProperty.call(entry, 'grapheme');
+    if (!hasOwnGrapheme || typeof entry.grapheme !== 'string' || entry.grapheme.length === 0) {
+      issue('grapheme-invalid', id, 'SOUNDS.' + id + '.grapheme 必须是非空字符串');
+    }
+    if (Object.prototype.hasOwnProperty.call(entry, 'L')) {
+      issue('legacy-l-field', id, 'SOUNDS.' + id + ' 仍有遗留的自有键 L（4a 步应已收敛为 grapheme）');
+    }
+    if (options.requireTeachingFields) {
+      if (!entry.ipa) issue('ipa-missing', id, 'SOUNDS.' + id + ' 缺 ipa');
+      if (entry.type !== 'c' && entry.type !== 'v') issue('type-invalid', id, 'SOUNDS.' + id + ' 的 type 字段非法（须为 c 或 v）');
+      var teachingFields = ['mem', 'cue', 'challenge', 'try', 'pass', 'how', 'warn'];
+      teachingFields.forEach(function (f) {
+        if (!entry[f]) issue('teaching-field-missing', id, 'SOUNDS.' + id + ' 缺教学字段 ' + f);
+      });
+      if (!Array.isArray(entry.demo)) issue('teaching-field-missing', id, 'SOUNDS.' + id + ' 缺教学字段 demo（须为数组）');
+    }
+  });
+  return issues;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     segmentWord: segmentWord,
@@ -412,6 +550,11 @@ if (typeof module !== 'undefined' && module.exports) {
     assertValidGraphemeId: assertValidGraphemeId,
     escapeHtmlText: escapeHtmlText,
     escapeHtmlAttribute: escapeHtmlAttribute,
-    encodeIdListAttribute: encodeIdListAttribute
+    encodeIdListAttribute: encodeIdListAttribute,
+    normalizeWord: normalizeWord,
+    colorStrictWord: colorStrictWord,
+    colorPlainText: colorPlainText,
+    colorRichText: colorRichText,
+    validateSoundsSchema: validateSoundsSchema
   };
 }
