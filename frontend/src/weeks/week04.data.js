@@ -2,6 +2,7 @@ const META = {
   "week": 4,
   "storageKey": "soundblocks-w4-v1",
   "consolidation": true,
+  "assessmentMode": "monthly",
   "groupedRack": true,
   "wallLetters": "satipnckehrmdgoulfb",
   "rackG4": "satipnckehrmdgoulfb",

@@ -253,27 +253,30 @@ assert.deepEqual(realDoc.findings, resorted, 'buildAudit 产出的 findings 必�
 console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${realDoc.findings.length} 条发现，findingId 唯一性与排序均通过机器校验`);
 
 // ============================================================================
-// ⑦（coordinator C-1）：week01 的 spit 是四个字位，DATA-RESERVED-02 的
-//    segment-count 发现必须是 fail（按 weekly 目标契约判），不能是 not-applicable
-//    ——not-applicable 会被第 5 步的停机条款读成"这条规则不适用，不用管"，从而漏修
-//    真正需要换掉的周检词。W1 其余四词仍按同一契约判 pass，且全部 5 条都要如实标注
-//    currentlyExempted:true（当前 check_data.js:127 还豁免着，但契约判定不受它影响）。
+// ⑦（coordinator C-1，2026-09-09 里程碑 2 第 5 步 P8 后更新）：week01 的周检词
+//    spit 是四个字位（s/p/i/t），按 weekly 目标契约必须 fail——C-1 把判据方向
+//    从 not-applicable 改成按契约判 fail，避免第 5 步误读"不需要改"而漏修。
+//    第 5 步 P8 已把 spit 换成 pit（用户 2026-09-09 拍板：spit 里的 p 因 /s/ 后
+//    去送气而听成"必"，与刚教的送气 p 不是一个音，不适合当周检词；pit 三字位、
+//    词首 p 送气、语义干净）。这里的断言相应更新为"验证修复结果"：W1 全部 5 个
+//    RESERVED 词现在都是三字位、都 pass，不应再有任何 fail。 */
 // ============================================================================
 {
   const w1SegmentFindings = realDoc.findings.filter(f => f.ruleId === 'DATA-RESERVED-02' && f.week === 1 && f.findingId.startsWith('w1:segment-count:'));
   assert.equal(w1SegmentFindings.length, 5, 'W1 应有 5 条 segment-count 发现（RESERVED 5 词）');
   assert(w1SegmentFindings.every(f => f.status !== 'not-applicable'),
     'W1 的 segment-count 不应再有 not-applicable——那是 C-1 修复前的判据方向错误，会让第 5 步误判"不需要改"');
-  const spitFinding = w1SegmentFindings.find(f => f.findingId === 'w1:segment-count:spit');
-  assert(spitFinding, '应该有 spit 的 segment-count 发现');
-  assert.equal(spitFinding.status, 'fail', 'spit 是 s/p/i/t 四个字位，按 weekly 目标契约必须是 fail');
-  assert.equal(spitFinding.details.graphemeCount, 4, 'spit 的 graphemeCount 应为 4');
-  assert.deepEqual(spitFinding.details.graphemeIds, ['s', 'p', 'i', 't']);
-  assert.equal(spitFinding.details.currentlyExempted, true, 'W1 的 segment-count 发现都要如实标注"当前校验器还豁免着"');
-  const otherFourStatuses = w1SegmentFindings.filter(f => f.findingId !== 'w1:segment-count:spit').map(f => f.status);
-  assert(otherFourStatuses.every(s => s === 'pass'), `W1 除 spit 外的四个词（均三字位）应判 pass，实际 ${otherFourStatuses}`);
-  assert(w1SegmentFindings.every(f => f.details.currentlyExempted === true), 'W1 全部 5 条 segment-count 都要标 currentlyExempted:true');
-  console.log('PASS migration_audit（C-1 修复验证）：W1 的 spit 正确判为 fail（四字位），不再是 not-applicable；其余四词 pass 且全部标注 currentlyExempted');
+  assert(!w1SegmentFindings.some(f => f.findingId === 'w1:segment-count:spit'),
+    'spit 已在第 5 步 P8 被换成 pit，不应再出现在 RESERVED 里');
+  const pitFinding = w1SegmentFindings.find(f => f.findingId === 'w1:segment-count:pit');
+  assert(pitFinding, '应该有 pit 的 segment-count 发现（P8 换词后的新周检词）');
+  assert.equal(pitFinding.status, 'pass', 'pit 是 p/i/t 三个字位，应判 pass');
+  assert.equal(pitFinding.details.graphemeCount, 3, 'pit 的 graphemeCount 应为 3');
+  assert.deepEqual(pitFinding.details.graphemeIds, ['p', 'i', 't']);
+  const allStatuses = w1SegmentFindings.map(f => f.status);
+  assert(allStatuses.every(s => s === 'pass'), `P8 换词后 W1 全部 5 个周检词（均三字位）应判 pass，实际 ${allStatuses}`);
+  assert(w1SegmentFindings.every(f => f.details.currentlyExempted === true), 'W1 全部 5 条 segment-count 都要标 currentlyExempted:true（check_data.js:147 现状仍豁免 week===1，契约判定本身不受它影响）');
+  console.log('PASS migration_audit（C-1 修复 + P8 换词验证）：W1 的 pit 正确判为 pass（三字位），spit 已不在数据里；全部 5 词标注 currentlyExempted');
 }
 
 // ============================================================================
@@ -485,7 +488,9 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     'DATA-ASSESS-01': { pass: 30, fail: 6, 'not-applicable': 0, unknown: 0 },
     'DATA-PATTERN-02': { pass: 0, fail: 13, 'not-applicable': 0, unknown: 0 },
     'DATA-RESERVED-01': { pass: 35, fail: 5, 'not-applicable': 0, unknown: 0 },
-    'DATA-RESERVED-02': { pass: 23, fail: 1, 'not-applicable': 0, unknown: 0 },
+    /* 2026-09-09 里程碑 2 第 5 步 P8：W1 周检词 spit（4 字位）换成 pit（3 字位）后，
+       segment-count 24 条全部 pass，不再有 fail。 */
+    'DATA-RESERVED-02': { pass: 24, fail: 0, 'not-applicable': 0, unknown: 0 },
     /* 2026-09-09 里程碑 2 收口批 H2 后更新：四周 w{1..4}:l-field-present 早先已从
        fail 转 pass（SOUNDS 条目不再是"只有 L 没有 grapheme"）；四条 l-field-consumer
        本批把 pattern 改指向 grapheme 等价写法后，从 unknown 恢复为 pass（消费点确实
@@ -501,6 +506,9 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   assert.deepEqual(actualByRule, REAL_STATUS_COUNTS_BY_RULE,
     '真实四周审计的 status 分布必须与钉住的期望值一致——如果这条红了，说明某条规则的判定逻辑或语料覆盖发生了变化，需要人工核实是修复还是回归');
   assert.equal(realDoc.findings.length, 129, `真实审计总条数应为 129，实际 ${realDoc.findings.length}`);
+  /* 总条数不变（129）：P8 只是让 w1:segment-count:spit 这条从 fail 变成
+     w1:segment-count:pit 的 pass（同一 findingId 数量、同一 RESERVED 5 词，只是
+     内容换了），不新增不减少 finding 条数。 */
 
   const REAL_FAIL_FINDING_IDS = [
     'DATA-ASSESS-01/w4:forbidden-block:retest',
@@ -527,7 +535,6 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     'DATA-RESERVED-01/w4:definition:nod',
     'DATA-RESERVED-01/w4:definition:rot',
     'DATA-RESERVED-01/w4:definition:sob',
-    'DATA-RESERVED-02/w1:segment-count:spit',
     'DATA-WALL-01/w2:wall-covers-all-sounds',
     'DATA-WALL-01/w3:wall-covers-all-sounds'
   ].sort();

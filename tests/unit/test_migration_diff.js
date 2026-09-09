@@ -469,9 +469,15 @@ assert.deepEqual(
  * ⚠️ 改这张表必须写明理由：是"数据真的变了"（比如新增/删除了某周的词条目，
  * 应先确认改动符合预期再更新数字）还是"抽取器坏了"（少收/多收，应先修抽取器，
  * 不能反手改表格掩盖回归）。两者外观相同（这里都是数字对不上），区分靠人读 diff。 */
+/* 2026-09-09 里程碑 2 第 5 步：P8（W1 周检词 spit 换成 pit）从练习块释放 pit 进
+ * RESERVED，day6 的"全部词一遍"闪读表（flash，穷举式，见 assessment_contract.js
+ * 里程碑 2 报告）与 G5_WHITELIST 各减少 1 个词条（pit 本身），其余 kind 的替换
+ * （blend/words/day-pair/g3-pairs 里 pit→pan/nip、pat/pit 配对→pan/pin 配对）都是
+ * "同位置换词"不改变数组长度，因此只有这两个 kind 的 total 变化：
+ * flash 99→98、g5-whitelist 209→208。 */
 const BASELINE_KIND_TOTALS = Object.freeze({
-  'blend': 106, 'book-page': 132, 'day-pair': 26, 'flash': 99, 'g1-rounds': 64,
-  'g3-pairs': 26, 'g4-words': 29, 'g5-whitelist': 209, 'initialpick': 13,
+  'blend': 106, 'book-page': 132, 'day-pair': 26, 'flash': 98, 'g1-rounds': 64,
+  'g3-pairs': 26, 'g4-words': 29, 'g5-whitelist': 208, 'initialpick': 13,
   'sentences': 9, 'sight': 6, 'wall-hint': 3, 'wordforge-family': 20,
   'wordforge-swap': 6, 'words': 124
 });

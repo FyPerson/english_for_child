@@ -6,6 +6,7 @@ const META = {
   "wallLetters": "ckehrmd",
   "groupedRack": false,
   "consolidation": false,
+  "assessmentMode": "weekly",
   "flashCapacity": {
     "flash_words": 12,
     "flash_sounds": 13

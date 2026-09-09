@@ -6,13 +6,14 @@ const META = {
   "wallLetters": "satipn",
   "groupedRack": false,
   "consolidation": false,
+  "assessmentMode": "weekly",
   "flashCapacity": {
-    "flash_words": 17,
+    "flash_words": 16,
     "flash_sounds": 6
   }
 };
 
-const RESERVED = ['nit','sap','tan','pip','spit'];
+const RESERVED = ['nit','sap','tan','pip','pit'];
 
 const SOUNDS = {
   s:{grapheme:'s', ipa:'/s/', type:'c', art:'snake', mem:'蛇在吐信子 sssss',
@@ -70,7 +71,7 @@ const W = {
   snap:{zh:'打响指',art:'snap'},
   nip:{zh:'轻轻咬一口',art:'nip'},   tan:{zh:'晒黑',art:'tan'},
   sap:{zh:'树汁',art:'sap'},         nit:{zh:'小虫卵',art:null},
-  spit:{zh:'吐',art:null},          pip:{zh:'果核',art:'pip'},
+  pip:{zh:'果核',art:'pip'},
   ten:{zh:'十',art:'ten'},          sun:{zh:'太阳',art:'sun'},
   sock:{zh:'袜子',art:'sock'},      apple:{zh:'苹果',art:'apple'},
   net:{zh:'网',art:'net'},          nose:{zh:'鼻子',art:'nose'},
@@ -116,11 +117,11 @@ const G1_THEME = {
   a: { title:'轮 B · 抓住 /æ/', icon:'ant', cmd:'听到词的肚子里藏着 æ 就拍气球' }
 };
 
-const G3_PAIRS = [['sat','sit'],['pat','pit'],['tap','tip']];
+const G3_PAIRS = [['sat','sit'],['pan','pin'],['tap','tip']];
 
 const G4_WORDS = ['at','it','an','in','sat','pin','nap'];
 
-const G5_WHITELIST = ['an','at','in','it','nap','nip','pan','pat','pin','pit','sat','sip','sit','snap','tap','tin','tip'];
+const G5_WHITELIST = ['an','at','in','it','nap','nip','pan','pat','pin','sat','sip','sit','snap','tap','tin','tip'];
 
 const DAYS = [
 {
@@ -209,7 +210,7 @@ const DAYS = [
     ]},
     {t:'关键训练：听出区别', min:8, blocks:[
       {b:'lead', html:'<strong>今天真正的重点。</strong>sat 和 sit 只差中间一个元音。能听出这一点点差别，孩子的耳朵才算为英语打开了。这个训练要每天做一点，做一整年。'},
-      {b:'pair', pairs:[['sat','sit'],['pat','pit'],['tap','tip']], note:'后两组词还没学，先只用耳朵听，不用读'},
+      {b:'pair', pairs:[['sat','sit'],['pan','pin'],['tap','tip']], note:'后两组词还没学，先只用耳朵听，不用读'},
       {b:'note', tone:'warn', html:'如果孩子总是分不出来，<b>不是他笨</b>——中文里这两个音不区分意义，他的耳朵从没被要求分辨过。把两个音夸张地拖长对比：s-<b>æææ</b>-t／s-<b>ɪɪɪ</b>-t，做上几十次就出来了。'}
     ]},
     {t:'收尾打卡', min:4, blocks:[
@@ -234,8 +235,8 @@ const DAYS = [
     ]},
     {t:'拼读大丰收', min:10, blocks:[
       {b:'lead', html:'今天一口气能拼出很多词。<b>让孩子自己数一数今天读出了几个</b>——数字带来的成就感比夸奖实在。'},
-      {b:'blend', words:['pat','pit','sip','tip','tap']},
-      {b:'words', items:['pat','pit','sip','tip','tap']}
+      {b:'blend', words:['pat','sit','sip','tip','tap']},
+      {b:'words', items:['pat','sit','sip','tip','tap']}
     ]},
     {t:'认读词：不能拼的词', min:6, blocks:[
       {b:'lead', html:'英语里有一小批高频词不遵守拼读规则，得像认汉字一样直接记住。<strong>这个类比直接告诉孩子他就懂</strong>：「就像『的』字，你不用拆开也认识它。」'},
@@ -256,7 +257,7 @@ const DAYS = [
   goal:'尝试在 nap 前加 /s/，读出 snap —— 进阶拼读观察',
   steps:[
     {t:'快闪复习', min:3, blocks:[
-      {b:'flash', items:[{k:'s'},{k:'a'},{k:'t'},{k:'i'},{k:'p'},{k:'w',v:'pat'},{k:'w',v:'pit'},{k:'w',v:'tap'},{k:'w',v:'sip'}]}
+      {b:'flash', items:[{k:'s'},{k:'a'},{k:'t'},{k:'i'},{k:'p'},{k:'w',v:'pat'},{k:'w',v:'tip'},{k:'w',v:'tap'},{k:'w',v:'sip'}]}
     ]},
     {t:'新声音 /n/', min:7, blocks:[
       {b:'sound', s:'n'},
@@ -298,7 +299,7 @@ const DAYS = [
     {t:'词卡闪读', min:6, blocks:[
       {b:'lead', html:'30 秒挑战：能读出几个？读错不停，跳过继续。'},
       {b:'flash', items:[
-        {k:'w',v:'sat'},{k:'w',v:'sit'},{k:'w',v:'pat'},{k:'w',v:'pit'},{k:'w',v:'pin'},
+        {k:'w',v:'sat'},{k:'w',v:'sit'},{k:'w',v:'pat'},{k:'w',v:'pin'},
         {k:'w',v:'pan'},{k:'w',v:'nap'},{k:'w',v:'tap'},{k:'w',v:'tip'},{k:'w',v:'sip'},
         {k:'w',v:'tin'},{k:'w',v:'an'},{k:'w',v:'at'},{k:'w',v:'it'},{k:'w',v:'in'},
         {k:'w',v:'snap'},{k:'w',v:'nip'}
