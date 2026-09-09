@@ -1,17 +1,17 @@
 {
  "schemaVersion": 1,
- "takenAt": "2026-09-08",
- "sourceCommit": "fc6b194e6f83acbd7df48c672bc27f732ee05efe",
+ "takenAt": "2026-09-10",
+ "sourceCommit": "06479cd77e78ca005707d2ac8cf407f181dadfc5",
  "form": "single-file",
  "toolVersions": {
-  "python": "3.12.14",
-  "node": "v24.19.0",
+  "python": "3.12.0",
+  "node": "v24.11.1",
   "hash": "sha256"
  },
  "weeks": {
   "week01.html": {
-   "sha256": "75cac806e29eeda23c5a21a2acef08569ca5e663477ae258e050ef07c05c42b5",
-   "skeletonSha256": "277f1f1b7c95aa7de72b8e8cd1c1cf06c761b049c612b88c12006fdc850b0d7a",
+   "sha256": "4124bb555b7bb009af838255ab8981e7eff87ea2679331d18431ababfff7de9c",
+   "skeletonSha256": "dbe300d5340470baa4a7390c9fe3731f193ad99fc9f037a349ec5ddf860eba8b",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -84,11 +84,6 @@
       "pat",
       "audio/mpeg",
       "145d72cc9602775aeac573e90c3ba6ba25acfe28326d59597ae00b6e615abbab"
-     ],
-     [
-      "pit",
-      "audio/mpeg",
-      "26bb47a4ff35fb0800f3c7255cc4d5c1316eeba27db93a66909e108c22aefa2b"
      ],
      [
       "sip",
@@ -569,8 +564,8 @@
    }
   },
   "week02.html": {
-   "sha256": "fb2ea610fe493a4d955f5138df005d2628057d0e255d615400510b6fa97f5d99",
-   "skeletonSha256": "525376e3b8b8913546779e25ed9681d2dfd21bb1636c94c6e50fc12b71091233",
+   "sha256": "8fad17452aa5a0e5b5200d2e50daa133837aa48451ce3738ae58304479ecf8c9",
+   "skeletonSha256": "36641810bf620faae9f091c6045e31c2f4b09c8908f8e37cf15d8cd9d639d03c",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -1262,8 +1257,8 @@
    }
   },
   "week03.html": {
-   "sha256": "a347ecd6b01ec02d57535fcbc73740cfc8f1071cc5b4579923bb4ed51883dc8b",
-   "skeletonSha256": "f0228739d97be7228ac9dc64ec554408e5ccee36d9fbe33741bbd83f65f29199",
+   "sha256": "05dc8c104929676795ab4546b117a1c9f568a4f9168e1ac3177d0baa6a16c552",
+   "skeletonSha256": "94e35b83ceebb8363d3a11ce0f06af65ccdaf44afd31dbefc195504b22a0d8e6",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -2360,8 +2355,8 @@
    }
   },
   "week04.html": {
-   "sha256": "030fc0d085f8d9a141b2928a55475a0b706d873dcaa452e07d4a89e7540d7d48",
-   "skeletonSha256": "a851a22790ac21ebefbe64feaa9ce39f4b621f41f45dbaa7042e94626782d39f",
+   "sha256": "fc6574187d81925fcbc379636ff75dea2afa5edb0ec421bd955f484ca80c3109",
+   "skeletonSha256": "df9ae3310b1969860c7d23ca9715cf0f0a42eaa4bb9c7cc6f484f076a1ca0864",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -3950,6 +3945,6 @@
   }
  },
  "course": {
-  "sha256": "dd6ee1cf637793d3d9606e191888526550a0660188bf05e547b43281cff34832"
+  "sha256": "0555e664bfe3a8309dc2c393c106525ef17fc6d4539c3f4972c20baf4b256d28"
  }
 }
