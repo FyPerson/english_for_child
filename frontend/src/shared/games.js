@@ -1151,7 +1151,7 @@ function initFlash(){
         tip.innerHTML = `孩子读出来之后，点这里核对 → <button class="btn btn--ghost" style="padding:6px 14px;font-size:13px" data-say="${it.v}">${ART.spk} 听一下</button>`;
       }else{
         const s = SOUNDS[it.k];
-        face.innerHTML = `<span class="${s.type==='v'?'v':''}">${s.L}</span>`;
+        face.innerHTML = `<span class="${s.type==='v'?'v':''}">${s.grapheme}</span>`;
         tip.innerHTML = `<b>${s.ipa}</b>　${s.mem}　<button class="btn btn--ghost" style="padding:6px 14px;font-size:13px" data-sayph="${it.k}">${ART.spk} 听一下</button>`;
       }
       meta.textContent = `${i+1} / ${items.length}`;

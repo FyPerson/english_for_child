@@ -43,10 +43,10 @@ function blockHTML(b, ctx){
     );
     return `<div class="sound">
       <div class="sound__hd">
-        ${forms.map(f => tileHTML(SOUNDS[f].L,'tile--lg',true)).join('')}
+        ${forms.map(f => tileHTML(SOUNDS[f].grapheme,'tile--lg',true)).join('')}
         <div class="sound__meta">
           <div class="sound__ipa ${isV?'is-v':'is-c'}">${s.ipa}</div>
-          <div class="sound__hint">${isV?'元音':'辅音'} · ${hasPhoneme(b.s) ? (forms.length>1 ? forms.map(f=>SOUNDS[f].L).join(' 和 ')+' 发同一个音，点哪块都能听' : '点字母积木听真人示范') : '真人示范音待补，先按下面的口令示范'}</div>
+          <div class="sound__hint">${isV?'元音':'辅音'} · ${hasPhoneme(b.s) ? (forms.length>1 ? forms.map(f=>SOUNDS[f].grapheme).join(' 和 ')+' 发同一个音，点哪块都能听' : '点字母积木听真人示范') : '真人示范音待补，先按下面的口令示范'}</div>
         </div>
       </div>
       <div class="sound__body">

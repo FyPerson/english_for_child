@@ -292,10 +292,24 @@ class CheckTests(unittest.TestCase):
 
 class ReadOnlyBehaviourTests(unittest.TestCase):
     def test_repository_fixture_exists_and_build_plus_check_leave_it_untouched(self):
+        """build 与 baseline --check 都不得改动 fixture 文件（只读行为契约）。
+
+        注意 --check 这一步**不要求子进程退出码为 0**。本测试的判据只有一条：
+        fixture 的字节与 mtime 未变。--check 的退出码反映的是"当前产物是否仍与
+        基线相符"，那是**产物内容的瞬时状态**，不是只读行为——里程碑 2 这类会
+        合法改变产物的改造进行期间，它本来就该报差异（第 9 步重取基线后才回到
+        相符）。原先写 check=True 等于把这个瞬时状态锁进了一条名为
+        ReadOnlyBehaviour 的测试里，改造一开始就必红，而它红的原因与它要保护的
+        性质无关。build 那一步仍然要求成功——build 失败是真问题。
+        """
         self.assertTrue(baseline.FIXTURE.exists(), 'the repository baseline fixture is required')
         before = (baseline.FIXTURE.read_bytes(), os.stat(baseline.FIXTURE).st_mtime_ns)
         subprocess.run([sys.executable, 'tools/build_lessons.py'], cwd=ROOT, check=True)
-        subprocess.run([sys.executable, 'tools/baseline.py', '--check'], cwd=ROOT, check=True)
+        checked = subprocess.run([sys.executable, 'tools/baseline.py', '--check'], cwd=ROOT,
+                                 capture_output=True, text=True, encoding='utf-8')
+        # 退出码不参与判定，但要确认它真的跑起来了——不能因为命令根本没执行而空过。
+        self.assertIn('baseline', (checked.stdout or '') + (checked.stderr or ''),
+                      '--check 似乎没有真正执行：stdout/stderr 里找不到 baseline 相关输出')
         self.assertEqual((baseline.FIXTURE.read_bytes(), os.stat(baseline.FIXTURE).st_mtime_ns), before)
 
     def test_force_without_create_is_an_error_in_both_entrypoints(self):

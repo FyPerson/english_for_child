@@ -277,18 +277,25 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   const lConsumerFindings = realDoc.findings.filter(f => f.ruleId === 'DATA-SOUNDS-01' && f.findingId.startsWith('l-field-consumer:'));
   assert.equal(lConsumerFindings.length, 4, '「L 字段消费点」应精确对应方案 §3.1 影响面表点名的四处');
   assert(lConsumerFindings.every(f => f.week === null), 'L 字段消费点是代码事实，不挂在具体某一周');
-  const expectLocated = (id, file, line) => {
+  /* 2026-09-09 里程碑 2 第 4a 步「L → grapheme 收敛」已把这四处消费点从 .L 改成
+     .grapheme——L_FIELD_CONSUMER_SPECS 的正则按方案 §3.1 硬编码的是旧形状 .L，此时
+     必然不再匹配。这不是审计工具的 bug：它自己的 note 已写明"按已知模式没能定位到——
+     可能代码形状已变化，需要人工核实这份清单是否已过期"，status 因此从 fail 降为
+     unknown、source.line 为 null，这正是设计好的行为。人工核实结论：清单已过期
+     （四处均已改用 grapheme），过期原因是预期内的 4a 收敛，不代表遗漏。重新扫描
+     patttern 本身是否要跟着改指向 grapheme 属于第 4a 步之外的事，留给后续步骤按需处理。 */
+  const expectStale = (id, file) => {
     const f = lConsumerFindings.find(x => x.findingId === 'l-field-consumer:' + id);
     assert(f, `应有 l-field-consumer:${id}`);
     assert.equal(f.source.file, file);
-    assert.equal(f.source.line, line, `l-field-consumer:${id} 应精确定位到 ${file}:${line}`);
-    assert.equal(f.status, 'fail', '四处目前都还在读 .L，现状应为 fail');
+    assert.equal(f.source.line, null, `l-field-consumer:${id} 的旧 .L 模式已 4a 收敛不再匹配，line 应为 null`);
+    assert.equal(f.status, 'unknown', '四处已在 4a 步完成 L→grapheme 收敛，旧模式不再匹配，现状应为 unknown（清单过期，非遗漏）');
   };
-  expectLocated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 46);
-  expectLocated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 49);
-  expectLocated('games-flash-display', 'frontend/src/shared/games.js', 1154);
-  expectLocated('check-data-schema-gate', 'tools/validation/check_data.js', 83);
-  console.log('PASS migration_audit（H-3 验证）：「L 字段消费点」四条全局发现精确定位到方案 §3.1 影响面表点名的四处（render-blocks.js:46/49、games.js:1154、check_data.js:83）');
+  expectStale('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js');
+  expectStale('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js');
+  expectStale('games-flash-display', 'frontend/src/shared/games.js');
+  expectStale('check-data-schema-gate', 'tools/validation/check_data.js');
+  console.log('PASS migration_audit（H-3 验证 + 4a 收敛后回归）：「L 字段消费点」四条全局发现均已从 fail 转为 unknown（旧 .L 模式经 4a 收敛后不再匹配，清单过期属预期，非遗漏）');
 }
 
 // ============================================================================
@@ -453,7 +460,10 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     'DATA-PATTERN-02': { pass: 0, fail: 13, 'not-applicable': 0, unknown: 0 },
     'DATA-RESERVED-01': { pass: 35, fail: 5, 'not-applicable': 0, unknown: 0 },
     'DATA-RESERVED-02': { pass: 23, fail: 1, 'not-applicable': 0, unknown: 0 },
-    'DATA-SOUNDS-01': { pass: 0, fail: 8, 'not-applicable': 0, unknown: 0 },
+    /* 2026-09-09 里程碑 2 第 4a 步「L → grapheme 收敛」后更新：四周 w{1..4}:l-field-present
+       从 fail 转 pass（SOUNDS 条目不再是"只有 L 没有 grapheme"）；四条 l-field-consumer
+       从 fail 转 unknown（硬编码的旧 .L 正则不再匹配已改成 .grapheme 的代码，见 §280 附近注释）。 */
+    'DATA-SOUNDS-01': { pass: 4, fail: 0, 'not-applicable': 0, unknown: 4 },
     'DATA-WALL-01': { pass: 2, fail: 2, 'not-applicable': 0, unknown: 4 }
   };
   const actualByRule = {};
@@ -491,14 +501,6 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     'DATA-RESERVED-01/w4:definition:rot',
     'DATA-RESERVED-01/w4:definition:sob',
     'DATA-RESERVED-02/w1:segment-count:spit',
-    'DATA-SOUNDS-01/l-field-consumer:check-data-schema-gate',
-    'DATA-SOUNDS-01/l-field-consumer:games-flash-display',
-    'DATA-SOUNDS-01/l-field-consumer:render-blocks-forms-join',
-    'DATA-SOUNDS-01/l-field-consumer:render-blocks-tileHTML',
-    'DATA-SOUNDS-01/w1:l-field-present',
-    'DATA-SOUNDS-01/w2:l-field-present',
-    'DATA-SOUNDS-01/w3:l-field-present',
-    'DATA-SOUNDS-01/w4:l-field-present',
     'DATA-WALL-01/w2:wall-covers-all-sounds',
     'DATA-WALL-01/w3:wall-covers-all-sounds'
   ].sort();

@@ -67,6 +67,7 @@ def build_jobs(temp, quick, skip_baseline, reproducible_fn=reproducible):
             ('migration diff contract', ['node', 'tests/unit/test_migration_diff.js']),
             ('grapheme semantics contract', ['node', 'tests/unit/test_grapheme_semantics.js']),
             ('migration audit contract', ['node', 'tests/unit/test_migration_audit.js']),
+            ('grapheme migration contract', ['node', 'tests/unit/test_grapheme_migration.js']),
             ('assessment contract', ['node', 'tests/unit/test_assessment_contract.js']),
             ('media coverage', ['node', 'tests/unit/test_media.js'])]
     if not quick:

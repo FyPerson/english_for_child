@@ -121,7 +121,7 @@ const ASSESSMENT_WORDS = {
 
 const SOUNDS = {
   "s": {
-    "L": "s",
+    "grapheme": "s",
     "ipa": "/s/",
     "type": "c",
     "art": "snake",
@@ -148,7 +148,7 @@ const SOUNDS = {
     ]
   },
   "a": {
-    "L": "a",
+    "grapheme": "a",
     "ipa": "/æ/",
     "type": "v",
     "art": "ant",
@@ -175,7 +175,7 @@ const SOUNDS = {
     ]
   },
   "t": {
-    "L": "t",
+    "grapheme": "t",
     "ipa": "/t/",
     "type": "c",
     "art": "tiger",
@@ -202,7 +202,7 @@ const SOUNDS = {
     ]
   },
   "i": {
-    "L": "i",
+    "grapheme": "i",
     "ipa": "/ɪ/",
     "type": "v",
     "art": "igloo",
@@ -229,7 +229,7 @@ const SOUNDS = {
     ]
   },
   "p": {
-    "L": "p",
+    "grapheme": "p",
     "ipa": "/p/",
     "type": "c",
     "art": "popcorn",
@@ -256,7 +256,7 @@ const SOUNDS = {
     ]
   },
   "n": {
-    "L": "n",
+    "grapheme": "n",
     "ipa": "/n/",
     "type": "c",
     "art": "nose",
@@ -283,7 +283,7 @@ const SOUNDS = {
     ]
   },
   "c": {
-    "L": "c",
+    "grapheme": "c",
     "ipa": "/k/",
     "type": "c",
     "art": "camera",
@@ -311,7 +311,7 @@ const SOUNDS = {
     ]
   },
   "e": {
-    "L": "e",
+    "grapheme": "e",
     "ipa": "/e/",
     "type": "v",
     "art": "huh",
@@ -338,7 +338,7 @@ const SOUNDS = {
     ]
   },
   "h": {
-    "L": "h",
+    "grapheme": "h",
     "ipa": "/h/",
     "type": "c",
     "art": "breath",
@@ -365,7 +365,7 @@ const SOUNDS = {
     ]
   },
   "r": {
-    "L": "r",
+    "grapheme": "r",
     "ipa": "/r/",
     "type": "c",
     "art": "racecar",
@@ -392,7 +392,7 @@ const SOUNDS = {
     ]
   },
   "m": {
-    "L": "m",
+    "grapheme": "m",
     "ipa": "/m/",
     "type": "c",
     "art": "yum",
@@ -419,7 +419,7 @@ const SOUNDS = {
     ]
   },
   "d": {
-    "L": "d",
+    "grapheme": "d",
     "ipa": "/d/",
     "type": "c",
     "art": "drum",
@@ -446,7 +446,7 @@ const SOUNDS = {
     ]
   },
   "g": {
-    "L": "g",
+    "grapheme": "g",
     "ipa": "/g/",
     "type": "c",
     "art": "gulp",
@@ -473,7 +473,7 @@ const SOUNDS = {
     ]
   },
   "o": {
-    "L": "o",
+    "grapheme": "o",
     "ipa": "/ɑ/",
     "type": "v",
     "art": "doctor",
@@ -500,7 +500,7 @@ const SOUNDS = {
     ]
   },
   "u": {
-    "L": "u",
+    "grapheme": "u",
     "ipa": "/ʌ/",
     "type": "v",
     "art": "umbrella",
@@ -527,7 +527,7 @@ const SOUNDS = {
     ]
   },
   "l": {
-    "L": "l",
+    "grapheme": "l",
     "ipa": "/l/",
     "type": "c",
     "art": "lollipop",
@@ -554,7 +554,7 @@ const SOUNDS = {
     ]
   },
   "f": {
-    "L": "f",
+    "grapheme": "f",
     "ipa": "/f/",
     "type": "c",
     "art": "candle",
@@ -581,7 +581,7 @@ const SOUNDS = {
     ]
   },
   "b": {
-    "L": "b",
+    "grapheme": "b",
     "ipa": "/b/",
     "type": "c",
     "art": "ball",
@@ -608,7 +608,7 @@ const SOUNDS = {
     ]
   },
   "k": {
-    "L": "k",
+    "grapheme": "k",
     "ipa": "/k/",
     "type": "c",
     "art": "camera",

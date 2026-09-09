@@ -80,7 +80,7 @@ for (const w of RESERVED) ok(META.week >= 4 || W[w], `保留词 "${w}" 不在 W 
 for (const p of BOOK.pages) ok(typeof p.line === 'string' && p.zh && p.art, `小书页缺字段：${p.line}`);
 for (const k of Object.keys(SOUNDS)) {
   const s = SOUNDS[k];
-  ok(s.L && s.ipa && (s.type === 'c' || s.type === 'v'), `SOUNDS.${k} 缺 L/ipa/type`);
+  ok(s.grapheme && s.ipa && (s.type === 'c' || s.type === 'v'), `SOUNDS.${k} 缺 grapheme/ipa/type`);
   ok(s.mem && s.cue && s.challenge && s.try && s.pass && s.how && s.warn && Array.isArray(s.demo),
      `SOUNDS.${k} 缺教学字段（mem/cue/challenge/try/pass/how/warn/demo）`);
 }
