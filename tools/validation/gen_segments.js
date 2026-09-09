@@ -108,15 +108,28 @@ function resolveWord(word, sounds, newPatternIds) {
   const minLen = Math.min(...candidates.map(c => c.length));
   const minSet = candidates.filter(c => c.length === minLen);
   if (minSet.length === 1) {
+    // codex medium（2026-09-09）：「规范先强调多解时算法无从判断，生成器却默认以
+    // 『字位数最少』给出建议——这只是编辑启发式，不必然等于课程设计意图」。status
+    // 名字仍叫 resolved（表示"能唯一选出一个字位数最少的候选"，不表示"这就是答案"），
+    // 但显式加 needsHumanReview: true——本工具从来不产出可以免检直接采信的建议，
+    // resolved 与 tie 在"是否需要人复核"这件事上没有区别，只是 resolved 能替人先
+        // 排出一个候选摆在最前面，tie 连候选顺序都排不出来。allCandidates 始终是
+    // enumerateSegmentations 的完整枚举（不止 minSet 那几个），人复核时应该看到
+    // 全部解析，不只是"字位数最少"筛过一轮之后的子集——万一最少字位那个解本身就不是
+    // 目标读法，人只有看到全部解析才能挑出正确答案（tests/unit/test_gen_segments.py
+    // 的 bat/b+at 合成用例专门覆盖这种情况，是这条 medium 的证据 fixture）。
     return {
-      word, status: 'resolved', segments: minSet[0], candidates,
+      word, status: 'resolved', segments: minSet[0], candidates, allCandidates: candidates,
       touchesNewPattern: touchesNewPattern(minSet[0]),
-      reason: '按字位数最少选出（' + candidates.length + ' 个完整解中，字位数最少的恰好只有 1 个）'
+      needsHumanReview: true,
+      reason: '按"字位数最少"这条编辑启发式选出（' + candidates.length + ' 个完整解中，字位数最少的恰好只有 1 个）——' +
+        '这只是候选，不具契约优先级，算法无法判断这是否为教学意图'
     };
   }
   return {
     word, status: 'tie', candidates: minSet, allCandidates: candidates,
     touchesNewPattern: minSet.some(touchesNewPattern),
+    needsHumanReview: true,
     reason: '字位数最少的解有 ' + minSet.length + ' 个并列（' + minSet.map(c => c.join('+')).join(' / ') + '），需要人工决定'
   };
 }
@@ -153,6 +166,15 @@ function analyzeWeek(box) {
  * 因为那些是需要人立即处理的。 */
 function formatReport(analysis) {
   const lines = [];
+  // codex medium（2026-09-09，「生成器把启发式当成了权威」）：头部必须先声明本工具的
+  // 输出是候选而不是答案——"字位数最少"只是一条编辑启发式，算法无从判断哪个拆法才是
+  // 教学意图；下面每一条 resolved/tie 建议都要人工复核，尤其要核对"全部完整解析"里
+  // 是否有比"字位数最少"更符合教学意图的候选（见 tie 与 resolved 分组的 reason/
+  // allCandidates）。
+  lines.push('⚠️ 以下全部是候选，不是答案：本工具只能枚举完整解析、按"字位数最少"这条编辑');
+  lines.push('   启发式排出一个候选摆在最前面（tie 连这一步都排不出来），算法无法判断哪个');
+  lines.push('   拆法才是课程设计意图。resolved/tie 的每一条建议都必须人工复核——复核时请看');
+  lines.push('   完整解析列表，不要只看被选中的那一个（"字位数最少"不一定是目标读法）。');
   lines.push('newPatterns（本周新教字位，仅用于标注，不参与选解）：' +
     (analysis.newPatternIds.length ? analysis.newPatternIds.join(', ') : '（无 / META 未声明）'));
   const groups = { tie: [], unknown: [], error: [], resolved: [], unique: [], 'already-has-segments': [] };
@@ -160,9 +182,10 @@ function formatReport(analysis) {
 
   if (groups.tie.length) {
     lines.push('');
-    lines.push('=== 需要人工决定（并列，' + groups.tie.length + ' 个词）===');
+    lines.push('=== 需要人工决定（并列，' + groups.tie.length + ' 个词，需人工复核）===');
     for (const it of groups.tie) {
       lines.push('  ' + it.word + '：' + it.reason + (it.touchesNewPattern ? '  [涉及本周新教字位]' : ''));
+      lines.push('    全部完整解析（' + it.allCandidates.length + ' 个）：' + it.allCandidates.map(c => c.join('+')).join(' / '));
     }
   }
   if (groups.unknown.length) {
@@ -177,10 +200,10 @@ function formatReport(analysis) {
   }
   if (groups.resolved.length) {
     lines.push('');
-    lines.push('=== 建议的 segments（' + groups.resolved.length + ' 个词，多解已按"字位数最少"唯一选出）===');
+    lines.push('=== 建议的 segments（' + groups.resolved.length + ' 个词，按"字位数最少"候选，均需人工复核）===');
     for (const it of groups.resolved) {
-      lines.push('  ' + it.word + ' -> [' + it.segments.join(', ') + ']' + (it.touchesNewPattern ? '  [涉及本周新教字位]' : '') +
-        '（' + it.candidates.length + ' 个完整解：' + it.candidates.map(c => c.join('+')).join(' / ') + '；' + it.reason + '）');
+      lines.push('  ' + it.word + ' -> [' + it.segments.join(', ') + ']  [候选，需人工复核]' + (it.touchesNewPattern ? '  [涉及本周新教字位]' : '') +
+        '（' + it.allCandidates.length + ' 个完整解：' + it.allCandidates.map(c => c.join('+')).join(' / ') + '；' + it.reason + '）');
     }
   }
   lines.push('');
@@ -213,7 +236,12 @@ function injectSegmentsIntoWDeclaration(wDeclText, updates) {
     }
     out = out.replace(re, (m, pre, colonOpen, body, close) => {
       const trimmed = body.replace(/,\s*$/, '');
-      const seg = 'segments:[' + ids.map(id => JSON.stringify(id)).join(',') + ']';
+      // codex medium（2026-09-09）：写回时也要留证据说明这不是权威答案——不能只在
+      // dry-run 的终端输出里提醒，写进源码的这一行本身也要带同一句话，因为复核者
+      // 之后可能只看 diff/源码，不会重新跑一遍 CLI 看头部警告。
+      const seg = 'segments:[' + ids.map(id => JSON.stringify(id)).join(',') + ']' +
+        ' /* gen_segments 候选：按"字位数最少"启发式选出，不具契约优先级，' +
+        '算法无法判断这是否为教学意图——人工复核确认后可删除本注释 */';
       const sep = trimmed.trim() ? ',' : '';
       return pre + word + colonOpen + trimmed + sep + seg + close;
     });

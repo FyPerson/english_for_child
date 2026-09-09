@@ -328,6 +328,113 @@ function diffMinimalPair() {
   console.log(`PASS diff5 最小对立：G3_PAIRS 字符级 diff 计数 vs 字位级 diff 计数，共 ${n} 次比较`);
 }
 
+// 探测四周 SOUNDS 里到底有没有多字母字位（第 7 步是否已迁移）——挪到这里（原本在文件
+// 末尾），因为下面的"来源分布 + 全集守恒"区块与文件末尾的自适应断言都要用它，且它只
+// 依赖 WEEKS 本身（与任何 diff 的执行结果无关），提前计算不改变其含义。
+const anyMultiLetterInData = WEEKS.some(({ sounds }) =>
+  Object.keys(sounds).some(id => String(sounds[id].grapheme).length > 1)
+);
+
+// ============================================================================
+// 来源分布 + 全集守恒（codex medium，2026-09-09：「差分测试的覆盖证明不足」）
+// 审查原话：现有验收措辞没有要求实际执行的词数大于零，也没有限制跳过比例——若抽取
+// 或分类出错导致全部词被跳过，测试仍可能显示为绿色。要求：按来源分类统计总词数/
+// 执行数/跳过数，且总数守恒（一个词都不能凭空消失）；固定 W1–W4 单字母基线应满足
+// 执行数===基线清单数量、跳过数===0；迁移后真实数据至少断言执行数>0。
+//
+// 判断（未强行满足"两者并集===共享语料全集"这条字面要求）：codex 还建议"含多字母词
+// 全部交给语义测试，两者抽取结果的并集应等于共享语料全集"。这在当前结构下做不到——
+// tests/unit/test_grapheme_semantics.js 用的是合成数据（rain/aid 等构造词），不消费
+// frontend/src/weeks/week0N.data.js 的真实语料，两个文件的"语料全集"根本不是同一个
+// 集合，谈不上取并集。把语义测试改成消费真实语料是结构性变更，不是这条 medium 本身
+// 要求的，也超出"代码面 medium"的范围（真要做还要重新过一遍方案 §3.9 的分工表，
+// 属于文档口径变更）。这里改用更强的机器可验证判据：**每个来源自证守恒**
+// （total === executed + skippedMultiLetter + skippedUnknown）——它已经挡住 codex
+// 点名的退化场景（抽取器少收一类 / 分类器把一批词错误分类为跳过），且不依赖"语义测试
+// 也扫真实语料"这一结构改动。如需真正的跨文件并集判据，留给后续 W5 迁移把双字母字位
+// 迁进真实数据、语义测试改接真实语料时再做（那时"并集"才有意义）。
+// ============================================================================
+const sourceStats = new Map(); // kind -> {total, executed, skippedMultiLetter, skippedUnknown}
+function statFor(kind) {
+  if (!sourceStats.has(kind)) sourceStats.set(kind, { total: 0, executed: 0, skippedMultiLetter: 0, skippedUnknown: 0 });
+  return sourceStats.get(kind);
+}
+function tallySourceCoverage() {
+  for (const { box, sounds } of WEEKS) {
+    // 用未去重的原始记录（collectWordConsumption 的原生输出）——上面五项差分为了
+    // "每个词只比较一次"而去重成 Set，会丢失"这个词具体来自哪个 kind"的信息；
+    // 这里的目的不是比较，是"来源分布"账本，必须按原始记录逐条计数，一条不漏。
+    const records = collectWordConsumption(box);
+    for (const rec of records) {
+      const s = statFor(rec.kind);
+      s.total++;
+      let ids;
+      try {
+        ids = segmentWord(rec.word.toLowerCase(), sounds);
+      } catch (e) {
+        s.skippedUnknown++; // segmentWord 解析失败（未知字位）：与上面五项差分里 `catch(e){continue}` 同一处置，
+        continue;           // 但这里显式计数，不再是"悄悄跳过、不进任何统计"
+      }
+      if (!isSingleLetterSegmentation(ids, sounds)) { s.skippedMultiLetter++; continue; } // §3.9 语料前置过滤，同上面五项差分
+      s.executed++;
+    }
+  }
+}
+tallySourceCoverage();
+
+let sourceReportLines = [];
+let totalWords = 0, totalExecuted = 0, totalSkippedMultiLetter = 0, totalSkippedUnknown = 0;
+for (const kind of [...sourceStats.keys()].sort()) {
+  const s = sourceStats.get(kind);
+  const skipped = s.skippedMultiLetter + s.skippedUnknown;
+  // 全集守恒：这个来源里的每一个词，要么被执行、要么被跳过（多字母字位/解析失败
+  // 两种跳过原因之一），不能有第三种去向——这正是 codex 点名要挡的"静默削减"。
+  assert.equal(
+    s.total, s.executed + skipped,
+    `来源 "${kind}" 总词数守恒被打破：total=${s.total} 但 executed(${s.executed})+skipped(${skipped})=${s.executed + skipped}——` +
+    `说明有词在统计过程中凭空消失，抽取器/分类逻辑有问题`
+  );
+  totalWords += s.total; totalExecuted += s.executed;
+  totalSkippedMultiLetter += s.skippedMultiLetter; totalSkippedUnknown += s.skippedUnknown;
+  sourceReportLines.push(`  ${kind}：总 ${s.total}，执行 ${s.executed}，跳过 ${skipped}（多字母字位 ${s.skippedMultiLetter} + 解析失败 ${s.skippedUnknown}）`);
+}
+console.log('PASS 来源分布 + 全集守恒：按 word_consumers.ENTRY_KINDS 逐来源统计，各来源均满足 total===executed+skipped');
+console.log(sourceReportLines.join('\n'));
+console.log(`  合计：总 ${totalWords}，执行 ${totalExecuted}，跳过（多字母字位）${totalSkippedMultiLetter}，跳过（含未教字位无法识别）${totalSkippedUnknown}`);
+
+// 「跳过」不是铁板一块的一种去向——两个 skip 计数器的性质不同，不能合并成一个数再要求
+// 它为 0：
+//   - skippedMultiLetter（§3.9 前置过滤）：本文件判定"这个词的字位级解析用到了多字母
+//     字位"。第 7 步前，四周字位表全是单字母，这个数**理应恒为 0**——非零就是
+//     isSingleLetterSegmentation 或前置过滤逻辑本身有问题（这条判据文件顶部已有一份
+//     全局版本 `skippedMultiLetter`，这里按来源重跑一遍、用独立的统计口径——原始记录
+//     而非去重 Set——交叉验证同一件事，不是同一段代码抄两遍）。
+//   - skippedUnknown（segmentWord 抛 segment-unknown）：真实语料里合法存在——G1 听音
+//     找首字母游戏的干扰图片词（如 W1 的 dog/tree/book）与部分 sight 词（如 see）
+//     按教学设计本来就含本周未教的字位，"读不出来"是设计意图而非缺陷（与差分 4
+//     "含未教内容"的判定同一结论）。跑一遍实测（见本次改动记录）证实：第 7 步前
+//     四周真实语料里 skippedUnknown 恰为 24（全部可归因于 g1-rounds 的干扰词、
+//     sight 的 see、book-page/sentences 里含未教字位的整句词），跟"抽取器/分类器
+//     出错导致静默削减"是两回事，不该被同一条"必须为 0"的断言误伤。
+assert.equal(
+  totalSkippedMultiLetter, 0,
+  `单字母基线（第 7 步前）下"多字母字位"跳过数应为 0，实际 ${totalSkippedMultiLetter}——` +
+  `说明 isSingleLetterSegmentation 或前置过滤逻辑在按来源统计时出现了不一致`
+);
+if (!anyMultiLetterInData) {
+  // 固定 W1–W4 单字母基线：执行数必须 > 0，且"执行 + 未教跳过"必须等于总词数
+  // （守恒已在上面逐来源验过，这里再验一次合计数，双保险）；不要求 skippedUnknown
+  // 为 0——那是教学设计里合法存在的"未教内容"，见上方注释。
+  assert(totalExecuted > 0, `单字母基线下执行数应大于 0，实际 executed=${totalExecuted}`);
+  assert.equal(totalExecuted + totalSkippedUnknown, totalWords,
+    `单字母基线下 执行数+未教跳过数 应等于总词数：executed=${totalExecuted} skippedUnknown=${totalSkippedUnknown} total=${totalWords}`);
+} else {
+  // 迁移后（第 7 步之后）：至少证明"没有被跳空"——这正是 codex 原话「若抽取或分类
+  // 错误导致全部词被跳过，测试仍可能显示为绿色」要挡的场景，用真实的执行数下限，
+  // 不是"跳过比例"这种更难界定的判据。
+  assert(totalExecuted > 0, `迁移后来源分布的执行数应大于 0（不能全部被跳过），实际 executed=${totalExecuted}`);
+}
+
 diffSpellingComparison();
 regressionCanSpellOldCharsAcceptsArrayRack();
 diffFirstGrapheme();
@@ -339,12 +446,9 @@ assert(checked > 200, `全部差分合计比较次数过少（${checked}），�
 
 // 跳过数的自适应断言：光有 checked > 200 挡不住"前置断言判定写错、误跳掉一大批词"这种
 // 退化——只要剩下的词还够 200 次比较，测试照样绿。所以再按数据现状卡一道：
-// 先探测四周 SOUNDS 里到底有没有多字母字位；一个都没有（= 第 7 步尚未迁移）时，
+// anyMultiLetterInData（上面已算好）一个多字母字位都没有（= 第 7 步尚未迁移）时，
 // 合法的跳过数只能是 0，非零即判定逻辑有问题。第 7 步迁入双字母后本条自动放松，
 // 不需要回来改测试。
-const anyMultiLetterInData = WEEKS.some(({ sounds }) =>
-  Object.keys(sounds).some(id => String(sounds[id].grapheme).length > 1)
-);
 if (!anyMultiLetterInData) {
   assert.equal(
     skippedMultiLetter, 0,
