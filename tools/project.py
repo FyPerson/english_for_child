@@ -103,7 +103,7 @@ def main():
     ap=argparse.ArgumentParser(description=__doc__)
     commands=ap.add_subparsers(dest='command',required=True)
     commands.add_parser('build')
-    check=commands.add_parser('check');check.add_argument('--quick',action='store_true')
+    check=commands.add_parser('check');check.add_argument('--quick',action='store_true');check.add_argument('--skip-baseline',action='store_true',help="Skip only the 'single-file baseline' job; every other job still runs and still fails the run")
     commands.add_parser('release',help='Run the full regression (which builds build/), then package it into dist/<version>/')
     serve=commands.add_parser('serve',help='Build, package and preview locally without the regression run');serve.add_argument('--port',type=int,default=8000)
     commands.add_parser('doctor')
@@ -126,7 +126,7 @@ def main():
         print('PASS environment, Node.js >= '+str(NODE_MIN_MAJOR)+' and Chromium')
     elif args.command=='baseline':run('baseline.py',*(['--create']+(['--force'] if args.force else []) if args.create else ['--check']))
     elif args.command=='build':run('build_lessons.py')
-    elif args.command=='check':run('run_checks.py',*(['--quick'] if args.quick else []))
+    elif args.command=='check':run('run_checks.py',*(['--quick'] if args.quick else []),*(['--skip-baseline'] if args.skip_baseline else []))
     elif args.command=='release':
         run('run_checks.py')   # step ① of check writes build/; nothing is built again here
         package()
