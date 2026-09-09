@@ -11,11 +11,18 @@ tools/validation/export_data.js 是同一种"Python 做薄封装、Node 做实�
 分工，因为周数据文件本身是 JS，且分词依赖 frontend/src/shared/graphemes.js）。
 
 Usage:
-  python tools/gen_segments.py --target frontend/src/weeks/week05.data.js              # dry-run，打印建议
-  python tools/gen_segments.py --target frontend/src/weeks/week05.data.js --write      # 写回可自动判定（无并列）的建议
+  python tools/gen_segments.py --target frontend/src/weeks/week05.data.js                    # dry-run，打印建议
+  python tools/gen_segments.py --target frontend/src/weeks/week05.data.js --write            # 写回唯一解（无歧义）的词
+  python tools/gen_segments.py --target frontend/src/weeks/week05.data.js --write-heuristic   # 额外写回启发式候选（多解词，务必先读警告）
 
-退出码：非 0 表示存在需要人工处理的词（并列 / 无法识别 / 分析出错），--write 时这些词
-不会被写回。
+退出码：非 0 表示存在需要人工处理的词（并列 / 无法识别 / 分析出错），这些词不会被写回。
+
+M5（2026-09-09 里程碑 2 收口批）：`--write` 默认只写"唯一解"（不需要启发式、没有歧义）的
+词；多解词（按"字位数最少"这条编辑启发式选出候选的那些）一律不自动写回，只在报告里列出
+全部解析供人选择——这不是限制过严，是安全性修复：bat fixture 已经证明这条启发式会给出
+错误答案（b+at，而目标读法其实是 b+a+t），放任它自动写进数据文件，等于让"错误建议"先
+进源码、再靠人逐条去发现并推翻。要写多解词的候选，必须显式加 --write-heuristic（见下方
+帮助文本），写回的每一处仍带 @gen-segments-unreviewed 标记，交付前必须人工复核删除。
 """
 import argparse
 import subprocess
@@ -25,12 +32,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def run(target, write, capture_output=False):
+def run(target, write, write_heuristic=False, capture_output=False):
     """调用 tools/validation/gen_segments.js 做实际的加载/分词/生成建议。
 
     `capture_output`：True 时把子进程 stdout/stderr 捕获成文本返回（供本文件的单测
     断言报告内容），False（默认，CLI 用）时让子进程直接继承本进程的 stdout/stderr，
     保持人在终端里跑的体验（--write 的进度提示、报告都是流式打印的）。
+    `write_heuristic`：True 时额外传 --write-heuristic 给子进程（见下方 CLI 参数说明）。
     """
     target_path = Path(target)
     if not target_path.is_absolute():
@@ -38,6 +46,8 @@ def run(target, write, capture_output=False):
     cmd = ['node', str(ROOT / 'tools' / 'validation' / 'gen_segments.js'), str(target_path)]
     if write:
         cmd.append('--write')
+    if write_heuristic:
+        cmd.append('--write-heuristic')
     if capture_output:
         return subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, encoding='utf-8')
     return subprocess.run(cmd, cwd=str(ROOT))
@@ -46,9 +56,16 @@ def run(target, write, capture_output=False):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--target', required=True, help='周数据文件路径，如 frontend/src/weeks/week05.data.js')
-    ap.add_argument('--write', action='store_true', help='写回可自动判定（无并列）的建议；默认只打印（dry-run）')
+    ap.add_argument('--write', action='store_true',
+                     help='写回"唯一解"（无歧义、不需要启发式）的词的 segments；默认只打印（dry-run）。'
+                          '多解词（启发式候选）不会被这个开关写回，见 --write-heuristic。')
+    ap.add_argument('--write-heuristic', action='store_true',
+                     help='在 --write 的基础上，额外写回"字位数最少"这条编辑启发式选出的候选（多解词）。'
+                          '⚠️ 基于未经验证的启发式，bat fixture 已证明它会给错（会把 b+a+t 误判成 b+at）——'
+                          '写回的每一处仍带 @gen-segments-unreviewed 标记并被 check_data.js 拦下，交付前'
+                          '必须逐条人工复核；传本参数会隐含启用写回（不需要再单独加 --write）。')
     args = ap.parse_args()
-    result = run(args.target, args.write)
+    result = run(args.target, args.write, write_heuristic=args.write_heuristic)
     sys.exit(result.returncode)
 
 

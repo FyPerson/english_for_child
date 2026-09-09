@@ -26,6 +26,15 @@
  * frontend/src/weeks/week01–04.data.js 上（经 sounds_grapheme_adapter 的临时 L→grapheme
  * 适配，见该文件头部说明）。RESERVED / G3_PAIRS 两项差分直接用各周的顶层常量，
  * 因为被点名的旧算法本来就是对着这两个常量写的。
+ *
+ * ⚠️（H-3，2026-09-09 里程碑 2 收口批）覆盖缺口——本文件与 test_grapheme_semantics.js
+ * 合起来仍未验证真实周数据的新语义：本文件的差分排除全部多字母词（只守旧单字母子集），
+ * test_grapheme_semantics.js 只用合成语料（rain/aid 等构造词）。**真实周数据里显式声明的
+ * `segments`、真实消费者输入（games.js/check_data.js/render-blocks.js 等实际读取路径）、
+ * 真实教学词是否符合新语义，两个文件加起来一个都没验**。本文件不得被描述为"迁移后新语义
+ * 的主证明"——它证明的只是"改造没有破坏现有单字母语义"这一件更窄的事。真实数据语义套件
+ * 是第 7 步的事（那时才有真实多字母数据），接入点已在 test_grapheme_semantics.js 预留，
+ * 见该文件头注释与文末 TODO。
  */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -60,6 +69,59 @@ function isSingleLetterSegmentation(ids, sounds) {
   return ids.every(id => sounds[id].grapheme.toLowerCase().length === 1);
 }
 function tallySkip() { skippedMultiLetter++; }
+
+/* H-2 修复（预筛 high：「异常无差别跳过，会把歧义词伪装成未知词」）：五项差分与
+ * "来源分布"统计原先全是 `catch (e) { continue; }` / `catch (e) { ids = null; }`，
+ * 不看错误码——segment-unknown（真的含未教字位）与 segment-ambiguous（需要显式
+ * segments 消歧）是两种完全不同的情况，混为一谈等于把"需要消歧的词"伪装成
+ * "没教过的词"（引入 `ai` 后 `rain` 因 `a`/`i` 已教而抛 segment-ambiguous，恰恰是
+ * 迁移最该测的词，却会被 continue 掉、计入 skippedUnknown）。
+ *
+ * resolveOrSkip(word, sounds, box) 是五项差分 + 来源分布统计共用的唯一分派点
+ * （不在每处各自重复实现，也避免五处判断标准不一致）：
+ *   - 正常解析成功 → { ids, viaExplicitSegments: false }
+ *   - segment-unknown（真的含未教字位）→ 返回 null，调用方按"合法跳过，不是本项
+ *     差分要测的东西"处置（与改前的 continue 行为一致，未收窄）。
+ *   - segment-ambiguous → 先读 box.W[word.toLowerCase()].segments（W 的键在真实
+ *     数据里就是小写单词字面量，见 word_consumers.js 头注释：W 回答"某词是什么
+ *     意思"，键即词本身；这里的小写口径与 segmentWord 内部 word.toLowerCase()
+ *     一致）。拿得到就用它重新解析，正常参与差分（{ ids, viaExplicitSegments:
+ *     true }，并计入 skippedAmbiguousResolved 供报告与守恒交叉核验）；拿不到就
+ *     直接抛错——缺 segments 的歧义词是数据缺陷，必须暴露，不允许被跳过逻辑捎带
+ *     覆盖过去。
+ *   - 其他任何错误码 → 重新抛出，不许吞（无差别 catch 同样会把不相关的内部错误/
+ *     坏数据悄悄吃掉）。
+ */
+let skippedAmbiguousResolved = 0; // 非独占计数：因 segment-ambiguous 走显式 segments 消歧路径解析成功的词数，
+                                   // 这些词最终仍会按其解析结果正常计入 executed 或 skippedMultiLetter（见下方
+                                   // 各调用点），这里额外统计只为报告与"是否真的用到了消歧路径"的可见性，
+                                   // 不参与 total===executed+skipped 的守恒等式（那条等式的三个桶本就是互斥
+                                   // 划分，ambiguousResolved 是其中两个桶的子集标注，不是第四个桶——见
+                                   // tallySourceCoverage 里 per-kind 的 ambiguousResolved 字段与其头注释）。
+function resolveOrSkip(word, sounds, box) {
+  try {
+    return { ids: segmentWord(word, sounds), viaExplicitSegments: false };
+  } catch (e) {
+    if (e && e.code === 'segment-unknown') return null;
+    if (e && e.code === 'segment-ambiguous') {
+      const key = word.toLowerCase();
+      const entry = box.W && box.W[key];
+      const segs = entry && Array.isArray(entry.segments) ? entry.segments : null;
+      if (!segs) {
+        const err = new Error(
+          `分词歧义（segment-ambiguous）且 box.W["${key}"].segments 缺失或不是数组："${word}"——` +
+          `歧义词必须靠显式 segments 消歧，缺失显式 segments 属数据缺陷，不允许被跳过逻辑静默吞掉`
+        );
+        err.code = 'segment-ambiguous-missing-segments';
+        err.word = word;
+        throw err;
+      }
+      skippedAmbiguousResolved++;
+      return { ids: segmentWord(word, sounds, segs), viaExplicitSegments: true };
+    }
+    throw e; // 其他任何错误码：不许吞，直接抛出
+  }
+}
 
 // ============================================================================
 // 差分 1 · 摆词比较
@@ -106,8 +168,9 @@ function diffSpellingComparison() {
     const rackG4Ids = normalizeIdList(box.META.rackG4, { legacy: true }); // 逐字符展开，当前数据下 = split('')
     const rackG5Ids = normalizeIdList(box.META.rackG5, { legacy: true });
     for (const word of corpusWords) {
-      let targetIds;
-      try { targetIds = segmentWord(word, sounds); } catch (e) { continue; } // 未知字位跳过，不是本项差分要测的东西
+      const resolved = resolveOrSkip(word, sounds, box);
+      if (!resolved) continue; // segment-unknown：未知字位跳过，不是本项差分要测的东西
+      const targetIds = resolved.ids;
       if (!isSingleLetterSegmentation(targetIds, sounds)) { tallySkip(); continue; } // §3.9 语料前置断言：本文件只用单字母基线
       // -- canSpell 差分（rack 多重集消耗）--
       for (const [rackString, rackIds] of [[box.META.rackG4, rackG4Ids], [box.META.rackG5, rackG5Ids]]) {
@@ -165,8 +228,9 @@ function diffFirstGrapheme() {
   for (const { box, sounds } of WEEKS) {
     const corpusWords = new Set(collectWordConsumption(box).map(r => r.word.toLowerCase()));
     for (const word of corpusWords) {
-      let ids;
-      try { ids = segmentWord(word, sounds); } catch (e) { continue; }
+      const resolved = resolveOrSkip(word, sounds, box);
+      if (!resolved) continue;
+      const ids = resolved.ids;
       if (!isSingleLetterSegmentation(ids, sounds)) { tallySkip(); continue; } // §3.9 语料前置断言
       // -- charAt(0) / w[0] 首字符 vs 首字位 grapheme --
       const oldFirst = word.charAt(0);
@@ -190,8 +254,9 @@ function diffFirstGrapheme() {
           // 会被新签名的默认拒绝行为当场抓到，而不是被 legacy:true 悄悄展开成字符数组。
           const letterIds = normalizeIdList(b.letters);
           for (const word of b.words) {
-            let ids;
-            try { ids = segmentWord(word, sounds); } catch (e) { continue; }
+            const resolved = resolveOrSkip(word, sounds, box);
+            if (!resolved) continue;
+            const ids = resolved.ids;
             if (!isSingleLetterSegmentation(ids, sounds)) { tallySkip(); continue; } // §3.9 语料前置断言
             const oldIncludes = b.letters.includes(word[0]);
             const newIncludes = letterIds.includes(ids[0]);
@@ -224,8 +289,8 @@ function diffGraphemeCount() {
   let n = 0;
   for (const { box, sounds } of WEEKS) {
     for (const word of box.RESERVED) {
-      let ids;
-      try { ids = segmentWord(word, sounds); } catch (e) { ids = null; }
+      const resolved = resolveOrSkip(word, sounds, box);
+      const ids = resolved ? resolved.ids : null;
       if (ids && !isSingleLetterSegmentation(ids, sounds)) { tallySkip(); continue; } // §3.9 语料前置断言
       const oldLen3 = word.length === 3;
       const newLen3 = !!ids && ids.length === 3;
@@ -273,12 +338,12 @@ function diffTaughtRange() {
     for (const word of corpusWords) {
       const oldUntaught = [...word.toLowerCase()].some(c => !TAUGHT_CHARS.has(c));
       let newUntaught;
-      let ids = null;
-      try {
-        ids = segmentWord(word, sounds);
+      const resolved = resolveOrSkip(word, sounds, box);
+      const ids = resolved ? resolved.ids : null;
+      if (!resolved) {
+        newUntaught = true; // segment-unknown：解析不出来 = 含未教内容，与旧侧字符不在已教集合里同一结论
+      } else {
         newUntaught = ids.some(id => !TAUGHT_IDS.has(id));
-      } catch (e) {
-        newUntaught = true; // 解析不出来 = 含未教内容，与旧侧字符不在已教集合里同一结论
       }
       if (ids && !isSingleLetterSegmentation(ids, sounds)) { tallySkip(); continue; } // §3.9 语料前置断言
       assert.equal(oldUntaught, newUntaught, `W${box.META.week} "${word}" 已教范围判定不一致：old=${oldUntaught} new=${newUntaught}`);
@@ -304,13 +369,15 @@ function diffMinimalPair() {
       const oldEqualLen = a.length === b.length;
       const oldMinimal = oldEqualLen && [...a].filter((c, i) => c !== b[i]).length === 1;
 
-      let idsA, idsB, newMinimal = false, newEqualLen = false;
-      try {
-        idsA = segmentWord(a, sounds);
-        idsB = segmentWord(b, sounds);
+      let idsA = null, idsB = null, newMinimal = false, newEqualLen = false;
+      const ra = resolveOrSkip(a, sounds, box);
+      const rb = resolveOrSkip(b, sounds, box);
+      if (ra && rb) {
+        idsA = ra.ids;
+        idsB = rb.ids;
         newEqualLen = idsA.length === idsB.length;
         newMinimal = newEqualLen && idsA.filter((id, i) => id !== idsB[i]).length === 1;
-      } catch (e) { /* 解析失败：newMinimal 保持 false，与旧侧"长度不等就不是最小对立"同一保守方向 */ }
+      } // ra 或 rb 为 null（segment-unknown）：newMinimal/newEqualLen 保持 false，与旧侧"长度不等就不是最小对立"同一保守方向
 
       // §3.9 语料前置断言：两侧任一词含多字母字位就跳过这一对，不计入比较。
       if ((idsA && !isSingleLetterSegmentation(idsA, sounds)) || (idsB && !isSingleLetterSegmentation(idsB, sounds))) {
@@ -354,9 +421,9 @@ const anyMultiLetterInData = WEEKS.some(({ sounds }) =>
 // 也扫真实语料"这一结构改动。如需真正的跨文件并集判据，留给后续 W5 迁移把双字母字位
 // 迁进真实数据、语义测试改接真实语料时再做（那时"并集"才有意义）。
 // ============================================================================
-const sourceStats = new Map(); // kind -> {total, executed, skippedMultiLetter, skippedUnknown}
+const sourceStats = new Map(); // kind -> {total, executed, skippedMultiLetter, skippedUnknown, ambiguousResolved}
 function statFor(kind) {
-  if (!sourceStats.has(kind)) sourceStats.set(kind, { total: 0, executed: 0, skippedMultiLetter: 0, skippedUnknown: 0 });
+  if (!sourceStats.has(kind)) sourceStats.set(kind, { total: 0, executed: 0, skippedMultiLetter: 0, skippedUnknown: 0, ambiguousResolved: 0 });
   return sourceStats.get(kind);
 }
 function tallySourceCoverage() {
@@ -368,13 +435,14 @@ function tallySourceCoverage() {
     for (const rec of records) {
       const s = statFor(rec.kind);
       s.total++;
-      let ids;
-      try {
-        ids = segmentWord(rec.word.toLowerCase(), sounds);
-      } catch (e) {
-        s.skippedUnknown++; // segmentWord 解析失败（未知字位）：与上面五项差分里 `catch(e){continue}` 同一处置，
-        continue;           // 但这里显式计数，不再是"悄悄跳过、不进任何统计"
-      }
+      // H-2：resolveOrSkip 内部已经把 segment-unknown（合法跳过）、segment-ambiguous
+      // （拿得到 W[word].segments 就正常参与，拿不到就直接抛错失败）、其他错误码
+      // （重新抛出）分派清楚了，这里不再自己 catch 一遍——resolveOrSkip 抛出的错误
+      // 就应该让整个测试文件失败，不能在这一层被悄悄接住。
+      const resolved = resolveOrSkip(rec.word.toLowerCase(), sounds, box);
+      if (!resolved) { s.skippedUnknown++; continue; } // segment-unknown：显式计数，不再是"悄悄跳过、不进任何统计"
+      if (resolved.viaExplicitSegments) s.ambiguousResolved++; // 非独占标注，见 resolveOrSkip 上方头注释
+      const ids = resolved.ids;
       if (!isSingleLetterSegmentation(ids, sounds)) { s.skippedMultiLetter++; continue; } // §3.9 语料前置过滤，同上面五项差分
       s.executed++;
     }
@@ -435,7 +503,8 @@ for (const kind of [...sourceStats.keys()].sort()) {
   );
   totalWords += s.total; totalExecuted += s.executed;
   totalSkippedMultiLetter += s.skippedMultiLetter; totalSkippedUnknown += s.skippedUnknown;
-  sourceReportLines.push(`  ${kind}：总 ${s.total}，执行 ${s.executed}，跳过 ${skipped}（多字母字位 ${s.skippedMultiLetter} + 解析失败 ${s.skippedUnknown}）`);
+  sourceReportLines.push(`  ${kind}：总 ${s.total}，执行 ${s.executed}，跳过 ${skipped}（多字母字位 ${s.skippedMultiLetter} + 解析失败 ${s.skippedUnknown}）` +
+    `，其中经显式 segments 消歧解析成功 ${s.ambiguousResolved}（非独占子集标注，已计入 executed 或 skippedMultiLetter）`);
 }
 console.log('PASS 来源分布 + 全集守恒：按 word_consumers.ENTRY_KINDS 逐来源统计，各来源均满足 total===executed+skipped');
 console.log(sourceReportLines.join('\n'));
@@ -455,12 +524,15 @@ console.log(`  合计：总 ${totalWords}，执行 ${totalExecuted}，跳过（�
 //     四周真实语料里 skippedUnknown 恰为 24（全部可归因于 g1-rounds 的干扰词、
 //     sight 的 see、book-page/sentences 里含未教字位的整句词），跟"抽取器/分类器
 //     出错导致静默削减"是两回事，不该被同一条"必须为 0"的断言误伤。
-assert.equal(
-  totalSkippedMultiLetter, 0,
-  `单字母基线（第 7 步前）下"多字母字位"跳过数应为 0，实际 ${totalSkippedMultiLetter}——` +
-  `说明 isSingleLetterSegmentation 或前置过滤逻辑在按来源统计时出现了不一致`
-);
 if (!anyMultiLetterInData) {
+  // H-1 修复（预筛 high：「断言放在了条件分支外，第 7 步一旦出现能成功解析的多字母词
+  // 就必红」）：totalSkippedMultiLetter===0 这条断言的含义只在"单字母基线（第 7 步前）"
+  // 下成立，挪进这个分支——不再无条件执行。
+  assert.equal(
+    totalSkippedMultiLetter, 0,
+    `单字母基线（第 7 步前）下"多字母字位"跳过数应为 0，实际 ${totalSkippedMultiLetter}——` +
+    `说明 isSingleLetterSegmentation 或前置过滤逻辑在按来源统计时出现了不一致`
+  );
   // 固定 W1–W4 单字母基线：执行数必须 > 0，且"执行 + 未教跳过"必须等于总词数
   // （守恒已在上面逐来源验过，这里再验一次合计数，双保险）；不要求 skippedUnknown
   // 为 0——那是教学设计里合法存在的"未教内容"，见上方注释。
@@ -468,10 +540,37 @@ if (!anyMultiLetterInData) {
   assert.equal(totalExecuted + totalSkippedUnknown, totalWords,
     `单字母基线下 执行数+未教跳过数 应等于总词数：executed=${totalExecuted} skippedUnknown=${totalSkippedUnknown} total=${totalWords}`);
 } else {
-  // 迁移后（第 7 步之后）：至少证明"没有被跳空"——这正是 codex 原话「若抽取或分类
-  // 错误导致全部词被跳过，测试仍可能显示为绿色」要挡的场景，用真实的执行数下限，
-  // 不是"跳过比例"这种更难界定的判据。
+  // 迁移后分支（H-1 修复②：改前这个分支只有一条"执行数 > 0"，从来没被真正跑到过
+  // ——补实质断言，不能只有"执行数 > 0"）：
+  //   1) 执行数、两类跳过数各自可见（下方 console.log 已打印，这里断言非负、执行数下限）。
+  //   2) 按来源覆盖下限：BASELINE_KIND_TOTALS 已把每个 kind 的 total 钉死（上面
+  //      "H-1 修复②"那段），这里追加"每个 total>0 的 kind，executed+skippedMultiLetter
+  //      必须 > 0"——一个来源都不许被整体误判成 skippedUnknown（那意味着这个来源的
+  //      词全部"读不出来"，多半是抽取器/分类器整类错位，不是真的教学设计）。
+  //   3) 至少一个真实多字母词确实进了 skippedMultiLetter 分类，不是被 segment-ambiguous
+  //      的旧 catch 静默吞进 skippedUnknown（H-2 要挡的正是这个场景）——直接证明
+  //      "迁移后自动放松"这条设计意图真的生效了，而不是恰好没有多字母词而侥幸不报错。
   assert(totalExecuted > 0, `迁移后来源分布的执行数应大于 0（不能全部被跳过），实际 executed=${totalExecuted}`);
+  assert(totalSkippedMultiLetter >= 0 && totalSkippedUnknown >= 0, '跳过计数不应出现负数（内部计数逻辑损坏）');
+  for (const kind of ENTRY_KINDS) {
+    const s = sourceStats.get(kind);
+    const total = s ? s.total : 0;
+    if (total === 0) continue;
+    const covered = (s && s.executed || 0) + (s && s.skippedMultiLetter || 0);
+    assert(
+      covered > 0,
+      `来源 "${kind}"（总 ${total} 词）迁移后 executed+skippedMultiLetter 应大于 0——不能整个来源都被判进 ` +
+      `skippedUnknown，那意味着这个来源的词全部"读不出来"，多半是抽取器/分类器错位而不是真的教学设计`
+    );
+  }
+  assert(
+    totalSkippedMultiLetter > 0,
+    `迁移后 SOUNDS 已出现多字母字位，但 skippedMultiLetter 仍为 0——说明没有任何真实词命中多字母字位分类，` +
+    `要么多字母字位尚未被任何真实词消费到（迁移不完整），要么该被归为多字母的词被 segment-ambiguous 的` +
+    `旧式 catch 静默吞进了 skippedUnknown（H-2 要挡的正是这个场景），本文件的职责是在退化发生的第一时间` +
+    `报红，而不是留到第 7 步验收才发现`
+  );
+  console.log(`PASS 迁移后来源覆盖下限（H-1）：${ENTRY_KINDS.length} 个 kind 中 total>0 的来源均满足 executed+skippedMultiLetter > 0，且至少一个真实多字母词进入了 skippedMultiLetter 分类`);
 }
 
 diffSpellingComparison();

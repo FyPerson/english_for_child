@@ -219,20 +219,47 @@ function formatReport(analysis) {
   return lines.join('\n');
 }
 
-/* ---- 写回（--write）：把 resolved 词的 segments 注入 W 声明源码 ---- */
+/* ---- 写回：把词的 segments 注入 W 声明源码 ----
+ *
+ * M5 修复（2026-09-09 里程碑 2 收口批，协调者裁定「不采纳你的理由，本批必须做」：
+ * 这条不是可选优化，是安全性缺陷——bat fixture 已经证明"字位数最少"这条启发式会
+ * 给出错误答案（b+at，而这个合成周设定的目标读法是 b+a+t），改前 `--write` 仍然把
+ * resolved（启发式候选）自动写进数据文件，唯一护栏是 @gen-segments-unreviewed 标记
+ * 只能挡住"未复核就交付"，挡不住"错误建议先被写进源码、之后要人逐条去发现并推翻"这
+ * 件事本身）。
+ *
+ * 新默认行为：
+ *   - `--write`（不加 `--write-heuristic`）：只写 status==='unique' 的词——这些词
+ *     segmentWord 本就能在没有 explicitSegments 的情况下唯一分词出来，写入 segments
+ *     不是"算法替人做了判断"，只是把已经唯一确定的答案显式固定下来（防止未来字位表
+ *     变化后，同一个词从"唯一解"变成"多解"时，历史教学意图悄悄失真）。这类写入不带
+ *     @gen-segments-unreviewed 标记——没有歧义就没有"需要复核"这件事。
+ *   - resolved（多解但按"字位数最少"能选出一个候选）的词**一律不在默认 `--write` 下
+ *     写回**，只在报告里列出全部解析供人选择——这正是本次修复要堵住的口子。
+ *   - `--write-heuristic`：显式打开后，才会额外把 resolved 的词也写回（仍带
+ *     @gen-segments-unreviewed 标记 + check_data.js 门槛，未复核前不能交付）。这个
+ *     开关本身就是一处需要谨慎使用的告警：见下方 CLI 帮助文本与 tools/gen_segments.py
+ *     的 --write-heuristic 帮助文本，两处都明确写了"基于未经验证的启发式，bat
+ *     fixture 已证明它会给错"。
+ *   - tie（并列，算法连一个候选都排不出来）与 unknown/error 不受本次修复影响，
+ *     一律不写回，一直都是"需要人工决定"的词。
+ */
 
 function escapeRegExpLiteral(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /* injectSegmentsIntoWDeclaration(wDeclText, updates) -> 新的 W 声明源码文本。
- * updates: Map<word, string[]>。只处理"字面量键直接是 word 本身"的形态（真实数据
- * 目前都是 `word:{...}` 这种写法，见 frontend/src/weeks/week01.data.js）。每个词的
- * `{...}` 块要求不含嵌套花括号（现状如此：W 的每条都是扁平对象），找不到或含嵌套
- * 花括号一律报错，不猜测式地部分匹配。 */
+ * updates: Map<word, {ids: string[], marker: boolean}>——marker=true 时带
+ * @gen-segments-unreviewed 标记（resolved，经 --write-heuristic 写入的启发式候选），
+ * marker=false 时不带（unique，唯一解，没有"需要复核"这回事）。只处理"字面量键直接是
+ * word 本身"的形态（真实数据目前都是 `word:{...}` 这种写法，见
+ * frontend/src/weeks/week01.data.js）。每个词的 `{...}` 块要求不含嵌套花括号（现状
+ * 如此：W 的每条都是扁平对象），找不到或含嵌套花括号一律报错，不猜测式地部分匹配。 */
 function injectSegmentsIntoWDeclaration(wDeclText, updates) {
   let out = wDeclText;
-  for (const [word, ids] of updates) {
+  for (const [word, entry] of updates) {
+    const ids = entry.ids;
     const re = new RegExp('([{,]\\s*)' + escapeRegExpLiteral(word) + '(\\s*:\\s*\\{)([^{}]*)(\\})');
     if (!re.test(out)) {
       const err = new Error('gen_segments: 在 W 声明里找不到 "' + word + '" 的 {...} 块（或它含嵌套花括号），无法写回 segments');
@@ -242,19 +269,31 @@ function injectSegmentsIntoWDeclaration(wDeclText, updates) {
     }
     out = out.replace(re, (m, pre, colonOpen, body, close) => {
       const trimmed = body.replace(/,\s*$/, '');
-      // codex medium（2026-09-09）：写回时也要留证据说明这不是权威答案——不能只在
-      // dry-run 的终端输出里提醒，写进源码的这一行本身也要带同一句话，因为复核者
-      // 之后可能只看 diff/源码，不会重新跑一遍 CLI 看头部警告。
-      // M4 修复（预筛 medium：「--write 会自动写入 fixture 自己证明是错的建议」）：
-      // resolveWord 给 resolved 结果设了 needsHumanReview:true（见上方 resolveWord），
-      // 但改前 writeSuggestions 完全不读这个字段，凡 resolved 一律写回——唯一护栏是
-      // 这段行内注释，注释没有任何机器判据。改成机器可识别标记 `@gen-segments-unreviewed`
-      // + tools/validation/check_data.js 的门槛（数据里含该标记即 fail，直到人复核后
-      // 删掉标记），这样"未复核的建议"不可能悄悄进入交付——不再只靠人去读注释文案。
-      const seg = 'segments:[' + ids.map(id => JSON.stringify(id)).join(',') + ']' +
-        ' /* @gen-segments-unreviewed：按"字位数最少"启发式选出的候选，不具契约优先级，' +
-        '算法无法判断这是否为教学意图——tools/validation/check_data.js 会拦下带此标记的数据，' +
-        '人工复核确认后请删除本行的 @gen-segments-unreviewed 标记（连同本条注释一起删或改写皆可） */';
+      let seg;
+      if (entry.marker) {
+        // codex medium（2026-09-09）：写回时也要留证据说明这不是权威答案——不能只在
+        // dry-run 的终端输出里提醒，写进源码的这一行本身也要带同一句话，因为复核者
+        // 之后可能只看 diff/源码，不会重新跑一遍 CLI 看头部警告。
+        // M4 修复（预筛 medium：「--write 会自动写入 fixture 自己证明是错的建议」）：
+        // resolveWord 给 resolved 结果设了 needsHumanReview:true（见上方 resolveWord），
+        // 用机器可识别标记 `@gen-segments-unreviewed` + check_data.js 的门槛（数据里
+        // 含该标记即 fail，直到人复核后删掉标记），这样"未复核的建议"不可能悄悄进入
+        // 交付——不再只靠人去读注释文案。M5 修复后，只有显式加 --write-heuristic 才会
+        // 走到这个分支。
+        seg = 'segments:[' + ids.map(id => JSON.stringify(id)).join(',') + ']' +
+          ' /* @gen-segments-unreviewed：按"字位数最少"启发式选出的候选，不具契约优先级，' +
+          '算法无法判断这是否为教学意图（--write-heuristic 显式启用后才会写入此类候选，' +
+          'bat fixture 已证明这条启发式会给错）——tools/validation/check_data.js 会拦下' +
+          '带此标记的数据，人工复核确认后请删除本行的 @gen-segments-unreviewed 标记' +
+          '（连同本条注释一起删或改写皆可） */';
+      } else {
+        // M5 新增：unique（唯一解）词的写回不带 @gen-segments-unreviewed——没有歧义，
+        // 没有"候选"这回事，segmentWord 不给 explicitSegments 也能推出同一个结果，
+        // 写入只是把已确定的答案显式固定，供人一眼看清、也防未来字位表变化后失真。
+        seg = 'segments:[' + ids.map(id => JSON.stringify(id)).join(',') + ']' +
+          ' /* gen_segments：唯一解，无歧义，自动写回——segmentWord 不给 explicitSegments' +
+          ' 也能推出同一结果，这里写入只是显式固定，不是算法替人做了判断，无需人工复核 */';
+      }
       const sep = trimmed.trim() ? ',' : '';
       return pre + word + colonOpen + trimmed + sep + seg + close;
     });
@@ -262,32 +301,54 @@ function injectSegmentsIntoWDeclaration(wDeclText, updates) {
   return out;
 }
 
-/* writeSuggestions(rawText, analysis) -> {text, written[], skipped[]}：把 status='resolved'
- * 的词写回；tie/unknown/error/unique/already-has-segments 一律不动（tie/unknown/error
- * 正是"需要人工决定"的词，不能被写回逻辑自作主张）。不修改传入的 rawText 字符串本身
- * （字符串不可变），返回新文本。 */
-function writeSuggestions(rawText, analysis) {
+/* writeSuggestions(rawText, analysis, options) -> {text, written[], writtenHeuristic[],
+ * heuristicNotWritten[], needsHuman[]}：
+ *   - status==='unique' 的词总是写回（不需要 options.writeHeuristic）。
+ *   - status==='resolved' 的词只有 options.writeHeuristic===true 时才写回
+ *     （M5：默认不写，只在报告里列出全部解析）；未写回时计入 heuristicNotWritten。
+ *   - tie/unknown/error 一律不写回（一直如此），计入 needsHuman。
+ *   - already-has-segments 不出现在任何列表里（本工具不覆盖人已核对过的结果）。
+ * 不修改传入的 rawText 字符串本身（字符串不可变），返回新文本。 */
+function writeSuggestions(rawText, analysis, options) {
+  const writeHeuristic = !!(options && options.writeHeuristic);
   const decl = declaration(rawText, 'W');
   if (!decl) throw new Error('gen_segments: 目标文件源码里找不到 "const W = " 声明，无法写回');
   const updates = new Map();
   const written = [];
+  const writtenHeuristic = [];
   for (const it of analysis.items) {
-    if (it.status === 'resolved') { updates.set(it.word, it.segments); written.push(it.word); }
+    if (it.status === 'unique') {
+      updates.set(it.word, { ids: it.segments, marker: false });
+      written.push(it.word);
+    } else if (it.status === 'resolved' && writeHeuristic) {
+      updates.set(it.word, { ids: it.segments, marker: true });
+      written.push(it.word);
+      writtenHeuristic.push(it.word);
+    }
   }
-  const skipped = analysis.items.filter(it => it.status !== 'resolved' && it.status !== 'unique' && it.status !== 'already-has-segments').map(it => it.word);
-  if (updates.size === 0) return { text: rawText, written, skipped };
+  const heuristicNotWritten = writeHeuristic ? [] : analysis.items.filter(it => it.status === 'resolved').map(it => it.word);
+  const needsHuman = analysis.items.filter(it => it.status === 'tie' || it.status === 'unknown' || it.status === 'error').map(it => it.word);
+  if (updates.size === 0) return { text: rawText, written, writtenHeuristic, heuristicNotWritten, needsHuman };
   const newDecl = injectSegmentsIntoWDeclaration(decl, updates);
   const idx = rawText.indexOf(decl);
   const text = rawText.slice(0, idx) + newDecl + rawText.slice(idx + decl.length);
-  return { text, written, skipped };
+  return { text, written, writtenHeuristic, heuristicNotWritten, needsHuman };
 }
 
 function main() {
   const args = process.argv.slice(2);
-  const write = args.includes('--write');
-  const targetArg = args.find(a => a !== '--write');
+  const writeHeuristic = args.includes('--write-heuristic');
+  // --write-heuristic 隐含 --write（同时打开写回模式）：只传 --write-heuristic 不传
+  // --write 时若仍要求必须两个都写，是纯粹的用户体验负担，且没有安全收益——
+  // --write-heuristic 本身已经是"更危险"的那个显式开关，加它就代表用户已经同意写回。
+  const write = args.includes('--write') || writeHeuristic;
+  const targetArg = args.find(a => a !== '--write' && a !== '--write-heuristic');
   if (!targetArg) {
-    console.error('用法：node tools/validation/gen_segments.js <周数据文件路径> [--write]');
+    console.error('用法：node tools/validation/gen_segments.js <周数据文件路径> [--write] [--write-heuristic]');
+    console.error('  --write            写回唯一解（无歧义）的词的 segments，不写多解词');
+    console.error('  --write-heuristic  额外写回"字位数最少"启发式候选（多解词）——基于未经验证的');
+    console.error('                     启发式，bat fixture 已证明它会给错，写回的每一处都会带');
+    console.error('                     @gen-segments-unreviewed 标记并被 check_data.js 拦下直到人工复核');
     process.exit(2);
   }
   const targetPath = path.isAbsolute(targetArg) ? targetArg : path.resolve(REPO, targetArg);
@@ -296,27 +357,39 @@ function main() {
   const analysis = analyzeWeek(box);
   console.log(formatReport(analysis));
 
-  const needsHuman = analysis.items.some(it => it.status === 'tie' || it.status === 'unknown' || it.status === 'error');
+  const needsHumanExit = analysis.items.some(it => it.status === 'tie' || it.status === 'unknown' || it.status === 'error');
 
   if (write) {
-    const result = writeSuggestions(raw, analysis);
+    const result = writeSuggestions(raw, analysis, { writeHeuristic });
     if (result.written.length) {
       fs.writeFileSync(targetPath, result.text, 'utf8');
       console.log('');
       console.log('已写回 ' + result.written.length + ' 个词的 segments：' + result.written.join(', '));
+      if (result.writtenHeuristic.length) {
+        console.log('  其中 ' + result.writtenHeuristic.length + ' 个是按"字位数最少"启发式选出的候选' +
+          '（--write-heuristic 已启用，均带 @gen-segments-unreviewed 标记，需人工复核）：' +
+          result.writtenHeuristic.join(', '));
+      }
     } else {
       console.log('');
-      console.log('没有可写回的建议（无 resolved 状态的词）。');
+      console.log('没有可写回的建议（无 unique 状态的词' + (writeHeuristic ? '，也无 resolved 状态的词' : '') + '）。');
     }
-    if (result.skipped.length) {
-      console.log('以下 ' + result.skipped.length + ' 个词未写回，需要人工处理后重跑：' + result.skipped.join(', '));
+    if (result.heuristicNotWritten.length) {
+      console.log('以下 ' + result.heuristicNotWritten.length + ' 个词有"字位数最少"候选建议，但默认不自动写回' +
+        '（M5：基于未经验证的启发式，bat fixture 已证明它会给错）——见上方报告核对全部解析后，' +
+        '确认可用再加 --write-heuristic 重跑，或直接人工写入 segments：' + result.heuristicNotWritten.join(', '));
+    }
+    if (result.needsHuman.length) {
+      console.log('以下 ' + result.needsHuman.length + ' 个词未写回，需要人工处理后重跑：' + result.needsHuman.join(', '));
     }
   } else {
     console.log('');
-    console.log('dry-run：未写回任何文件。加 --write 写回可自动判定（无并列）的建议。');
+    console.log('dry-run：未写回任何文件。加 --write 写回唯一解（无歧义）的词；' +
+      '加 --write-heuristic 额外写回"字位数最少"启发式候选——基于未经验证的启发式，' +
+      'bat fixture 已证明它会给错，务必先看报告里的全部解析再决定要不要用这个开关。');
   }
 
-  if (needsHuman) process.exit(1);
+  if (needsHumanExit) process.exit(1);
 }
 
 module.exports = {

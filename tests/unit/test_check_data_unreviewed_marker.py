@@ -26,7 +26,7 @@ FIXTURE = ROOT / 'tests' / 'fixtures' / 'week02-data.js'
 
 def run_check_data(target):
     return subprocess.run(
-        [sys.executable and 'node' or 'node', str(ROOT / 'tools' / 'validation' / 'check_data.js'), str(target)],
+        ['node', str(ROOT / 'tools' / 'validation' / 'check_data.js'), str(target)],
         cwd=str(ROOT), capture_output=True, text=True, encoding='utf-8'
     )
 

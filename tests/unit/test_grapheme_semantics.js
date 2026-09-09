@@ -43,6 +43,13 @@
  *   元素与位置（不是松断言），但"这就是生产代码会给出的旧结果"这件事，靠的是
  *   test_migration_diff.js 而不是本文件——两套测试合起来才构成完整证明链，不能
  *   把本文件单独当作"新旧算法确实不同"的证据。
+ *
+ * ⚠️（H-3，2026-09-09 里程碑 2 收口批）覆盖缺口——本文件只用合成语料（不消费任何真实
+ * frontend/src/weeks/week0N.data.js）。真实周数据里显式声明 `segments` 的词、真实消费者
+ * 输入是否真的按这套新语义运作，本文件完全不覆盖；test_migration_diff.js 同样不覆盖
+ * （它排除全部多字母词）。两个文件合起来都不构成"迁移后真实数据语义正确"的证明——
+ * 那是第 7 步的事（真实多字母数据迁移完成后才有语料）。本文件文末的
+ * `TODO_realWeekDataSemanticsSuite` 是这道套件的接入点占位，第 7 步实作时填充。
  */
 const assert = require('node:assert/strict');
 const { segmentWord, surfaceOf, graphemeLabel } = require('../../frontend/src/shared/graphemes');
@@ -151,3 +158,39 @@ assert.notEqual(oldMinimal, newMinimal, '预期差异④：rain/ran 这一对，
 console.log('PASS grapheme semantics ④：rain/ran 字符级"不是最小对立" vs 字位级"是最小对立"，差异位置与取值均已锁定');
 
 console.log('PASS grapheme semantics: 四类预期差异（字位数/首字位/已教集合/最小对立）全部按明确断言验证发生，且均经 explicitSegments 路径消歧');
+
+// ============================================================================
+// H-3（2026-09-09 里程碑 2 收口批）：真实周数据语义套件接入点占位。
+// 本批只做两件事之一（另一件是上面的头注释）：预留接入点，不实作——第 7 步把双字母
+// 字位真的迁进 frontend/src/weeks/week0N.data.js 之前，没有真实语料可用，写了也是
+// 对着空集合断言，没有验证力。
+//
+// 第 7 步要在这里断言什么（判据）：
+//   1. 枚举全部 4 周真实数据里声明了多字母 `segments` 的词（`box.W[word].segments`
+//      存在且数组含至少一个 grapheme.length > 1 的字位 ID）——不能只挑几个手选例子，
+//      必须是"枚举"，理由见 test_migration_diff.js 头注释与 feedback_dont_relist_
+//      what_source_already_lists.md：源头（真实 W 声明）已经是权威清单，不能自己
+//      再挑一份更窄的子集当作"有代表性"。
+//   2. 对每个词，逐项断言：
+//      - 分词结果：segmentWord(word, sounds, box.W[word].segments) 的 ID 数组
+//        与声明的 segments 完全一致（deepEqual，不只对比长度）。
+//      - 表面串：surfaceOf(ids, sounds) 应等于该词本身（规范化后）。
+//      - 首字位：ids[0] 的 graphemeLabel 与"这个词真实的第一个书写单元"是否相符
+//        （不是 word.charAt(0)——双字母首字位时两者本该不同，这正是差异①/②在
+//        合成语料上已经证明过的形状，第 7 步要在真实词上重新证明一次）。
+//      - 长度：ids.length（字位数）与 word.length（字符数）在含多字母字位的词上
+//        应不相等（除非这个词恰好所有字位都单字母，那时才允许相等）。
+//      - 相关消费者语义：games.js/render-blocks.js/check_data.js 等第 4b/7 步已接线
+//        的消费点，对这批真实词的行为应与 test_migration_diff.js 的差分逻辑给出的
+//        "新侧"结果一致（不是本文件重新发明一套判据，是复用差分测试已验证过的算法）。
+//   3. 语料为空（当前 SOUNDS 均是单字母，没有任何词声明了多字母 segments）时，
+//      这道套件本身应显式跳过并打印原因，不能悄悄"断言 0 个词全部通过"而误报绿色
+//      （同 test_migration_diff.js 文件头 `assert(n > 50, ...)` 一类的"语料太少"
+//      防御，第 7 步实作时补上）。
+function TODO_realWeekDataSemanticsSuite() {
+  throw new Error(
+    '第 7 步占位：真实周数据语义套件尚未实作，见本函数上方判据清单。' +
+    '本函数不应在第 7 步前被调用——调用即说明有人误以为这道验证已经存在。'
+  );
+}
+module.exports = { TODO_realWeekDataSemanticsSuite };
