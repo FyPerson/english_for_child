@@ -157,7 +157,11 @@ for (const w of RESERVED) {
   ok(!wallWords.includes(w), `保留词 "${w}" 上了词卡墙`);
 }
 ok(RESERVED.length === 5, `周检词应为 5 个，实际 ${RESERVED.length}`);
-ok(META.week === 1 || RESERVED.every(w => w.length === 3), '周检词必须全是三个字母（规范 §7.3：全 CVC，不放连辅音/四音词）');
+// L4（里程碑 2 第 5 步预筛）：`META.week === 1 ||` 这条豁免当初就是为四字位的
+// 'spit'（W1 周检词）开的；2026-09-09 第 5 步把它换成三字位的 'pit' 后，W1 五词
+// 已全是三个字母，豁免零风险删除——留着会让审计里对应的 currentlyExempted:true
+// 长期显示"还豁免着"，误导后人以为这条规则对 W1 不生效。
+ok(RESERVED.every(w => w.length === 3), '周检词必须全是三个字母（规范 §7.3：全 CVC，不放连辅音/四音词）');
 
 head('③ 字母全在已教范围内');
 for (const w of [...usedWords, ...RESERVED]) {

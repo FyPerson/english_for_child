@@ -191,6 +191,10 @@ cut("const WALL_HINT = {", "\n};", D.WALL_HINT_BLOCK, "#4 WALL_HINT")
 cut("const BOOK = {", "\n};", D.BOOK_BLOCK, "#5 BOOK")
 sub("   BOOK — 第一本自主阅读小书", "   BOOK — 第二本自主阅读小书", "#5 BOOK 注释")
 sub("const FIRST_TEACH_DAY = { s:1, a:1, t:2, i:3, p:4, n:5 };", D.FIRST_TEACH_DAY, "#6 首教日")
+# L3（里程碑 2 第 5 步预筛）：本行字面量已失效——week01.data.js 的周检词已在
+# 2026-09-09（第 5 步 P8）把 'spit' 换成 'pit'，这里的 old 字符串不会再匹配，
+# sub() 的 assert 会失败。本文件是一次性迁移脚本（第一周 -> 第二周），不是长期
+# 维护的工具，不修：需要重跑时按当前 week01.data.js 实际内容更新这一行字面量。
 sub("const RESERVED = ['nit','sap','tan','pip','spit'];", D.RESERVED, "#7 保留词")
 cut("const G1_ROUNDS = {", "\n};", D.G1_ROUNDS, "#8 G1_ROUNDS")
 cut("const G1_THEME = {", "\n};", D.G1_THEME, "#8 G1_THEME")

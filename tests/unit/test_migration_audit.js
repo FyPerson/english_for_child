@@ -275,8 +275,11 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   assert.deepEqual(pitFinding.details.graphemeIds, ['p', 'i', 't']);
   const allStatuses = w1SegmentFindings.map(f => f.status);
   assert(allStatuses.every(s => s === 'pass'), `P8 换词后 W1 全部 5 个周检词（均三字位）应判 pass，实际 ${allStatuses}`);
-  assert(w1SegmentFindings.every(f => f.details.currentlyExempted === true), 'W1 全部 5 条 segment-count 都要标 currentlyExempted:true（check_data.js:147 现状仍豁免 week===1，契约判定本身不受它影响）');
-  console.log('PASS migration_audit（C-1 修复 + P8 换词验证）：W1 的 pit 正确判为 pass（三字位），spit 已不在数据里；全部 5 词标注 currentlyExempted');
+  // L4（里程碑 2 第 5 步预筛）之后：check_data.js 的 `META.week === 1 ||` 豁免已随
+  // pit 换词被删除（W1 五词全是三个字母，豁免零风险移除），currentlyExempted 因此
+  // 恒为 false，不再随 week===1 变化——不是这批测试遗漏，是事实随之改变。
+  assert(w1SegmentFindings.every(f => f.details.currentlyExempted === false), 'L4 删掉 check_data.js 的 week===1 豁免后，W1 全部 5 条 segment-count 都应标 currentlyExempted:false（不再豁免）');
+  console.log('PASS migration_audit（C-1 修复 + P8 换词验证 + L4 豁免删除）：W1 的 pit 正确判为 pass（三字位），spit 已不在数据里；全部 5 词的 currentlyExempted 已随豁免删除改为 false');
 }
 
 // ============================================================================
@@ -548,4 +551,23 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   assert.deepEqual(actualFailIds, REAL_FAIL_FINDING_IDS,
     '真实四周审计的完整 fail findingId 清单必须与钉住的期望值一致（这是第 5 步判断修复范围的直接依据）');
   console.log(`PASS migration_audit（H-4）：真实四周 status 分布与 ${REAL_FAIL_FINDING_IDS.length} 条 fail findingId 清单均已钉住，抽取器/规则若少收一类会在此处变红`);
+}
+
+// ============================================================================
+// M3（里程碑 2 第 5 步预筛）：「范围停手」只数了 fail，漏掉了 W1/W2/W3 各一条
+// DATA-WALL-01/newPatterns-presence 的 unknown——而"unknown 必须被后续步骤视为
+// 未完成证据、不能等同于 pass"是方案第 7 步写死的规则。上面 ⑨ 的聚合计数已经把
+// DATA-WALL-01 的 unknown 钉成 4（W1—W4 各一条），但那只是个总数，不点名是哪几条
+// findingId——这里显式钉住 W1/W2/W3 这三条的 findingId 与 status，不能静默滑过。
+// 这三条本身归第 7 步落定（newPatterns 真相源第 7 步才引入），本条只负责在第 5 步
+// 收口时把「已知还没做」显式记录下来，不是要在第 5 步修掉它们。
+// ============================================================================
+{
+  const EXPECTED_UNKNOWN_NEW_PATTERNS_IDS = ['w1:newPatterns-presence', 'w2:newPatterns-presence', 'w3:newPatterns-presence'];
+  for (const findingId of EXPECTED_UNKNOWN_NEW_PATTERNS_IDS) {
+    const f = realDoc.findings.find(x => x.ruleId === 'DATA-WALL-01' && x.findingId === findingId);
+    assert(f, `真实四周审计应存在 DATA-WALL-01/${findingId} 这条发现`);
+    assert.equal(f.status, 'unknown', `DATA-WALL-01/${findingId} 的 status 应为 unknown（归第 7 步落定，不是 pass 也不是被遗漏），实际：${f.status}`);
+  }
+  console.log('PASS M3 回归：W1/W2/W3 各一条 DATA-WALL-01/newPatterns-presence 的 unknown 已显式钉住 findingId + status，登记归第 7 步落定，不被「范围停手」静默跳过');
 }

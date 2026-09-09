@@ -229,21 +229,25 @@ function auditWeek(box, raw, file) {
     details: { count: RESERVED.length }
   });
   /* ⚠️ 判据方向（coordinator C-1 修复）：这条必须按「规范 §4.3 weekly 列的目标契约」判，
-     不能按「check_data.js:127 现状怎么校验」判——那条豁免正是第 5 步启用 weekly 契约后
+     不能按「check_data.js 现状怎么校验」判——那条豁免正是第 5 步启用 weekly 契约后
      会消失的东西（W1-W3 在第 5 步会声明 assessmentMode:'weekly'，规范 §5「测评路由」行
      写死 RESERVED 的"每词三个字位"共用校验对 weekly 周照常执行，不因当前豁免而放行）。
      `DATA-ASSESS-01` 对 W4（永远不会是 weekly）套用 weekly 禁止项清单是"现状 vs 目标契约"
      的统一记录方式，这里的 W1 也必须用同一套逻辑：按真实分词结果判 pass/fail，
      只在 details.currentlyExempted 里如实标注"当前校验器还豁免着"，不能让豁免升格成
      "这条规则不适用"（not-applicable 会被第 5 步的停机条款读成"审计证明不需要改"，
-     从而漏修 spit 这个真正的四字位词）。 */
+     从而漏修 spit 这个真正的四字位词）。
+
+     ⚠️（里程碑 2 第 5 步 L4）check_data.js 那条 `META.week === 1 || RESERVED.every(w =>
+     w.length === 3)` 豁免已随 P8（spit→pit 换词）删除——W1 五词现在全是三个字母，
+     豁免零风险移除（见 check_data.js 对应位置的 L4 注释）。`currentlyExempted` 因此
+     恒为 false，不再随 week 变化；这里不删这个字段（保持 details 形状稳定、下游
+     测试按字段取值而非按字段存在与否判断），只是把它的取值来源从"week===1"改成
+     常量 false，并同步更新 note 的措辞——不能让 note 继续说"现状还豁免着"这句已经
+     不成立的话。 */
   RESERVED.forEach(word => {
-    const currentlyExempted = week === 1;
-    const exemptedNote = currentlyExempted
-      ? 'check_data.js:127 现状对 week===1 整体豁免"三字位"要求（`META.week === 1 || RESERVED.every(...)`）；'
-        + '该豁免会在第 5 步启用 weekly 契约后消失（规范 §4.3 weekly 列对 RESERVED 的共用校验照常执行），'
-        + '本发现按目标契约判定，不代表当前校验器会拦下'
-      : null;
+    const currentlyExempted = false;
+    const exemptedNote = null;
     try {
       const ids = segmentWord(word, adaptedSounds);
       pushFinding(findings, {

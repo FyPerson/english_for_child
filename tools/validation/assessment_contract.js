@@ -13,16 +13,24 @@ const WEEKLY_FORBIDDEN_BLOCKS = ['retest', 'probe'];
  * 所以底层先统一收集 textParts，两条路径各自在其上派生自己需要的形态，避免维护两份
  * 几乎相同的 visit() 遍历逻辑。
  *
- * `includeDictionary`（默认 true，monthly 走默认值，逐字保留重构前行为）控制是否把
- * `Object.keys(d.W)` / `Object.values(d.W)` 也算进"可见文本"。monthly（W4）的 RESERVED
- * 系列词按 check_data.js:80 现状对 week>=4 豁免"必须在 W 里有释义"，实测也确实不在 W
- * 里——包含 W 不会造成自我冲突。但 weekly（W1-W3）恰恰相反：`DATA-RESERVED-01` 要求
- * RESERVED 词必须在 W 里有释义（上面 `周检词在 W 里没有释义` 那段校验），若这里仍把
- * W 算进"可见文本"，RESERVED 词会因为自己的词典释义键而判定"泄漏进教学内容"——
- * 那是一个词典查阅入口，不是练习/游戏，`weekly 列` 的"不泄漏进练习/游戏"语义上不包含它。
- * 所以 weekly 分支显式传 `{includeDictionary:false}`，monthly 不传，维持原语义。 */
+ * `excludeDictionaryKeys`（可选，一个存归一化小写词的 Set；monthly 不传，逐字保留
+ * 重构前行为，扫全部 `W`）控制"可见文本"里要不要把 `W` 排除掉。monthly（W4）的
+ * RESERVED 系列词按 check_data.js:80 现状对 week>=4 豁免"必须在 W 里有释义"，实测也
+ * 确实不在 W 里——包含 W 不会造成自我冲突。但 weekly（W1-W3）恰恰相反：
+ * `DATA-RESERVED-01` 要求 RESERVED 词必须在 W 里有释义（上面 `周检词在 W 里没有释义`
+ * 那段校验），若这里把这些词自己的释义条目也算进"可见文本"，会被误判"泄漏进教学
+ * 内容"——那是一个词典查阅入口，不是练习/游戏，`weekly 列` 的"不泄漏进练习/游戏"
+ * 语义上不包含它。
+ *
+ * M2 修复（里程碑 2 第 5 步预筛）：与 `DATA-RESERVED-01` 真正打架的只有周检词自己
+ * 那一条键（连同它的释义值），不是整个 `W`——若某个周检词恰好出现在**别的**词条的
+ * zh/art/例句里，那仍然是一次真实泄漏，理应查出。所以这里只按键逐条跳过
+ * `excludeDictionaryKeys` 命中的条目，其余词条照常纳入"可见文本"扫描，而不是
+ * 像旧版 `includeDictionary:false` 那样把整个 `W` 都排除在外。
+ * 所以 weekly 分支显式传 `{excludeDictionaryKeys: owner}`（RESERVED 词集合），
+ * monthly 不传，维持原语义。 */
 function collectTextParts(d, teachingBlocks, options) {
-  const includeDictionary = !options || options.includeDictionary !== false;
+  const excludeDictionaryKeys = options && options.excludeDictionaryKeys;
   const textParts = [];
   function visit(v) {
     if (typeof v === 'string') textParts.push(v);
@@ -33,7 +41,10 @@ function collectTextParts(d, teachingBlocks, options) {
   visit(teachingBlocks); visit(d.BOOK); visit(d.WALL_HINT); visit(d.SOUNDS);
   visit(d.G1_ROUNDS); visit(d.G1_THEME); visit(d.G3_PAIRS); visit(d.G4_WORDS); visit(d.G5_WHITELIST);
   visit(d.DAYS.map(day => [day.title, day.goal, day.wd, ...day.steps.map(s => s.t)]));
-  if (includeDictionary) { visit(Object.keys(d.W)); visit(Object.values(d.W)); }
+  for (const [key, entry] of Object.entries(d.W || {})) {
+    if (excludeDictionaryKeys && excludeDictionaryKeys.has(key.toLowerCase())) continue;
+    visit(key); visit(entry);
+  }
   return textParts;
 }
 
@@ -114,7 +125,7 @@ function validateWeekly(d, ctx) {
     if (!hasOwnKey || !isValidWEntry(entry)) fail(`周检词在 W 里没有释义：${word}`);
   });
 
-  const visible = visibleWordSet(collectTextParts(d, teachingBlocks, { includeDictionary: false }));
+  const visible = visibleWordSet(collectTextParts(d, teachingBlocks, { excludeDictionaryKeys: owner }));
   for (const w of owner) if (visible.has(w)) fail(`测评词泄漏进教学内容：${w}`);
 
   checkConsolidation(d, blocks, fail);
@@ -134,6 +145,11 @@ function validateMonthlyW4(d, ctx) {
   for (const key of pools) if (!Array.isArray(d[key])) fail(`${key} 必须是数组`);
   if (errors.length) return errors;
   if (d.RESERVED.length !== 5 || d.RESERVED_RETEST.length !== 5) fail('周检与复测各需 5 词');
+  /* L3（里程碑 2 第 5 步预筛）：validateMonthlyW4 现在只在 `meta.week === 4` 时被路由
+   * 调用（见下方 validateAssessment 的 `if (meta.week === 4) return validateMonthlyW4(...)`），
+   * 所以 endOfStage 恒为 false，下一行的 `PROBE_A`/`PROBE_B` 判据恒走「非段末周须为 0」
+   * 分支——这条判据本身没删（重构不删代码），只是里程碑 2 阶段不可达。里程碑 2b 给
+   * W10/W20/W40 开 stage 路由后，这条会重新可达并需要真实覆盖到「段末周须为 5」分支。 */
   const endOfStage = [10, 20, 30, 40].includes(d.META.week);
   for (const key of ['PROBE_A', 'PROBE_B']) if (d[key].length !== (endOfStage ? 5 : 0)) fail(`${key} 数量与段末周不匹配`);
   if (d.META.week <= 40 && [...GLOBAL_POOL].sort().join() !== [...d.GLOBAL_RESERVED].map(normalize).sort().join()) fail('GLOBAL_RESERVED 必须完整保留附录 B 的 40 词');
@@ -150,6 +166,13 @@ function validateMonthlyW4(d, ctx) {
   const textParts = collectTextParts(d, teachingBlocks);
   const visible = visibleWordSet(textParts);
   for (const w of owner.keys()) if (visible.has(w)) fail(`测评词泄漏进教学内容：${w}`);
+  checkConsolidation(d, ctx.blocks, fail);
+  /* L3：同理，这条 `if` 守卫本身现在也恒为 true——validateMonthlyW4 只在 week===4 时
+   * 被调用，这个分支形式上是"守卫"，实际上永远进入。保留它（不改成无条件执行）是
+   * 因为里程碑 2b 给 stage/annual 开路由后，`RESERVED`/`RESERVED_RETEST`/`GLOBAL_RESERVED`
+   * 等共用判据会被复用到非 W4 的段末周，而这条 `if` 块里的检查（ASSESS_TEXT、点亮墙
+   * 19 字位、累计认读词六词等）是 W4 独有、不适用于 W10/W20/W40 的，届时这个守卫会
+   * 变回真正在做区分。 */
   if (d.META.week === 4) {
     if (!d.META.consolidation) fail('W4 必须是巩固周');
     if (new Set(d.META.wallLetters).size !== 19) fail('W4 点亮墙必须保留 19 字位');
@@ -167,34 +190,44 @@ function validateMonthlyW4(d, ctx) {
     for (const s of passage.split(/[.!?]+/).map(normalize).filter(Boolean)) if (teachingSentences.has(s)) fail(`测评短文整句复用：${s}`);
     if (passage && textParts.some(t => normalize(t).includes(normalize(passage)))) fail('测评短文全文复用');
   }
-  checkConsolidation(d, ctx.blocks, fail);
   return errors;
 }
 
+/* L2 修复（里程碑 2 第 5 步预筛）：旧版在路由之前就无条件解引用 `d.DAYS` / `d.META`——
+ * W5 之前 `week<4` 早退挡住了这条路径，坏数据（`META` 缺失/非法、或 `DAYS` 形状不对）
+ * 不会被真正喂到这里；里程碑 2 最小路由把 W1-W3 也接入 weekly 路径后，这类坏数据会先
+ * 在拿到「缺失或非法」这条本该给出的错误之前就抛 TypeError 崩溃。修法：先只做
+ * `META` 存在性判断与 mode 路由（不解引用其余字段），确认 `META` 存在之后才计算
+ * `ctx`（会解引用 `d.DAYS`/`d.SOUNDS`）与调用 `checkConsolidation`（会解引用
+ * `d.META.consolidation`）。 */
 function validateAssessment(d) {
-  const blocks = d.DAYS.flatMap(day => day.steps.flatMap(step => step.blocks));
-  const teachingBlocks = blocks.filter(b => !['exam', 'retest', 'probe', 'assessment'].includes(b.b));
-  const taught = new Set(Object.keys(d.SOUNDS || {}));
-  const ctx = { blocks, teachingBlocks, taught };
-  const mode = d.META.assessmentMode;
+  const meta = (d && typeof d.META === 'object' && d.META) ? d.META : null;
+  const mode = meta ? meta.assessmentMode : undefined;
 
-  if (mode === 'weekly') return validateWeekly(d, ctx);
+  function ctx() {
+    const blocks = (Array.isArray(d.DAYS) ? d.DAYS : []).flatMap(day => day.steps.flatMap(step => step.blocks));
+    const teachingBlocks = blocks.filter(b => !['exam', 'retest', 'probe', 'assessment'].includes(b.b));
+    const taught = new Set(Object.keys(d.SOUNDS || {}));
+    return { blocks, teachingBlocks, taught };
+  }
 
-  if (mode === 'monthly') {
-    if (d.META.week === 4) return validateMonthlyW4(d, ctx);
+  if (meta && mode === 'weekly') return validateWeekly(d, ctx());
+
+  if (meta && mode === 'monthly') {
+    if (meta.week === 4) return validateMonthlyW4(d, ctx());
     const errors = ["里程碑 2b 前不支持：monthly 模式仅 assessmentMode:'monthly' && week===4 可用"];
-    checkConsolidation(d, blocks, s => errors.push(s));
+    checkConsolidation(d, ctx().blocks, s => errors.push(s));
     return errors;
   }
 
-  if (mode === 'stage' || mode === 'annual') {
+  if (meta && (mode === 'stage' || mode === 'annual')) {
     const errors = [`里程碑 2b 前不支持：assessmentMode:'${mode}' 尚未实现`];
-    checkConsolidation(d, blocks, s => errors.push(s));
+    checkConsolidation(d, ctx().blocks, s => errors.push(s));
     return errors;
   }
 
   const errors = [`META.assessmentMode 缺失或非法：${JSON.stringify(mode)}`];
-  checkConsolidation(d, blocks, s => errors.push(s));
+  if (meta) checkConsolidation(d, ctx().blocks, s => errors.push(s)); // meta 缺失时 checkConsolidation 会解引用 d.META.consolidation 而崩溃，跳过
   return errors;
 }
 
