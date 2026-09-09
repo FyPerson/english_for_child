@@ -298,18 +298,32 @@ const BAD_TYPE_TABLE = Object.assign({}, RAIN_TABLE, { weird: { grapheme: 'w', t
 assertThrows(() => soundType('weird', BAD_TYPE_TABLE), e => assert.equal(e.code, 'sound-type-invalid'), 'soundType 对已知 ID 但 type 非法报 sound-type-invalid（不是 unknown-id）');
 console.log('PASS graphemes: soundType 的 type 字段非法用独立错误码，不与 unknown-id 混用');
 
-// ---- normalizeIdList 两种入口 ----
-assert.deepEqual(normalizeIdList('satipn'), ['s', 'a', 't', 'i', 'p', 'n'], 'normalizeIdList 字符串入口（旧单字符 schema 展开）');
-assert.deepEqual(normalizeIdList(['r', 'ai', 'n']), ['r', 'ai', 'n'], 'normalizeIdList 数组入口（原样保留）');
+// ---- normalizeIdList(value, options) 签名收口（2026-09-09 P4）----
+// {legacy:true}：字符串按旧单字符 schema 展开，行为与收口前一致。
+assert.deepEqual(normalizeIdList('satipn', { legacy: true }), ['s', 'a', 't', 'i', 'p', 'n'], 'normalizeIdList {legacy:true} 字符串入口（旧单字符 schema 展开）');
+// 不传 options：字符串一律拒绝，且是新错误码，不是 id-list-invalid。
+assertThrows(() => normalizeIdList('satipn'), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList 不传 options 时字符串被拒');
+// 传空对象：同上，等价于不传。
+assertThrows(() => normalizeIdList('satipn', {}), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList 传空 options 时字符串被拒');
+// 显式 {legacy:false}：同上。
+assertThrows(() => normalizeIdList('satipn', { legacy: false }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList {legacy:false} 时字符串被拒');
+// options 传了别的键但没有 legacy：同上（不能靠"传了 options 对象"这件事本身放行）。
+assertThrows(() => normalizeIdList('satipn', { foo: true }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList options 无 legacy 键时字符串被拒');
+// 数组输入：在两种 options 下行为完全一致，不受 legacy 影响。
+for (const opts of [undefined, {}, { legacy: true }, { legacy: false }]) {
+  assert.deepEqual(normalizeIdList(['r', 'ai', 'n'], opts), ['r', 'ai', 'n'], 'normalizeIdList 数组入口在 options=' + JSON.stringify(opts) + ' 下行为一致（原样保留）');
+}
 (() => {
   const src = ['a', 'b'];
-  const out = normalizeIdList(src);
+  const out = normalizeIdList(src, { legacy: true });
   src.push('c');
-  assert.equal(out.length, 2, 'normalizeIdList 数组入口返回浅拷贝，不与调用方数组共享引用');
+  assert.equal(out.length, 2, 'normalizeIdList 数组入口返回浅拷贝，不与调用方数组共享引用（legacy 选项不影响这条）');
 })();
+// 非字符串非数组：无论 options 怎么传都按原样拒绝（id-list-invalid，不是新错误码）。
 assertThrows(() => normalizeIdList(123), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList 非字符串非数组');
+assertThrows(() => normalizeIdList(123, { legacy: true }), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList 非字符串非数组，legacy:true 也不改变这条');
 assertThrows(() => normalizeIdList([1, 2, 3]), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList 数组含非字符串元素');
-console.log('PASS graphemes: normalizeIdList 两种入口 + 非法输入');
+console.log('PASS graphemes: normalizeIdList(value, {legacy}) 签名收口 —— legacy 展开 / 默认拒绝字符串 / 数组两种 options 下行为一致 / 非法输入');
 
 // ---- ID 字符集与编码：引号 / 尖括号 / & / 非法 ID 四类失败 fixture ----
 assert.equal(isValidGraphemeId('r'), true, 'isValidGraphemeId 正例（单字母）');

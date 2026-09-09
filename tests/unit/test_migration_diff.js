@@ -1,4 +1,15 @@
 /* 里程碑 2 第 3 步：五项差分测试（方案 §2.2 迁移矩阵五行 / §5「语义等价」行）。
+ * ⚠️ **本文件是「迁移前兼容差分」**（方案 §3.9，2026-09-09 用户拍板·原 P7 拆两套的
+ * 第一套）——**只用单字母基线**，判据仍是"两侧相等"。第 7 步把双字母字位迁进数据后，
+ * `word.slice(1)`、字符长度、字符已教集合、字符最小对立四项会与字位级**合法地不同**，
+ * 到那时"两侧相等"这条判据只对单字母词继续成立。**迁移后的语义测试**（新行为确实按
+ * 预期发生了）在 tests/unit/test_grapheme_semantics.js，两个文件各管一段时间，
+ * 分工表见 test_grapheme_semantics.js 头注释与方案 §3.9。
+ *
+ * **有效期**：第 7 步之前，本文件对全部语料全绿；第 7 步之后，仅对语料里**每个字位都是
+ * 单字母**的词保持全绿——含双字母字位的词由下面的语料前置断言自动跳过并计数（见
+ * `isSingleLetterSegmentation`），不会把"合法的新旧差异"误判成回归。**现有五项断言逻辑
+ * 本身不改**，只是新增了这一层前置过滤。
  *
  * 差分测试的含义（§5「语义等价」）：不用"输出逐字节不变"作为等价证明；改用双实现
  * 差分——旧侧照抄现有代码里被点名的那一行算法，新侧走 frontend/src/shared/graphemes.js
@@ -37,6 +48,18 @@ const WEEKS = [1, 2, 3, 4].map(n => {
 
 let checked = 0; // 全局计数，跑完打印一下，防止某一周语料为空导致测试"假绿"（断言从没真正执行过）
 function tally(n) { checked += n; }
+
+// 语料前置断言（方案 §3.9）：本文件只用单字母基线。isSingleLetterSegmentation 判定
+// 一个词的字位级解析是否"每个字位的 grapheme 都恰好 1 个字符"——第 7 步前，四周真实
+// 数据全是单字母字位，这条恒为 true，不改变任何现有断言的执行路径；第 7 步后一旦某个
+// 字位表进了双字母字位（如 'ai'），含这类字位的词会被跳过并计数，而不是被强行拿字符级
+// 算法与字位级算法比较后误报"回归"——那正是 §3.9 判 high 的问题：双字母词上两侧
+// "合法地不同"，不该被这份"迁移前兼容差分"当反例抓住。
+let skippedMultiLetter = 0;
+function isSingleLetterSegmentation(ids, sounds) {
+  return ids.every(id => sounds[id].grapheme.toLowerCase().length === 1);
+}
+function tallySkip() { skippedMultiLetter++; }
 
 // ============================================================================
 // 差分 1 · 摆词比较
@@ -77,11 +100,15 @@ function diffSpellingComparison() {
   let n = 0;
   for (const { box, sounds } of WEEKS) {
     const corpusWords = new Set(collectWordConsumption(box).map(r => r.word.toLowerCase()));
-    const rackG4Ids = normalizeIdList(box.META.rackG4); // 旧格式字符串 -> 逐字符展开，当前数据下 = split('')
-    const rackG5Ids = normalizeIdList(box.META.rackG5);
+    // box.META.rackG4/rackG5 目前仍是第 7 步迁移前的旧格式字符串（真实周数据尚未迁移），
+    // 属"尚未迁移的旧格式数据"，按 normalizeIdList(value, {legacy}) 收口后的签名（2026-09-09
+    // P4）显式传 {legacy:true}——不传会被新的 id-list-legacy-string-rejected 拒绝。
+    const rackG4Ids = normalizeIdList(box.META.rackG4, { legacy: true }); // 逐字符展开，当前数据下 = split('')
+    const rackG5Ids = normalizeIdList(box.META.rackG5, { legacy: true });
     for (const word of corpusWords) {
       let targetIds;
       try { targetIds = segmentWord(word, sounds); } catch (e) { continue; } // 未知字位跳过，不是本项差分要测的东西
+      if (!isSingleLetterSegmentation(targetIds, sounds)) { tallySkip(); continue; } // §3.9 语料前置断言：本文件只用单字母基线
       // -- canSpell 差分（rack 多重集消耗）--
       for (const [rackString, rackIds] of [[box.META.rackG4, rackG4Ids], [box.META.rackG5, rackG5Ids]]) {
         const oldResult = canSpellOldChars(word, rackString);
@@ -140,6 +167,7 @@ function diffFirstGrapheme() {
     for (const word of corpusWords) {
       let ids;
       try { ids = segmentWord(word, sounds); } catch (e) { continue; }
+      if (!isSingleLetterSegmentation(ids, sounds)) { tallySkip(); continue; } // §3.9 语料前置断言
       // -- charAt(0) / w[0] 首字符 vs 首字位 grapheme --
       const oldFirst = word.charAt(0);
       const newFirst = graphemeLabel(ids[0], sounds).toLowerCase();
@@ -155,10 +183,16 @@ function diffFirstGrapheme() {
       for (const step of day.steps) {
         for (const b of step.blocks) {
           if (b.b !== 'initialpick') continue;
-          const letterIds = normalizeIdList(b.letters); // letters 现状已经是 ID 数组（单字符），双读透传
+          // b.letters（initialpick 块）现状已经是"已经是 ID 数组"的新格式（真实数据里
+          // 就是字面量数组，如 letters:['s','t','p','n']，不是拼接字符串）——按
+          // normalizeIdList(value, {legacy}) 收口后的判据不加 {legacy:true}：数组输入
+          // 不受 legacy 影响，且不加 legacy 更安全——万一这个字段将来被误改成字符串，
+          // 会被新签名的默认拒绝行为当场抓到，而不是被 legacy:true 悄悄展开成字符数组。
+          const letterIds = normalizeIdList(b.letters);
           for (const word of b.words) {
             let ids;
             try { ids = segmentWord(word, sounds); } catch (e) { continue; }
+            if (!isSingleLetterSegmentation(ids, sounds)) { tallySkip(); continue; } // §3.9 语料前置断言
             const oldIncludes = b.letters.includes(word[0]);
             const newIncludes = letterIds.includes(ids[0]);
             assert.equal(oldIncludes, newIncludes, `W${box.META.week} initialpick "${word}" letters.includes 差分不一致`);
@@ -190,9 +224,10 @@ function diffGraphemeCount() {
   let n = 0;
   for (const { box, sounds } of WEEKS) {
     for (const word of box.RESERVED) {
-      const oldLen3 = word.length === 3;
       let ids;
       try { ids = segmentWord(word, sounds); } catch (e) { ids = null; }
+      if (ids && !isSingleLetterSegmentation(ids, sounds)) { tallySkip(); continue; } // §3.9 语料前置断言
+      const oldLen3 = word.length === 3;
       const newLen3 = !!ids && ids.length === 3;
       assert.equal(oldLen3, newLen3, `W${box.META.week} RESERVED "${word}" 字符长度===3 与字位数===3 不一致`);
       n++;
@@ -238,12 +273,14 @@ function diffTaughtRange() {
     for (const word of corpusWords) {
       const oldUntaught = [...word.toLowerCase()].some(c => !TAUGHT_CHARS.has(c));
       let newUntaught;
+      let ids = null;
       try {
-        const ids = segmentWord(word, sounds);
+        ids = segmentWord(word, sounds);
         newUntaught = ids.some(id => !TAUGHT_IDS.has(id));
       } catch (e) {
         newUntaught = true; // 解析不出来 = 含未教内容，与旧侧字符不在已教集合里同一结论
       }
+      if (ids && !isSingleLetterSegmentation(ids, sounds)) { tallySkip(); continue; } // §3.9 语料前置断言
       assert.equal(oldUntaught, newUntaught, `W${box.META.week} "${word}" 已教范围判定不一致：old=${oldUntaught} new=${newUntaught}`);
       n++;
     }
@@ -275,6 +312,12 @@ function diffMinimalPair() {
         newMinimal = newEqualLen && idsA.filter((id, i) => id !== idsB[i]).length === 1;
       } catch (e) { /* 解析失败：newMinimal 保持 false，与旧侧"长度不等就不是最小对立"同一保守方向 */ }
 
+      // §3.9 语料前置断言：两侧任一词含多字母字位就跳过这一对，不计入比较。
+      if ((idsA && !isSingleLetterSegmentation(idsA, sounds)) || (idsB && !isSingleLetterSegmentation(idsB, sounds))) {
+        tallySkip();
+        continue;
+      }
+
       assert.equal(oldEqualLen, newEqualLen, `W${box.META.week} G3_PAIRS [${a},${b}] 长度相等判定不一致`);
       assert.equal(oldMinimal, newMinimal, `W${box.META.week} G3_PAIRS [${a},${b}] 最小对立判定不一致：old=${oldMinimal} new=${newMinimal}`);
       n++;
@@ -293,4 +336,23 @@ diffTaughtRange();
 diffMinimalPair();
 
 assert(checked > 200, `全部差分合计比较次数过少（${checked}），怀疑真实语料没有被正确加载`);
-console.log(`PASS migration diff: 五项差分全部一致，合计 ${checked} 次比较，覆盖真实 W1–W4`);
+
+// 跳过数的自适应断言：光有 checked > 200 挡不住"前置断言判定写错、误跳掉一大批词"这种
+// 退化——只要剩下的词还够 200 次比较，测试照样绿。所以再按数据现状卡一道：
+// 先探测四周 SOUNDS 里到底有没有多字母字位；一个都没有（= 第 7 步尚未迁移）时，
+// 合法的跳过数只能是 0，非零即判定逻辑有问题。第 7 步迁入双字母后本条自动放松，
+// 不需要回来改测试。
+const anyMultiLetterInData = WEEKS.some(({ sounds }) =>
+  Object.keys(sounds).some(id => String(sounds[id].grapheme).length > 1)
+);
+if (!anyMultiLetterInData) {
+  assert.equal(
+    skippedMultiLetter, 0,
+    `四周数据里没有任何多字母字位，跳过数本应为 0，实际跳过 ${skippedMultiLetter} 个词——` +
+    `说明 isSingleLetterSegmentation 的判定逻辑有问题，正在静默削减语料`
+  );
+} else {
+  // 已有多字母字位（第 7 步之后）：不能再要求跳过数为 0，但仍要保证没有把语料跳空。
+  assert(checked > 200, `迁移后单字母子集的比较次数过少（${checked}），语料已被跳空`);
+}
+console.log(`PASS migration diff: 五项差分全部一致，合计 ${checked} 次比较，覆盖真实 W1–W4；语料前置断言跳过 ${skippedMultiLetter} 个含多字母字位的词（第 7 步前应为 0）`);

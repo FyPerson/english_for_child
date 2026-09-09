@@ -311,14 +311,43 @@ function soundType(id, sounds) {
   return entry.type;
 }
 
-/* normalizeIdList(value) -> string[]：迁移期双读（方案 §3.5）。
- * 只按 value 的类型分派，不靠内容猜版本：字符串按旧单字符 schema 逐字符展开；
- * 数组按 ID 原样保留（浅拷贝，不修改调用方数组）。既不是字符串也不是数组则拒绝。
- * 注意：这一步不校验展开/传入的每个字符是否真的是 sounds 里的 ID——那属于消费方
- * 自己的校验职责（比如 segmentWord 的 explicitSegments 分支），也是第 8 步
- * `assertIdList` 要收紧成"只收数组、逐项验证存在"时才收窄的部分。 */
-function normalizeIdList(value) {
+/* normalizeIdList(value, options) -> string[]：迁移期双读（方案 §3.5）。
+ * 只按 value 的类型与显式声明的 options 分派，不靠内容猜版本。
+ *
+ * 签名收口（2026-09-09 用户拍板·里程碑 2 段 2 P4）：现在就把签名定成
+ * `normalizeIdList(value, {legacy})`，不等第 8 步。理由是此刻还没有任何消费方接线
+ * （第 4b 步才开始接线），改签名成本最低；等第 4b 步把全部消费方接完线之后再改签名，
+ * 就是方案 §3.5 明确要避免的"第二次破坏性变更"。
+ *
+ * - `options.legacy === true`：字符串按旧单字符 schema 逐字符展开（迁移期双读，
+ *   保留原有行为）；数组仍按 ID 原样保留（浅拷贝，不修改调用方数组）。
+ * - 不传 options、传空对象、传 `{legacy:false}`、或传其他非 true 的 legacy 值：
+ *   字符串输入一律拒绝——这是本次收口新加的行为，用**独立错误码**
+ *   `id-list-legacy-string-rejected`，不复用 `id-list-invalid`：前者的语义是"你传了
+ *   字符串但没有显式声明这是旧格式数据"，后者的语义是"你传的值类型压根不对（非字符
+ *   串非数组）或数组元素不合法"，两者的补救方式不同（前者要么加 legacy:true 要么
+ *   说明调用点本就该传数组），混用一个错误码会让调用方没法区分该怎么修。
+ * - 数组输入的行为完全不受 options 影响，与收口前一致。
+ * - 既不是字符串也不是数组：拒绝（`id-list-invalid`），与收口前一致。
+ *
+ * 第 8 步会再收紧一次（方案 §3.5）：那一步删除的是"legacy 字符串展开"这个分支本身
+ * （连同 legacy 选项一起删除），函数收口/改名为 `assertIdList`——只收数组、逐项验证
+ * 每个 ID 在 sounds 里存在。到那时全部调用方传参数应该都已经是数组，不再需要
+ * legacy 选项；本次的 options 形态是通向那一步的过渡台阶，不是最终形态。
+ *
+ * 注意：无论哪个分支，都不校验展开/传入的每个字符是否真的是 sounds 里的 ID——那属于
+ * 消费方自己的校验职责（比如 segmentWord 的 explicitSegments 分支），第 8 步的
+ * `assertIdList` 才把这一层校验收进来。 */
+function normalizeIdList(value, options) {
   if (typeof value === 'string') {
+    if (!options || options.legacy !== true) {
+      throw GraphemeError(
+        'id-list-legacy-string-rejected',
+        'normalizeIdList 不再无条件接受字符串输入：如果这是旧单字符 schema 的迁移期数据，' +
+          '显式传 {legacy:true}；如果调用点本该传 ID 数组，请先修正上游数据',
+        { value: value }
+      );
+    }
     return value.split('');
   }
   if (Array.isArray(value)) {
