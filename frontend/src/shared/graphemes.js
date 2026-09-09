@@ -58,14 +58,24 @@ function isValidSoundEntryGrapheme(entry) {
     entry.grapheme.length > 0 && entry.grapheme.toLowerCase().length > 0;
 }
 
-/* segmentWord 建索引前的全表校验：sounds 形状 + 每一项 grapheme 非空字符串
- * （方案 §3.2：「空 grapheme 必须在进 DP 前失败——否则会产生零长度转移，
- *   DP 状态图出现自环而不前进」）。只读 Object.keys 返回的自有键，不走原型链。 */
+/* segmentWord 建索引前的全表校验：sounds 形状 + 每个自有键是合法字位 ID + 每一项
+ * grapheme 非空字符串。只读 Object.keys 返回的自有键，不走原型链。
+ *
+ * 两条依据：
+ * - 方案 §3.2：「空 grapheme 必须在进 DP 前失败——否则会产生零长度转移，DP 状态图
+ *   出现自环而不前进」
+ * - 方案 §5「ID 字符集与属性编码」：字位 ID 限定为 ^[a-z][a-z0-9_]*$。**这条先验不能省**
+ *   （codex 2026-09-09 判 high）：不校验键，`__proto__`、大写、空格、非 ASCII 的 ID 都能
+ *   进到分词里，而 sortCandidates 用 `<` 比较 ID 正是以「ID 是纯 ASCII」为前提的——
+ *   前提不成立时浏览器与 Node 的候选顺序可能漂移。 */
 function validateSoundsTable(sounds) {
   assertSoundsShape(sounds);
   var ids = Object.keys(sounds);
   for (var i = 0; i < ids.length; i++) {
     var id = ids[i];
+    if (!isValidGraphemeId(id)) {
+      throw GraphemeError('sound-id-invalid', 'SOUNDS 的键不是合法字位 ID（须匹配 ^[a-z][a-z0-9_]*$）：' + id, { id: id });
+    }
     if (!isValidSoundEntryGrapheme(sounds[id])) {
       throw GraphemeError('grapheme-invalid', 'SOUNDS.' + id + '.grapheme 必须是非空字符串', { id: id });
     }

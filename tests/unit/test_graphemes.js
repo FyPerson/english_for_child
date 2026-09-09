@@ -239,18 +239,46 @@ assert.deepEqual(segmentWord('a', Object.create(null, { a: { value: { grapheme: 
 })();
 console.log('PASS graphemes: assertSoundsShape 沿整条原型链判断（Object.create(null) 放行 / 深层祖先数据仍拒绝）');
 
-// ---- sounds 只读自有键、不走原型链：即便 hasOwnProperty 被同名字位 ID 覆盖也不崩溃 ----
-// 'hasOwnProperty' 本身也是一个合法的 SOUNDS 键名（只是巧合地与 Object.prototype 上的方法同名）。
+// ---- sounds 只读自有键、不走原型链 ----
 // 实现内部判断"是不是自有键"必须用 Object.prototype.hasOwnProperty.call(sounds, id)，
-// 不能直接调 sounds.hasOwnProperty(id)——那样这里会因为它被数据覆盖成非函数而直接崩溃。
+// 不能直接调 sounds.hasOwnProperty(id)——否则数据里一旦有同名键就会崩溃。
+// 用 'constructor' 做这个验证：它全小写、匹配字位 ID 字符集 ^[a-z][a-z0-9_]*$，
+// 同时又是 Object.prototype 上的属性名，正好压住"实现有没有走原型链"这条性质。
+// （原先这里用的是 'hasOwnProperty'，但它含大写字母，自 codex 2026-09-09 判 high 之后
+//  已被 validateSoundsTable 的 ID 字符集先验拒绝——见紧接着的那条断言。）
 (() => {
   const shadowed = Object.create(null);
-  shadowed.hasOwnProperty = { grapheme: 'x', type: 'c' };
+  shadowed.constructor = { grapheme: 'x', type: 'c' };
   shadowed.a = { grapheme: 'a', type: 'v' };
-  assert.deepEqual(segmentWord('a', shadowed), ['a'], 'sounds.hasOwnProperty 被同名字位数据覆盖时仍能正确分词');
-  assert.equal(graphemeLabel('hasOwnProperty', shadowed), 'x', 'resolveSoundEntry 用 Object.prototype.hasOwnProperty.call 而非 sounds.hasOwnProperty(...)');
+  assert.deepEqual(segmentWord('a', shadowed), ['a'], 'sounds 上有名为 constructor 的字位时仍能正确分词');
+  assert.equal(graphemeLabel('constructor', shadowed), 'x', 'resolveSoundEntry 用 Object.prototype.hasOwnProperty.call 而非 sounds.hasOwnProperty(...)');
 })();
-console.log('PASS graphemes: sounds 只读自有键，hasOwnProperty 被遮蔽也不崩溃');
+console.log('PASS graphemes: sounds 只读自有键，与原型同名的合法 ID 不影响分词');
+
+// ---- ID 字符集先验（方案 §5「ID 字符集与属性编码」；codex 2026-09-09 判 high）----
+// 不校验 SOUNDS 的自有键，则 __proto__ / 大写 / 空格 / 非 ASCII 的 ID 都能进到分词里，
+// 而 sortCandidates 用 `<` 比较 ID 正是以「ID 是纯 ASCII」为前提——前提不成立时
+// 浏览器与 Node 的候选顺序可能漂移。
+(() => {
+  const badIds = ['hasOwnProperty', '__proto__', 'AI', 'a i', 'aié', '1a', '_a', ''];
+  for (const bad of badIds) {
+    const table = Object.create(null);
+    table.a = { grapheme: 'a', type: 'v' };
+    table[bad] = { grapheme: 'z', type: 'c' };
+    assert.throws(
+      () => segmentWord('a', table),
+      (e) => e.code === 'sound-id-invalid',
+      'SOUNDS 的键 ' + JSON.stringify(bad) + ' 不合字位 ID 字符集，segmentWord 必须拒绝'
+    );
+  }
+  // 合法形态照常通过：小写字母开头，可含数字与下划线
+  for (const ok of ['a', 'ai', 'oo_short', 'th_voiced', 'x1']) {
+    const table = Object.create(null);
+    table[ok] = { grapheme: 'q', type: 'c' };
+    assert.deepEqual(segmentWord('q', table), [ok], '合法字位 ID ' + ok + ' 必须被接受');
+  }
+})();
+console.log('PASS graphemes: SOUNDS 自有键的字位 ID 字符集先验（8 类非法 + 5 类合法）');
 
 // ---- surfaceOf / graphemeLabel / soundType：正例 + 未知 ID 统一错误码 ----
 assert.equal(surfaceOf(['r', 'ai', 'n'], RAIN_TABLE), 'rain', 'surfaceOf 正例');
