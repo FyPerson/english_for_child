@@ -14,14 +14,16 @@ NOOP_REPRODUCIBLE = lambda temp: None  # noqa: E731 - avoid touching the real bu
 QUICK_NAMES_WITH_BASELINE = ['build', 'reproducible build', 'reproducible build: compare', 'single-file baseline',
                              'size budget', 'baseline contract', 'size budget contract', 'doctor contract',
                              'archive inventory contract', 'theme palette contract', 'directory layout',
-                             'build boundaries', 'run_checks contract', 'assessment contract', 'media coverage']
+                             'build boundaries', 'run_checks contract', 'graphemes contract', 'assessment contract',
+                             'media coverage']
 
 QUICK_NAMES_WITHOUT_BASELINE = [n for n in QUICK_NAMES_WITH_BASELINE if n != 'single-file baseline']
 
 # Every job that follows 'single-file baseline' in the unfiltered list above (plan v1.7 §4 step 1, verdict ①).
 POST_BASELINE_NAMES = ['size budget', 'baseline contract', 'size budget contract', 'doctor contract',
                         'archive inventory contract', 'theme palette contract', 'directory layout',
-                        'build boundaries', 'run_checks contract', 'assessment contract', 'media coverage']
+                        'build boundaries', 'run_checks contract', 'graphemes contract', 'assessment contract',
+                        'media coverage']
 
 BROWSER_SUITE_NAMES = ['test_audio_touch', 'test_date_schedule', 'test_progress', 'test_games', 'test_initialpick',
                         'test_assessment_browser', 'test_mobile', 'test_course', 'smoke_parent_panel',
@@ -86,6 +88,18 @@ class SkipBaselineFilterTests(unittest.TestCase):
         self.assertEqual(names, QUICK_NAMES_WITH_BASELINE + BROWSER_SUITE_NAMES)
 
 
+    def test_non_quick_with_skip_baseline_filters_after_the_browser_suites_are_appended(self):
+        """The filter must run after BOTH construction stages (plan v1.7 §4 step 1).
+
+        Quick mode alone cannot catch the filter block being moved above the `if not quick`
+        append, because no browser suite is named 'single-file baseline'. This asserts the
+        full non-quick list so that a future baseline-like job added to the append stage,
+        or a filter moved above it, shows up as a failure instead of passing silently.
+        """
+        jobs = run_checks.build_jobs(FAKE_TEMP, quick=False, skip_baseline=True, reproducible_fn=NOOP_REPRODUCIBLE)
+        self.assertEqual([name for name, _ in jobs], QUICK_NAMES_WITHOUT_BASELINE + BROWSER_SUITE_NAMES)
+
+
 class RunJobsExecutionTests(unittest.TestCase):
     def test_run_jobs_emit_default_is_print_for_the_real_pipeline(self):
         # The real pipeline (main()) never overrides `emit`, so it must still default to print — every
@@ -121,6 +135,24 @@ class RunJobsExecutionTests(unittest.TestCase):
         # This FAIL line is deliberately faked by the stub; it must stay captured here, never printed
         # for real — this is exactly the line that used to leak into `check --quick`'s real output.
         self.assertEqual(lines, ['RUN build', 'FAIL build'])
+
+    def test_without_the_flag_a_baseline_failure_strands_every_later_job(self):
+        """This is the problem --skip-baseline exists to solve (plan v1.7 §4, the paragraph above the step table).
+
+        'single-file baseline' is in the break list, so once it fails every job after it is
+        never attempted — which is why 'just ignore the baseline failure' cannot prove the rest
+        are green. Unlike the `build` failure case, this one also proves break truncates
+        mid-list rather than merely stopping at the first entry.
+        """
+        jobs = run_checks.build_jobs(FAKE_TEMP, quick=True, skip_baseline=False, reproducible_fn=NOOP_REPRODUCIBLE)
+        baseline_cmd = dict(jobs)['single-file baseline']
+        emit, lines = capture_emit()
+        failures, executed = run_checks.run_jobs(jobs, run=fail_only(baseline_cmd), emit=emit)
+        self.assertEqual(executed, QUICK_NAMES_WITH_BASELINE[:4])
+        self.assertEqual(failures, ['single-file baseline'])
+        for name in POST_BASELINE_NAMES:
+            self.assertNotIn(name, executed)
+        self.assertIn('FAIL single-file baseline', lines)
 
     def test_a_failure_in_a_non_critical_job_does_not_break_the_run(self):
         # Sanity check for the break list itself: a job outside the critical four (e.g. 'size budget')
