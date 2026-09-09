@@ -514,14 +514,16 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     'DATA-SOUNDS-01': { pass: 8, fail: 0, 'not-applicable': 0, unknown: 0 },
     /* 2026-09-09 里程碑 2 第 7 步后更新：wallLetters 已按方案 §2.4 统一为累计全集
        （W2 7→13、W3 6→19），w2/w3:wall-covers-all-sounds 从 fail 转 pass（w1/w4 本就
-       pass），DATA-WALL-01 现在 4 条 pass、0 条 fail。newPatterns-presence 仍是
-       4 条 unknown——migration_audit.js 里这条 status 按设计恒为 'unknown'（见
-       :341 附近注释），与 present 是否为 true 无关：这个一次性快照工具的职责止于
-       "报告字段现状"，累计教学顺序真相源的实际计算已经在 check_data.js（wall_order.js
-       的 computeTeachingOrder/gatherWeekRecordsUpTo）里落地并对四周真实数据验证通过
-       （0 fail，见 tests/unit/test_wall_order.js），不重复在这个预迁移快照工具里
-       实现第二套真相源计算——那正是方案警告过的"两个实现者分别做出结果、两端漂移"。 */
-    'DATA-WALL-01': { pass: 4, fail: 0, 'not-applicable': 0, unknown: 4 }
+       pass），DATA-WALL-01 现在 4 条 pass、0 条 fail。
+       2026-09-10 里程碑 2 收口批 M-8 后更新：newPatterns-presence 的 4 条从 unknown
+       改判 not-applicable——第 7 步已完成，"要等第 7 步才能算真相源"这条理由现在为假
+       （累计教学顺序真相源已在 check_data.js 的 DATA-WALL-01 五条断言里落地并对四周
+       真实数据验证通过，见 tests/unit/test_wall_order.js）。仍然"不在这个一次性预
+       迁移快照工具里重复实现第二套真相源计算"（避免两个实现者分别做出结果、两端
+       漂移），但状态不该继续挂 unknown——按方案口径 unknown 必须被后续步骤视为未
+       完成证据，永远挂着就是给自己埋一条完成不了的待办；not-applicable（这条规则
+       在这个工具里已不需要判定）才是准确状态。 */
+    'DATA-WALL-01': { pass: 4, fail: 0, 'not-applicable': 4, unknown: 0 }
   };
   const actualByRule = {};
   for (const f of realDoc.findings) {
@@ -557,37 +559,36 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
 }
 
 // ============================================================================
-// M3（里程碑 2 第 5 步预筛）：「范围停手」只数了 fail，漏掉了 W1/W2/W3 各一条
-// DATA-WALL-01/newPatterns-presence 的 unknown——而"unknown 必须被后续步骤视为
-// 未完成证据、不能等同于 pass"是方案第 7 步写死的规则。上面 ⑨ 的聚合计数已经把
-// DATA-WALL-01 的 unknown 钉成 4（W1—W4 各一条），但那只是个总数，不点名是哪几条
-// findingId——这里显式钉住 W1/W2/W3 这三条的 findingId 与 status，不能静默滑过。
-// 这三条本身归第 7 步落定（newPatterns 真相源第 7 步才引入），本条只负责在第 5 步
-// 收口时把「已知还没做」显式记录下来，不是要在第 5 步修掉它们。
+// M3（里程碑 2 第 5 步预筛，2026-09-10 收口批 M-8 更新）：「范围停手」只数了 fail，
+// 漏掉了 W1—W4 各一条 DATA-WALL-01/newPatterns-presence 的 unknown——而"unknown
+// 必须被后续步骤视为未完成证据、不能等同于 pass"是方案第 7 步写死的规则。这条断言
+// 原先显式钉住这 4 条的 findingId + status（unknown），防止它们被「范围停手」静默
+// 跳过。
 //
-// 2026-09-09 里程碑 2 第 7 步开工前审计核对（不写死数字，现跑现取）：本步开工前
-// 审计的 unknown 清单仍恰好是这 4 条（W1—W4 各一条 newPatterns-presence），已按
-// 方案第 7 步「两类 unknown 分开处置」核对：这条判定为「真的判不了」——不是数据
-// 缺失（newPatterns 本步已迁入四周 META），而是 migration_audit.js 这个一次性
-// 预迁移快照工具的 status 按设计恒为 'unknown'（源码 :341 附近：「与 present 是
-// true 是 false 无关」），它不打算实现累计教学顺序真相源的完整计算——那份计算
-// （wall_order.js 的 computeTeachingOrder/gatherWeekRecordsUpTo）已经在
-// check_data.js 的 DATA-WALL-01 三条断言里落地并对四周真实数据验证通过（见上面
-// ⑨ 的 DATA-WALL-01: {pass:4, fail:0, unknown:4}）。第 7 步后这 4 条 unknown 因此
-// 保持不变——不是遗留缺口，是这个工具的既定职责边界；本条断言把这个结论显式钉住，
-// 不让它被静默改判成别的 status。
+// M-8（2026-09-10 里程碑 2 收口批）：第 7 步已经完成，"newPatterns 累计教学顺序
+// 真相源要等第 7 步才能算"这条理由现在为假——真相源已经在 check_data.js 的
+// DATA-WALL-01 五条断言（wall_order.js 的 computeTeachingOrder/gatherWeekRecordsUpTo）
+// 里落地，并对四周真实数据验证通过、0 fail（见上面 ⑨ 的 DATA-WALL-01:
+// {pass:4, fail:0, 'not-applicable':4, unknown:0} 与 tests/unit/test_wall_order.js）。
+// migration_audit.js 相应把这 4 条的 status 从 unknown 改判 not-applicable——
+// 仍然"不在这个一次性预迁移快照工具里重复实现第二套真相源计算"（避免两个实现者
+// 分别做出结果、两端漂移），但不再继续给自己埋一条永远完成不了的 unknown 待办。
+// 这条断言相应改成显式钉住 not-applicable，不让状态被静默改判成别的值；M3 原本
+// 防止「范围停手」漏掉未完成项的目的，现在由「这 4 条已经是 not-applicable、
+// 真正的判定结论在 check_data.js 里全绿」这件事本身保证，不再需要挡着 unknown。
 // ============================================================================
 {
-  const EXPECTED_UNKNOWN_NEW_PATTERNS_IDS = ['w1:newPatterns-presence', 'w2:newPatterns-presence', 'w3:newPatterns-presence', 'w4:newPatterns-presence'];
-  for (const findingId of EXPECTED_UNKNOWN_NEW_PATTERNS_IDS) {
+  const EXPECTED_NOT_APPLICABLE_NEW_PATTERNS_IDS = ['w1:newPatterns-presence', 'w2:newPatterns-presence', 'w3:newPatterns-presence', 'w4:newPatterns-presence'];
+  for (const findingId of EXPECTED_NOT_APPLICABLE_NEW_PATTERNS_IDS) {
     const f = realDoc.findings.find(x => x.ruleId === 'DATA-WALL-01' && x.findingId === findingId);
     assert(f, `真实四周审计应存在 DATA-WALL-01/${findingId} 这条发现`);
-    assert.equal(f.status, 'unknown', `DATA-WALL-01/${findingId} 的 status 应为 unknown（migration_audit.js 职责边界之外，不是 pass 也不是被遗漏），实际：${f.status}`);
+    assert.equal(f.status, 'not-applicable',
+      `DATA-WALL-01/${findingId} 的 status 应为 not-applicable（第 7 步已完成，真相源已在 check_data.js 落地验证通过，这条快照式 finding 不再需要判定），实际：${f.status}`);
     // 第 7 步后 present 应为 true（newPatterns 字段已迁入四周 META），value 应是
-    // 该周真实的 newPatterns 数组——status 恒 unknown 不代表这条 finding 的 details
-    // 没有随数据迁移更新，两件事分开验证。
+    // 该周真实的 newPatterns 数组——status 改判不代表这条 finding 的 details 没有
+    // 随数据迁移更新，两件事分开验证。
     assert.equal(f.details.present, true, `DATA-WALL-01/${findingId} 的 details.present 第 7 步后应为 true`);
     assert(Array.isArray(f.details.value), `DATA-WALL-01/${findingId} 的 details.value 第 7 步后应是数组`);
   }
-  console.log('PASS M3 回归 + 第 7 步核对：W1—W4 各一条 DATA-WALL-01/newPatterns-presence 的 unknown 已显式钉住 findingId + status（present 已变 true，status 按工具设计仍是 unknown），不被「范围停手」静默跳过');
+  console.log('PASS M3 回归 + M-8 改判：W1—W4 各一条 DATA-WALL-01/newPatterns-presence 已从 unknown 改判 not-applicable 并显式钉住 findingId + status（present 已变 true），不被「范围停手」静默跳过');
 }

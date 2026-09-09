@@ -257,20 +257,83 @@ function assertWordSemantics({ week, file, word, segments, sounds }) {
   }
 }
 
-/* 分辨力验证（"改坏副本"办法，同本文件头注释「分辨力证明」一节的既有做法）：语料
- * 为空时上面的 SKIP 分支不断言任何东西，所以 assertWordSemantics 这套逻辑本身
- * 需要独立证明它真的有分辨力——用合成的 rain（r/ai/n 共存表）喂给它，先证明正确
- * segments 能通过，再证明一份"故意写错的 segments"（缺一个字位）会被它抓住，
- * 不是一条恒真式。 */
+/* 分辨力验证（"改坏副本"办法，同本文件头注释「分辨力证明」一节的既有做法）。
+ *
+ * ⚠️（HIGH-3，2026-09-10 里程碑 2 收口批预筛，第七次"测试看起来在验证 X、实际验证
+ * Y"）改前这里只喂了一组"故意写错的 segments"（['r','ai']，缺 n），它的抛错来自
+ * assertWordSemantics 第一行调用的 segmentWord 自己的一致性校验（错误码
+ * explicit-segments-invalid）——那是 segmentWord 的契约，不是 assertWordSemantics
+ * 那四条 assert 抓住的：四条 assert 一条都没被执行到，把它们全删掉这个验证照样通过。
+ *
+ * 逐条核实这四条断言能不能被"通过 segmentWord、却违反断言本身"的输入触发：
+ *   1.（deepEqual(ids, segments)）segmentWord 的 explicitSegments 分支恒返回
+ *      `explicitSegments.slice()`（graphemes.js validateExplicitSegments 最后一行）——
+ *      只要没抛错，ids 必然与 segments 深度相等，不存在能让它独立落空的合法输入，
+ *      这条断言钉的是 segmentWord 的契约，不是可被破坏的数据判据。
+ *   3.（firstLabel.length>1 时不应等于 word.charAt(0)）多字符字符串与单字符字符串
+ *      按 === 永远不相等，这条断言在类型层面必然成立，同样不存在能让它落空的输入
+ *      ——但它此前在全仓库任何地方（合成语料与当前为空的真实语料）都没有被真正
+ *      执行过一次，是死代码。
+ *   4.（anyMultiLetter 时 ids.length !== word.length）只要参与拼接的每个 grapheme
+ *      都至少 1 个字符（真实数据恒如此），出现一个 length>1 的字位就必然让拼接后
+ *      的字符数多于字位数，同样不存在能让它落空的输入。
+ *   2.（surfaceOf(ids,sounds) 应等于该词本身）是唯一一条能被独立触发的：segmentWord
+ *      内部的一致性校验是大小写不敏感的（拼接结果 .toLowerCase() 后再比较），而
+ *      assertWordSemantics 调 surfaceOf() 时不转小写——grapheme 带大写字母时，
+ *      segmentWord 判定"一致"通过，surfaceOf 断言却会因为大小写不同而落空，这就是
+ *      "通过 segmentWord 但违反某一条断言"的真实案例。
+ *
+ * 因此本函数做三件事：
+ *   ① 正例：正确 segments（合成 rain）应无异常通过；顺带用首字位多字符的合成词
+ *      aid 真正执行一次断言 3 的 firstLabel.length>1 分支——证明它不是死代码，
+ *      即使按上面的分析它必然为真。
+ *   ② 断言 2 的真红例：grapheme 带大写字母的合成字位表，证明这条断言确实有独立于
+ *      segmentWord 的判定力，且抛错信息点名 surfaceOf（不是 segmentWord 的错误码）。
+ *   ③ 保留原有"缺字位"用例，但改口为它验证的是 segmentWord 自己的前置契约
+ *      （explicit-segments-invalid），不再声称这是 assertWordSemantics 的分辨力。 */
 function verifyAssertWordSemanticsHasDiscriminatingPower() {
   const sounds = { r: { grapheme: 'r', type: 'c' }, ai: { grapheme: 'ai', type: 'v' }, n: { grapheme: 'n', type: 'c' } };
+
+  // ① 正例：正确 segments 应无异常通过。
   assertWordSemantics({ week: 0, file: '(synthetic)', word: 'rain', segments: ['r', 'ai', 'n'], sounds: sounds });
-  let caught = null;
+
+  // ①b：首字位多字符（断言 3 的 firstLabel.length>1 分支）——合成 aid/[ai,d]，此前
+  // 无论合成语料还是真实语料（真实语料当前为空，见 realWeekDataSemanticsSuite 的
+  // SKIP 分支）都没有任何输入让这个分支真正执行过。这里用能通过 segmentWord 的正确
+  // 输入去跑它，证明它不是死代码（哪怕它必然为真，见函数头注释）。
+  const aidSounds = { ai: { grapheme: 'ai', type: 'v' }, d: { grapheme: 'd', type: 'c' } };
+  assertWordSemantics({ week: 0, file: '(synthetic)', word: 'aid', segments: ['ai', 'd'], sounds: aidSounds });
+
+  // ② 断言 2 的真红例：grapheme 带大写字母（ID 本身仍合法小写），segmentWord 的
+  // explicitSegments 一致性校验大小写不敏感、能通过；assertWordSemantics 里
+  // surfaceOf(ids,sounds) 不转小写，应该因大小写不同而落空。
+  const mixedCaseSounds = { r: { grapheme: 'r', type: 'c' }, ai: { grapheme: 'AI', type: 'v' }, n: { grapheme: 'n', type: 'c' } };
+  let assertion2Caught = null;
+  try {
+    assertWordSemantics({ week: 0, file: '(synthetic)', word: 'rain', segments: ['r', 'ai', 'n'], sounds: mixedCaseSounds });
+  } catch (e) { assertion2Caught = e; }
+  assert(assertion2Caught,
+    '分辨力验证：assertWordSemantics 断言 2（surfaceOf 应等于该词本身）在 grapheme 大小写不一致时应该抛错——' +
+    'segmentWord 自己的一致性校验大小写不敏感、能通过，这里抛错必须来自 assertWordSemantics 自己的逻辑');
+  assert(/surfaceOf/.test(assertion2Caught.message),
+    `分辨力验证：断言 2 的抛错信息应点名 surfaceOf（证明红在预期的那一条断言），实际：${assertion2Caught.message}`);
+
+  // ③ 前置契约用例（沿用改前的写法，但改口它验证的是什么）：拼接对不上词形的
+  // segments，抛错发生在 assertWordSemantics 第一行调用 segmentWord 的那一刻，
+  // assertWordSemantics 自己的四条 assert 一条都不会执行到。
+  let segmentWordCaught = null;
   try {
     assertWordSemantics({ week: 0, file: '(synthetic)', word: 'rain', segments: ['r', 'ai'], sounds: sounds }); // 故意写错：缺 n，拼接对不上词形
-  } catch (e) { caught = e; }
-  assert(caught, '分辨力验证：assertWordSemantics 对拼接对不上词形的错误 segments 应该抛错（explicitSegments 一致性校验），实际没有抛错');
-  console.log('PASS grapheme semantics 分辨力验证：assertWordSemantics 对正确 segments（合成 rain）通过、对故意写错的 segments（缺 n）正确抛错——证明这套断言不是恒真式');
+  } catch (e) { segmentWordCaught = e; }
+  assert(segmentWordCaught, '前置契约：拼接对不上词形的 segments 应该抛错（segmentWord 自己的 explicitSegments 一致性校验）');
+  assert.equal(segmentWordCaught.code, 'explicit-segments-invalid',
+    `前置契约：抛错应来自 segmentWord 的 explicit-segments-invalid（证明这是 segmentWord 的契约，不是 assertWordSemantics 那四条 assert 里的哪一条），实际错误码：${segmentWordCaught.code}`);
+
+  console.log('PASS grapheme semantics 分辨力验证：① 正确 segments（合成 rain + 首字位多字符的 aid）无异常通过，' +
+    '顺带执行了此前从未跑过的 firstLabel.length>1 分支（断言 3）；② 大小写不一致的合成字位表让 assertWordSemantics ' +
+    '自己的 surfaceOf 断言（断言 2）真正落空，证明它独立于 segmentWord 有判定力；③ 拼接对不上词形的 segments 仍会' +
+    '抛错，但明确这抛错来自 segmentWord 的前置契约，不是 assertWordSemantics 那四条 assert 的分辨力——断言 1/3/4 由 ' +
+    'segmentWord 契约与字符串长度不等即不相等这两点保证恒真，不存在能让它们独立落空的合法输入（见函数头注释）');
 }
 
 /* realWeekDataSemanticsSuite()：第 7 步实作（原 TODO_realWeekDataSemanticsSuite 占位）。

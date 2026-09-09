@@ -62,6 +62,8 @@ def build_jobs(temp, quick, skip_baseline, reproducible_fn=reproducible):
             ('legacy scripts refuse replay', [sys.executable, 'tests/unit/test_legacy_scripts_refuse_replay.py']),
             ('check_data unreviewed marker gate', [sys.executable, 'tests/unit/test_check_data_unreviewed_marker.py']),
             ('check_data sounds schema global gate', [sys.executable, 'tests/unit/test_check_data_sounds_schema_global.py']),
+            ('check_data array field guards', [sys.executable, 'tests/unit/test_check_data_array_guards.py']),
+            ('check_data wall assertion blind spots', [sys.executable, 'tests/unit/test_check_data_wall_assertions.py']),
             ('directory layout', [sys.executable, 'tests/unit/test_layout.py']),
             ('build boundaries', [sys.executable, 'tests/unit/test_build.py']),
             ('run_checks contract', [sys.executable, 'tests/unit/test_run_checks.py']),

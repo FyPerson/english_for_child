@@ -71,11 +71,19 @@ with sync_playwright() as p:
     for bad in ("undefined", "[object", "NaN"):
         ok(bad not in body, f"首页出现 {bad}")
     live = pg.evaluate("chs => chs.map(ch => ({ch, live: hasPhoneme(ch)}))", NEW_SOUNDS)
-    wall = pg.locator(".tiles-demo .tile")
-    ok(wall.count() >= 6, f"点亮墙积木少于 6 块（实际 {wall.count()}）")
-    tags = pg.evaluate("[...document.querySelectorAll('.tiles-demo .tile')].slice(0,6).map(e=>e.tagName)")
-    ok(tags == ["BUTTON" if x["live"] else "DIV" for x in live],
-       f"点亮墙元素类型与音频状态不配对：{tags}（音频：{live}）")
+    # HIGH-2（里程碑 2 收口批预筛）：墙扩到 19 块累计字母后，"前 6 块"早就不是本周新音
+    # （NEW_SOUNDS），而是第一周留下的字母——原先的 slice(0,6) 是按位置切片，位置早已
+    # 对不上语义，wall.count()>=6 也从"恰好本周 6 块"退化成对 19 块恒真。改成按 ID
+    # 定位：从 META.wallLetters（数据本身，不是读被测代码再算一遍）里查出每个新音
+    # 在墙上的真实索引，再去对应位置的元素判类型，不假设新音排在最前面。
+    wall_letters = pg.evaluate("normalizeIdList(META.wallLetters)")
+    all_tiles = pg.locator(".tiles-demo .tile")
+    ok(all_tiles.count() == len(wall_letters) + 1,
+       f"点亮墙积木数应为墙上 {len(wall_letters)} 块累计字母 + 1 个示例词（实际 {all_tiles.count()}）")
+    all_tags = pg.evaluate("[...document.querySelectorAll('.tiles-demo .tile')].map(e=>e.tagName)")
+    new_sound_tags = [all_tags[wall_letters.index(ch)] for ch in NEW_SOUNDS]
+    ok(new_sound_tags == ["BUTTON" if x["live"] else "DIV" for x in live],
+       f"本周新音在点亮墙上的元素类型与音频状态不配对：{new_sound_tags}（音频：{live}）")
     ok(pg.locator(".tiles-demo " + DUMB_BUTTON).count() == 0, "点亮墙存在哑巴按钮")
     ILL = pg.evaluate("({word:Object.keys(WORD_ILL).length, ph:Object.keys(PHONEME_ILL).length,"
                       " book:Object.keys(BOOK_IMG).length, cel:!!CELEBRATE_NAT})")

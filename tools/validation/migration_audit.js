@@ -327,22 +327,28 @@ function auditWeek(box, raw, file) {
   });
 
   /* ---- DATA-WALL-01：newPatterns 现状 + 墙是否已覆盖 SOUNDS 全集（§2.4 的"统一后"判据）
-     真相源（按 project.json 周序累计 newPatterns）本次尚不可算——newPatterns 字段
-     现状全部缺失，第 7 步随数据迁移一并引入，这里如实标 unknown，不是 fail：
-     "无法判定"和"判定为错"是两回事。 ---- */
+     ⚠️（M-8，里程碑 2 收口批）以下两条注释与 status 曾经是：真相源（按 project.json
+     周序累计 newPatterns）"尚不可算"，第 7 步才会引入 newPatterns 字段，所以这条
+     finding 只报告字段现状、标 unknown，不判定对错。第 7 步现已完成，这个理由已经
+     为假——newPatterns 不仅四周 META 里都有了，累计教学顺序真相源（wall_order.js 的
+     computeTeachingOrder/gatherWeekRecordsUpTo）也已经在 check_data.js 的 DATA-WALL-01
+     五条断言（含本批新增的两条，见该文件 ⑤ 段）里落地，并对四周真实数据验证通过、
+     0 fail。"不在这个一次性预迁移快照工具里重复实现第二套真相源"这个判断本身仍然
+     是对的（避免两个实现者分别算出结果、两端漂移，也不用去接住 migration_audit.js
+     自己那批合成周号测试）——但状态不该继续留 unknown：按方案自己的口径，"unknown
+     必须被后续步骤视为未完成证据"，永远标 unknown 就是给自己埋一条永远完成不了的
+     待办。这条 finding 该报告的问题已经有别的工具给出确定结论，状态改成 schema 里
+     本来就有的 not-applicable（"这条规则在这个工具里已不需要判定"，不是"没查过"）。 ---- */
   const hasNewPatterns = Array.isArray(META.newPatterns);
-  /* status 恒为 'unknown'，与 present 是 true 是 false 无关：真相源（按 project.json
-     周序累计 newPatterns，方案 §2.4）要等第 7 步全部四周迁入 newPatterns 后才能算，
-     本步哪怕字段已经存在也没有可比较的独立顺序基准——所以这里只报告现状，不作判定。 */
   pushFinding(findings, {
     findingId: weekTag + 'newPatterns-presence',
     ruleId: 'DATA-WALL-01',
     week: week,
-    status: 'unknown',
+    status: 'not-applicable',
     source: { file: file, line: metaLoc.present ? metaLoc.line : null, column: null },
     details: {
       present: hasNewPatterns, value: hasNewPatterns ? META.newPatterns : null,
-      reason: '真相源（按 project.json 周序累计 newPatterns，方案 §2.4）第 7 步才引入；本步只报告字段现状，不判定墙顺序对错'
+      reason: '第 7 步已完成：newPatterns 累计教学顺序真相源已在 check_data.js 的 DATA-WALL-01 断言（wall_order.js 的 computeTeachingOrder/gatherWeekRecordsUpTo）落地，并对四周真实数据验证通过（0 fail）；本一次性预迁移快照工具不重复实现第二套真相源计算，这条 finding 到此不再需要判定'
     }
   });
   {

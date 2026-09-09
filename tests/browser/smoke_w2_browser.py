@@ -38,7 +38,14 @@ with sync_playwright() as p:
 
     # ---------- ① 首页 ----------
     ok(pg.locator(".daycard").count() == 7, "首页日卡不是 7 张")
-    ok(pg.locator(".tiles-demo .tile").count() == 8, "hero 积木不是 7 块新音 + 1 个示例词")
+    # HIGH-1（里程碑 2 收口批预筛）：墙语义统一后 .tiles-demo 渲染的是 META.wallLetters
+    # 累计全集（本周之前教过的字母也在，恒点亮）+ 1 个示例词按钮，不再是"本周新音+1"。
+    # 判据必须来自数据本身（wallLetters 的长度），不能写死 7/8——第一周只有本周=累计，
+    # 数字碰巧对得上；第二周墙扩到 13 块后再写死旧数字就是这条断言错的根源。
+    wall_letters = pg.evaluate("normalizeIdList(META.wallLetters)")
+    ok(pg.locator(".tiles-demo .tile").count() == len(wall_letters) + 1,
+       f"hero 积木不是墙上 {len(wall_letters)} 块累计字母 + 1 个示例词"
+       f"（实际 {pg.locator('.tiles-demo .tile').count()}）")
     ok(pg.locator(".wall-entry").count() == 1, "缺词卡墙入口")
     ok("第 2 周" in pg.locator(".hero__eyebrow").inner_text(), "hero 周次不对")
     ok(pg.locator(".dots .dot").count() == 7, "顶部进度点不是 7 个")
@@ -49,9 +56,10 @@ with sync_playwright() as p:
 
     # 音素录音可分批补进来。断言必须锁"音频在 → button；音频不在 → div"的配对关系，
     # 不能写死第二周永远缺音，否则素材一到位测试就会因为错误的原因变红。
-    new_sounds = ["c", "k", "e", "h", "r", "m", "d"]
+    # HIGH-1：改成对墙上全部累计字母逐一核对（不再只挑本周新音那 7 个），元素顺序
+    # 与 wall_letters（= META.wallLetters 的顺序）严格对应，因为模板就是照这个顺序渲染。
     live_new = pg.evaluate(
-        "chs => chs.map(ch => ({ch, live: hasPhoneme(ch)}))", new_sounds)
+        "chs => chs.map(ch => ({ch, live: hasPhoneme(ch)}))", wall_letters)
     live_count = sum(1 for item in live_new if item["live"])
     ok(pg.locator(".tiles-demo .tile[data-sayph]").count() == live_count,
        f"点亮墙可听积木数与音频不匹配：应为 {live_count}，"
@@ -60,9 +68,9 @@ with sync_playwright() as p:
     expected_tags = ["BUTTON" if item["live"] else "DIV" for item in live_new] + ["BUTTON"]
     ok(tags == expected_tags,
        f"点亮墙元素类型与音频不匹配：期望 {expected_tags}，实际 {tags}")
-    missing_count = len(new_sounds) - live_count
+    missing_count = len(wall_letters) - live_count
     ok(pg.locator('.tiles-demo div.tile[role="img"]').count() == missing_count,
-       f"无录音的新音应有 {missing_count} 个 div[role=img]，"
+       f"无录音的墙字母应有 {missing_count} 个 div[role=img]，"
        f"实际 {pg.locator('.tiles-demo div.tile[role="img"]').count()}")
     ok(pg.locator(".tiles-demo button.tile:not([data-sayph]):not([data-say])").count() == 0,
        "存在既无 data-sayph 也无 data-say、却仍是 button 的积木（哑巴按钮）")

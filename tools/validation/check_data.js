@@ -195,20 +195,37 @@ function checkSpellable(word, rackValue, rackLabel){
   catch (e) { ok(false, `${rackLabel} "${word}" 无法按字位分词（${e.code || 'error'}）：${e.message}`); return; }
   ok(canSpellIds(ids, rackValue), `${rackLabel} "${word}" 用 rack "${rackValue}" 摆不出来`);
 }
-G4_WORDS.forEach(w => checkSpellable(w, META.rackG4, 'G4 订单'));
+/* M-5（里程碑 2 收口批 送审）：rackG4/rackG5 与下面的 wallLetters 同批（第 7 步）迁成
+ * 字位 ID 数组，但只有 newPatterns 当初补了 Array.isArray 守卫（见下方断言②上方）——
+ * 这两个字段若拿到迁移期遗留的旧字符串形态，会直接从 normalizeIdList() 内部抛出未捕获
+ * 的 GraphemeError('id-list-legacy-string-rejected')，整个 Node 进程带栈退出，check_data.js
+ * 剩余全部断言一条都不会跑。副机（GPT）沿用旧字符串形态写第五周数据层最可能踩到这个坑，
+ * 拿到的会是一段陌生的栈，而不是一条"这个字段现在要写成数组"的清晰错误。加守卫后改成
+ * 一条正常的 ok(false, ...) 失败，其余检查照常继续跑。 */
+const rackG4Valid = Array.isArray(META.rackG4);
+ok(rackG4Valid, 'META.rackG4 必须是字位 ID 数组（迁移期不再接受旧的单字符串）');
+const rackG4Safe = rackG4Valid ? META.rackG4 : [];
+const rackG5Valid = Array.isArray(META.rackG5);
+ok(rackG5Valid, 'META.rackG5 必须是字位 ID 数组（迁移期不再接受旧的单字符串）');
+const rackG5Safe = rackG5Valid ? META.rackG5 : [];
+G4_WORDS.forEach(w => checkSpellable(w, rackG4Safe, 'G4 订单'));
 G5_WHITELIST.forEach(w => {
-  checkSpellable(w, META.rackG5, 'G5 白名单');
+  checkSpellable(w, rackG5Safe, 'G5 白名单');
   ok(W[w], `G5 白名单 "${w}" 不在 W 里`);
 });
-for (const c of new Set([...normalizeIdList(META.rackG4), ...normalizeIdList(META.rackG5)])) {
+for (const c of new Set([...normalizeIdList(rackG4Safe), ...normalizeIdList(rackG5Safe)])) {
   ok(SOUNDS[c], `积木架字母 "${c}" 不在 SOUNDS 里（aria-label 会崩）`);
 }
 
-head('⑤ 点亮墙与首教日（DATA-WALL-01：三条集合与顺序断言，里程碑 2 第 7 步启用）');
+head('⑤ 点亮墙与首教日（DATA-WALL-01：三条集合与顺序断言 + M-6 两条补充，里程碑 2 第 7 步启用）');
 /* wallLetters/rackG4/rackG5 第 7 步起是字位 ID 数组，不再需要旧格式兼容选项
  * （那只用于展开旧格式字符串，第 7 步前的过渡形态；normalizeIdList 本身的双读
- * 能力留到第 8 步才收紧为 assertIdList，本步只是这些调用点不再用得到它）。 */
-const wallIds = normalizeIdList(META.wallLetters);
+ * 能力留到第 8 步才收紧为 assertIdList，本步只是这些调用点不再用得到它）。
+ * M-5：与上面 rackG4/rackG5 同理，先守卫再传给 normalizeIdList——旧字符串形态
+ * 若直接传入会让整个 CLI 带栈崩溃，守卫后改成一条清晰的 ok(false, ...)。 */
+const wallLettersValid = Array.isArray(META.wallLetters);
+ok(wallLettersValid, 'META.wallLetters 必须是字位 ID 数组（迁移期不再接受旧的单字符串）');
+const wallIds = wallLettersValid ? normalizeIdList(META.wallLetters) : [];
 for (const c of wallIds) ok(SOUNDS[c], `点亮墙字位 "${c}" 不在 SOUNDS 里`);
 
 ok(Array.isArray(META.newPatterns), 'META.newPatterns 必须是字位 ID 数组（本周新点亮的积木，教新字位的周非空，否则空数组）');
@@ -232,11 +249,40 @@ if (teachingOrder) {
   ok(diff.orderMatches, `wallLetters 顺序与独立教学顺序序列（按各周 newPatterns 累计）不一致。期望：[${expectedOrder.join(',')}]，实际：[${wallIds.join(',')}]`);
 }
 
+/* 断言①b（M-6b，里程碑 2 收口批）：规范的取值规则是「wallLetters 恒等于 SOUNDS 全部
+ * 键，除非显式标了 displayOnWall:false」（方案 §2.4）。断言①只把 wallLetters 与
+ * 「累计 newPatterns 推出的独立教学顺序」比对，两边都不会回头核对 SOUNDS 自身的键
+ * 集合——SOUNDS 里混进一个既不在 newPatterns、也不在 wallLetters 里的孤儿键，断言
+ * ①②③与上面「wallIds ⊆ SOUNDS」的存在性检查（只查了这一个方向）全都不会报错。
+ * 这里补上反方向：SOUNDS 的每个可见键都必须能在 wallLetters 里找到。 */
+const wallIdSet = new Set(wallIds);
+for (const id of Object.keys(SOUNDS)) {
+  if (SOUNDS[id].displayOnWall === false) continue;
+  ok(wallIdSet.has(id), `SOUNDS 里的字位 "${id}" 未标 displayOnWall:false，却不在 wallLetters 里（孤儿字位：不在 newPatterns 也不在 wallLetters，可能是漏加或漏标）`);
+}
+
 /* 断言②：FIRST_TEACH_DAY 的键集合与 newPatterns 完全相等（规范 v2.0 §3「唯一模型」：
  * 「FIRST_TEACH_DAY 键集合恒等于 newPatterns；历史首教日不在本周文件里重复」）。 */
 const newPatternIds = Array.isArray(META.newPatterns) ? META.newPatterns : [];
 ok(setsEqual(Object.keys(FIRST_TEACH_DAY), newPatternIds),
   `FIRST_TEACH_DAY 的键集合与 newPatterns 不一致。FIRST_TEACH_DAY 键：[${Object.keys(FIRST_TEACH_DAY).sort().join(',')}]，newPatterns：[${newPatternIds.slice().sort().join(',')}]`);
+
+/* 断言②b（M-6a，里程碑 2 收口批）：newPatterns 数组顺序就是真相源本身——
+ * wall_order.js 的 computeTeachingOrder 直接按这个数组顺序累计成独立教学顺序，
+ * 断言①再拿它去核对 wallLetters。但此前没有任何断言把 newPatterns 内部顺序与
+ * 首教日的天号对齐：把某周 newPatterns 整体打乱、wallLetters 对应尾部同步打乱，
+ * 断言①（两边用同一份错误顺序，互相对得上）、②（只比集合不比顺序）、③（逐键独立
+ * 核对，不看数组顺序）全部仍然全绿，但墙会按错误顺序点亮。这里补上：newPatterns
+ * 内部顺序必须按首教日天号非降序排列。 */
+if (Array.isArray(META.newPatterns)) {
+  const newPatternDays = newPatternIds.map(id => FIRST_TEACH_DAY[id]);
+  if (newPatternDays.every(d => typeof d === 'number' && Number.isFinite(d))) {
+    const sortedDays = newPatternDays.slice().sort((a, b) => a - b);
+    ok(newPatternDays.every((d, i) => d === sortedDays[i]),
+      `newPatterns 顺序应按首教日天号非降序排列（它是墙呈现顺序的真相源本身，见 wall_order.js）。` +
+      `newPatterns：[${newPatternIds.join(',')}]，对应天号：[${newPatternDays.join(',')}]`);
+  }
+}
 
 /* 断言③：每个首教日落到对应 DAYS[].sounds（沿用既有逻辑，未改动）。 */
 for (const [c, day] of Object.entries(FIRST_TEACH_DAY)) {
