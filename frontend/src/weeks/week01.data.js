@@ -1,9 +1,10 @@
 const META = {
   "week": 1,
   "storageKey": "soundblocks-w1-v1",
-  "rackG4": "ssaattiippnn",
-  "rackG5": "ssaattiippnn",
-  "wallLetters": "satipn",
+  "rackG4": ["s","s","a","a","t","t","i","i","p","p","n","n"],
+  "rackG5": ["s","s","a","a","t","t","i","i","p","p","n","n"],
+  "wallLetters": ["s","a","t","i","p","n"],
+  "newPatterns": ["s","a","t","i","p","n"],
   "groupedRack": false,
   "consolidation": false,
   "assessmentMode": "weekly",

@@ -27,6 +27,7 @@ const isHTML = SRC.toLowerCase().endsWith('.html');
 const {loadData} = require('./load_data');
 const {validateAssessment} = require('./assessment_contract');
 const {normalizeIdList, segmentWord, surfaceOf, validateSoundsSchema} = require('../../frontend/src/shared/graphemes');
+const {computeTeachingOrder, gatherWeekRecordsUpTo, expectedWallOrder, diffWallLetters, setsEqual} = require('./wall_order');
 let box;
 try { box = loadData(raw, isHTML); } catch(e) { console.error(e.message); process.exit(2); }
 const { RESERVED, SOUNDS, W, WALL_HINT, BOOK, FIRST_TEACH_DAY, G1_ROUNDS, G1_THEME, G3_PAIRS, G4_WORDS, G5_WHITELIST, DAYS, META } = box;
@@ -181,11 +182,10 @@ function idsForWord(word){
   const explicit = (entry && Array.isArray(entry.segments)) ? entry.segments : undefined;
   return segmentWord(word, SOUNDS, explicit);
 }
-/* canSpellIds(ids, rackValue)：rack 此刻仍是旧格式字符串（四个字段改数组是第 7
- * 步的事），经 normalizeIdList 双读展开成 ID 多重集消耗——保留重复项，单字母阶段
- * 与旧的 rack.split('') 逐字符消耗等价（方案 §2.3「rack 是多重集，不是集合」）。 */
+/* canSpellIds(ids, rackValue)：rack 第 7 步起是字位 ID 数组，经 normalizeIdList
+ * 消耗成 ID 多重集——保留重复项（方案 §2.3「rack 是多重集，不是集合」）。 */
 function canSpellIds(ids, rackValue){
-  const pool = normalizeIdList(rackValue, {legacy:true});
+  const pool = normalizeIdList(rackValue);
   for (const id of ids) { const i = pool.indexOf(id); if (i < 0) return false; pool.splice(i, 1); }
   return true;
 }
@@ -200,21 +200,47 @@ G5_WHITELIST.forEach(w => {
   checkSpellable(w, META.rackG5, 'G5 白名单');
   ok(W[w], `G5 白名单 "${w}" 不在 W 里`);
 });
-for (const c of new Set([...normalizeIdList(META.rackG4, {legacy:true}), ...normalizeIdList(META.rackG5, {legacy:true})])) {
+for (const c of new Set([...normalizeIdList(META.rackG4), ...normalizeIdList(META.rackG5)])) {
   ok(SOUNDS[c], `积木架字母 "${c}" 不在 SOUNDS 里（aria-label 会崩）`);
 }
 
-head('⑤ 点亮墙与首教日');
-/* wallLetters 此刻仍是旧格式字符串，经 normalizeIdList 双读归一成 ID 数组——单字符
- * 字符串归一后 for...of 与 includes 语义仍与旧模型等价（方案 §4 第 4b 行验收项）。
- * 本步只换消费方式，不启用 DATA-WALL-01 新校验（复审 H-4，留给第 7 步）。 */
-const wallIds = normalizeIdList(META.wallLetters, {legacy:true});
-for (const c of wallIds) {
-  ok(META.consolidation || FIRST_TEACH_DAY[c] != null, `点亮墙字母 "${c}" 没有首教日`);
-  ok(SOUNDS[c], `点亮墙字母 "${c}" 不在 SOUNDS 里`);
+head('⑤ 点亮墙与首教日（DATA-WALL-01：三条集合与顺序断言，里程碑 2 第 7 步启用）');
+/* wallLetters/rackG4/rackG5 第 7 步起是字位 ID 数组，不再需要旧格式兼容选项
+ * （那只用于展开旧格式字符串，第 7 步前的过渡形态；normalizeIdList 本身的双读
+ * 能力留到第 8 步才收紧为 assertIdList，本步只是这些调用点不再用得到它）。 */
+const wallIds = normalizeIdList(META.wallLetters);
+for (const c of wallIds) ok(SOUNDS[c], `点亮墙字位 "${c}" 不在 SOUNDS 里`);
+
+ok(Array.isArray(META.newPatterns), 'META.newPatterns 必须是字位 ID 数组（本周新点亮的积木，教新字位的周非空，否则空数组）');
+
+/* 断言①：wallLetters 等于「独立教学顺序序列」（按 project.json 周序累计各周
+ * newPatterns，同周内按数组自身顺序追加，见 wall_order.js/方案 §2.4）过滤
+ * displayOnWall!==false 后的结果——顺序、缺项、额外项、重复项分别独立判定
+ * （方案 §5「墙」行：四类互不覆盖，任一非空即 fail）。 */
+let teachingOrder = null;
+try {
+  teachingOrder = computeTeachingOrder(gatherWeekRecordsUpTo(box, META.week));
+} catch (e) {
+  ok(false, `无法计算独立教学顺序真相源（${e.code || 'error'}）：${e.message}`);
 }
+if (teachingOrder) {
+  const expectedOrder = expectedWallOrder(teachingOrder, SOUNDS);
+  const diff = diffWallLetters(wallIds, expectedOrder);
+  ok(diff.missing.length === 0, `wallLetters 缺少独立教学顺序序列里应上墙的字位：[${diff.missing.join(',')}]`);
+  ok(diff.extra.length === 0, `wallLetters 含独立教学顺序序列之外的额外字位：[${diff.extra.join(',')}]`);
+  ok(diff.duplicates.length === 0, `wallLetters 含重复字位：[${diff.duplicates.join(',')}]`);
+  ok(diff.orderMatches, `wallLetters 顺序与独立教学顺序序列（按各周 newPatterns 累计）不一致。期望：[${expectedOrder.join(',')}]，实际：[${wallIds.join(',')}]`);
+}
+
+/* 断言②：FIRST_TEACH_DAY 的键集合与 newPatterns 完全相等（规范 v2.0 §3「唯一模型」：
+ * 「FIRST_TEACH_DAY 键集合恒等于 newPatterns；历史首教日不在本周文件里重复」）。 */
+const newPatternIds = Array.isArray(META.newPatterns) ? META.newPatterns : [];
+ok(setsEqual(Object.keys(FIRST_TEACH_DAY), newPatternIds),
+  `FIRST_TEACH_DAY 的键集合与 newPatterns 不一致。FIRST_TEACH_DAY 键：[${Object.keys(FIRST_TEACH_DAY).sort().join(',')}]，newPatterns：[${newPatternIds.slice().sort().join(',')}]`);
+
+/* 断言③：每个首教日落到对应 DAYS[].sounds（沿用既有逻辑，未改动）。 */
 for (const [c, day] of Object.entries(FIRST_TEACH_DAY)) {
-  ok(wallIds.includes(c), `首教日有 "${c}" 但点亮墙没显示`);
+  ok(SOUNDS[c], `首教字位 "${c}" 不在 SOUNDS 里`);
   const d = DAYS[day - 1];
   ok(d && d.sounds.includes(c), `"${c}" 标称第 ${day} 天首教，但那天的 sounds 里没有它`);
 }

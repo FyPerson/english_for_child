@@ -44,15 +44,26 @@
  *   test_migration_diff.js 而不是本文件——两套测试合起来才构成完整证明链，不能
  *   把本文件单独当作"新旧算法确实不同"的证据。
  *
- * ⚠️（H-3，2026-09-09 里程碑 2 收口批）覆盖缺口——本文件只用合成语料（不消费任何真实
- * frontend/src/weeks/week0N.data.js）。真实周数据里显式声明 `segments` 的词、真实消费者
- * 输入是否真的按这套新语义运作，本文件完全不覆盖；test_migration_diff.js 同样不覆盖
- * （它排除全部多字母词）。两个文件合起来都不构成"迁移后真实数据语义正确"的证明——
- * 那是第 7 步的事（真实多字母数据迁移完成后才有语料）。本文件文末的
- * `TODO_realWeekDataSemanticsSuite` 是这道套件的接入点占位，第 7 步实作时填充。
+ * ⚠️（H-3，2026-09-09 里程碑 2 收口批）覆盖缺口——本文件前半段只用合成语料（不消费
+ * 任何真实 frontend/src/weeks/week0N.data.js）。真实周数据里显式声明 `segments` 的词、
+ * 真实消费者输入是否真的按这套新语义运作，前半段完全不覆盖；test_migration_diff.js
+ * 同样不覆盖（它排除全部多字母词）。
+ *
+ * 2026-09-09 里程碑 2 第 7 步：文末 `realWeekDataSemanticsSuite()`（原
+ * `TODO_realWeekDataSemanticsSuite` 占位）已实作并在文件末尾调用。**当前语料仍为空**：
+ * 本步向 SOUNDS 迁入的四个字段只是形态变化（字符串→数组），开工前的字位表扩充分析
+ * 已证明未引入任何新的多字母字位 ID——四周真实数据仍全部是单字母字位，没有任何词的
+ * `W[word].segments` 会含多字母字位。该函数因此显式打印这一点并跳过（不是悄悄断言
+ * "0 个词全部通过"），判据清单原样保留，供未来某个真正教多字母字位的周（W5 起）
+ * 声明多字母 `segments` 后自动激活。
  */
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { segmentWord, surfaceOf, graphemeLabel } = require('../../frontend/src/shared/graphemes');
+const { loadData } = require('../../tools/validation/load_data');
+
+const ROOT = path.resolve(__dirname, '..', '..');
 
 function assertThrows(fn, check, label) {
   let caught = null;
@@ -187,10 +198,115 @@ console.log('PASS grapheme semantics: 四类预期差异（字位数/首字位/�
 //      这道套件本身应显式跳过并打印原因，不能悄悄"断言 0 个词全部通过"而误报绿色
 //      （同 test_migration_diff.js 文件头 `assert(n > 50, ...)` 一类的"语料太少"
 //      防御，第 7 步实作时补上）。
-function TODO_realWeekDataSemanticsSuite() {
-  throw new Error(
-    '第 7 步占位：真实周数据语义套件尚未实作，见本函数上方判据清单。' +
-    '本函数不应在第 7 步前被调用——调用即说明有人误以为这道验证已经存在。'
-  );
+/* realWeekDataSemanticsSuite()：第 7 步实作（原 TODO_realWeekDataSemanticsSuite 占位）。
+ *
+ * 判据 1（枚举，不挑例子）：扫描全部 4 周真实 frontend/src/weeks/week0N.data.js 的
+ * W[word].segments 声明，收集其中"含至少一个多字母字位（grapheme.length > 1）"的词——
+ * 这是权威源头（真实 W 声明）本身给出的清单，不自己另挑一份子集（同头注释判据 1）。
+ *
+ * 判据 3（语料为空时的处置）：本步（第 7 步）迁的是四个字段的形态（字符串→数组），
+ * 开工前的字位表扩充分析已证明本步不引入任何新的多字母字位 ID——四周 SOUNDS 仍全部
+ * 是单字母字位（见本任务收口报告「开工前字位表扩充分析」一节的实测结论）。因此本步
+ * 完成后，语料仍然为空（没有任何真实词的 W[word].segments 含多字母字位），这道套件
+ * 必须显式跳过并打印原因，不能悄悄"断言 0 个词全部通过"而误报绿色——这正是判据 3
+ * 明写的处置，也是"没有引入新字位就不会有新歧义"这条结论在测试层面的直接体现。
+ * 语料非空的分支（判据 2 的四类逐项断言）保留实现，供未来某个双字母周（W5 起）真的
+ * 声明了多字母 segments 时自动激活，不需要再回来改这个函数本身。 */
+function collectMultiLetterWordsFromRealWeeks() {
+  const multiLetterWords = [];
+  for (let n = 1; n <= 4; n++) {
+    const file = 'frontend/src/weeks/week0' + n + '.data.js';
+    const raw = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const box = loadData(raw, false);
+    const sounds = box.SOUNDS || {};
+    Object.keys(box.W || {}).forEach(word => {
+      const entry = box.W[word];
+      if (!entry || !Array.isArray(entry.segments)) return;
+      const hasMultiLetter = entry.segments.some(id => sounds[id] && String(sounds[id].grapheme).length > 1);
+      if (hasMultiLetter) multiLetterWords.push({ week: n, file: file, word: word, segments: entry.segments, sounds: sounds });
+    });
+  }
+  return multiLetterWords;
 }
-module.exports = { TODO_realWeekDataSemanticsSuite };
+
+/* assertWordSemantics(entry)：判据 2 的四类逐项断言，抽成独立函数——既是
+ * realWeekDataSemanticsSuite 语料非空分支真正调用的逻辑，也让下面的「分辨力验证」
+ * 能够喂合成数据直接调用它，不必等真实数据出现多字母 segments 才能证明这套断言
+ * 真的会因为坏数据而红（不是恒真式）。 */
+function assertWordSemantics({ week, file, word, segments, sounds }) {
+  const ids = segmentWord(word, sounds, segments);
+  assert.deepEqual(ids, segments,
+    `W${week}（${file}）"${word}"：segmentWord(word, sounds, W[word].segments) 应精确等于声明的 segments，实际：${JSON.stringify(ids)}`);
+
+  const normalized = word.toLowerCase();
+  assert.equal(surfaceOf(ids, sounds), normalized,
+    `W${week}（${file}）"${word}"：surfaceOf(ids, sounds) 应等于该词本身（规范化后），实际：${surfaceOf(ids, sounds)}`);
+
+  const firstLabel = graphemeLabel(ids[0], sounds);
+  if (firstLabel.length > 1) {
+    assert.notEqual(firstLabel.toLowerCase(), normalized.charAt(0),
+      `W${week}（${file}）"${word}"：首字位是多字母字位时，graphemeLabel(ids[0]) 不应等于 word.charAt(0)` +
+      `（这正是差异②在真实词上的重新证明：双字母首字位时两者本该不同）`);
+  }
+
+  const anyMultiLetter = ids.some(id => sounds[id].grapheme.length > 1);
+  if (anyMultiLetter) {
+    assert.notEqual(ids.length, word.length,
+      `W${week}（${file}）"${word}"：含多字母字位时，字位数（${ids.length}）应不等于字符数（${word.length}）` +
+      `（这正是差异①在真实词上的重新证明）`);
+  }
+}
+
+/* 分辨力验证（"改坏副本"办法，同本文件头注释「分辨力证明」一节的既有做法）：语料
+ * 为空时上面的 SKIP 分支不断言任何东西，所以 assertWordSemantics 这套逻辑本身
+ * 需要独立证明它真的有分辨力——用合成的 rain（r/ai/n 共存表）喂给它，先证明正确
+ * segments 能通过，再证明一份"故意写错的 segments"（缺一个字位）会被它抓住，
+ * 不是一条恒真式。 */
+function verifyAssertWordSemanticsHasDiscriminatingPower() {
+  const sounds = { r: { grapheme: 'r', type: 'c' }, ai: { grapheme: 'ai', type: 'v' }, n: { grapheme: 'n', type: 'c' } };
+  assertWordSemantics({ week: 0, file: '(synthetic)', word: 'rain', segments: ['r', 'ai', 'n'], sounds: sounds });
+  let caught = null;
+  try {
+    assertWordSemantics({ week: 0, file: '(synthetic)', word: 'rain', segments: ['r', 'ai'], sounds: sounds }); // 故意写错：缺 n，拼接对不上词形
+  } catch (e) { caught = e; }
+  assert(caught, '分辨力验证：assertWordSemantics 对拼接对不上词形的错误 segments 应该抛错（explicitSegments 一致性校验），实际没有抛错');
+  console.log('PASS grapheme semantics 分辨力验证：assertWordSemantics 对正确 segments（合成 rain）通过、对故意写错的 segments（缺 n）正确抛错——证明这套断言不是恒真式');
+}
+
+/* realWeekDataSemanticsSuite()：第 7 步实作（原 TODO_realWeekDataSemanticsSuite 占位）。
+ *
+ * 判据 1（枚举，不挑例子）：扫描全部 4 周真实 frontend/src/weeks/week0N.data.js 的
+ * W[word].segments 声明，收集其中"含至少一个多字母字位（grapheme.length > 1）"的词——
+ * 这是权威源头（真实 W 声明）本身给出的清单，不自己另挑一份子集（同头注释判据 1）。
+ *
+ * 判据 3（语料为空时的处置）：本步（第 7 步）迁的是四个字段的形态（字符串→数组），
+ * 开工前的字位表扩充分析已证明本步不引入任何新的多字母字位 ID——四周 SOUNDS 仍全部
+ * 是单字母字位（见本任务收口报告「开工前字位表扩充分析」一节的实测结论）。因此本步
+ * 完成后，语料仍然为空（没有任何真实词的 W[word].segments 含多字母字位），这道套件
+ * 必须显式跳过并打印原因，不能悄悄"断言 0 个词全部通过"而误报绿色——这正是判据 3
+ * 明写的处置，也是"没有引入新字位就不会有新歧义"这条结论在测试层面的直接体现。
+ * 语料非空的分支（判据 2 的四类逐项断言，见 assertWordSemantics）保留实现，供未来
+ * 某个双字母周（W5 起）真的声明了多字母 segments 时自动激活，不需要再回来改这个
+ * 函数本身。 */
+function realWeekDataSemanticsSuite() {
+  verifyAssertWordSemanticsHasDiscriminatingPower();
+
+  const multiLetterWords = collectMultiLetterWordsFromRealWeeks();
+  if (multiLetterWords.length === 0) {
+    console.log('SKIP grapheme semantics 真实周数据语义套件：四周真实数据（frontend/src/weeks/week01–04.data.js）' +
+      '当前没有任何词在 W[word].segments 里声明含多字母字位——本步（第 7 步）只迁移四个字段的形态' +
+      '（字符串→数组），开工前的字位表扩充分析已证明未引入任何新的多字母字位 ID，SOUNDS 仍全部是' +
+      '单字母字位，语料因此为空。本条判据显式打印这一点并跳过，不悄悄断言"0 个词全部通过"（那会' +
+      '误报绿色）。判据清单保留在本函数里，供未来某个真正教多字母字位的周（W5 起）声明多字母' +
+      'segments 后自动激活，无需再改这个函数。');
+    return;
+  }
+
+  // 语料非空分支：逐词枚举全部四类预期差异（判据 2），复用差分测试已验证过的字位级算法
+  // （segmentWord/surfaceOf/graphemeLabel），不重新发明判据。
+  multiLetterWords.forEach(assertWordSemantics);
+  console.log(`PASS grapheme semantics 真实周数据语义套件：真实四周数据里 ${multiLetterWords.length} 个声明了多字母 segments 的词` +
+    '（枚举，不是手选例子），逐项验证分词结果/表面串/首字位/长度不等四类预期差异均成立');
+}
+realWeekDataSemanticsSuite();
+module.exports = { realWeekDataSemanticsSuite };

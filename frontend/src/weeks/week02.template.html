@@ -1400,8 +1400,11 @@ function renderHome(){
       <h1>七块新积木，<br>读完第二本书</h1>
       <p class="hero__lede">这一周加入七块新字母积木：<b class="en">c k e h r m d</b>，对应六个新音——<b class="en">c</b> 和 <b class="en">k</b> 都发 <b class="en">/k/</b>。加上第一周那六个音，能拼的词一下子多出好几倍。<b>第二天孩子会认识第三块红积木，第四天第一次拼出四个音的词，第六天读完第二本书。</b></p>
       <div class="tiles-demo">
-        ${normalizeIdList('ckehrmd', {legacy:true}).map(c=>{
-          const lit = dayDone(FIRST_TEACH_DAY[c]);   // 积木点亮墙：不存状态，现算首教日是否已完成
+        ${normalizeIdList(META.wallLetters).map(c=>{
+          // 墙语义统一后 wallLetters 是累计全集（方案 §2.4）：本周之前教过的字位不在
+          // FIRST_TEACH_DAY 里（该字段现在只含本周首教日，规范 v2.0 §3「唯一模型」），
+          // 只有本周新教的才按 dayDone 判点亮态，其余（更早几周教过的）恒为已点亮。
+          const lit = FIRST_TEACH_DAY[c] != null ? dayDone(FIRST_TEACH_DAY[c]) : true;   // 积木点亮墙：不存状态，现算首教日是否已完成
           const canHear = hasPhoneme(c);
           const label = graphemeLabel(c, SOUNDS);
           // 降级不是"删掉属性"，是"换一种元素"：没有录音的积木不能仍然是 button，

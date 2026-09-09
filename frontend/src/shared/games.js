@@ -366,10 +366,9 @@ function initG4(){
   document.querySelectorAll('[data-g4]').forEach(root=>{
     const orders = root.querySelector('[data-g4-orders]');
     const body = root.querySelector('[data-g4-body]');
-    // META.rackG4 此刻仍是旧格式字符串（四个字段改数组是第 7 步的事），这里经
-    // normalizeIdList 双读展开成 ID 数组消费——单字母阶段展开结果与旧的 split('')
-    // 逐字符等价，为第 7 步真正的数组接入打好接口（方案 §3.5）。
-    const RACK_LETTERS = normalizeIdList(META.rackG4, {legacy:true});
+    // META.rackG4 第 7 步起是字位 ID 数组；normalizeIdList 在数组输入下只是浅拷贝，
+    // 不再需要旧格式兼容选项（那只用于展开旧格式字符串，第 7 步前的过渡形态）。
+    const RACK_LETTERS = normalizeIdList(META.rackG4);
     // wordIds：当前订单词的字位 ID 序列（方案 §2.2「槽位长度」行——槽数必须按
     // 字位数建，不是按字符数，否则 rain 建四槽却只有三块积木永远填不满）。
     // slots 存放的是字位 ID，不是字符。
@@ -630,7 +629,8 @@ function initG5(){
   document.querySelectorAll('[data-g5]').forEach(root=>{
     const body = root.querySelector('[data-g5-body]');
     const day = +root.dataset.g5Day;
-    const RACK_LETTERS = normalizeIdList(META.rackG5, {legacy:true});
+    // META.rackG5 第 7 步起是字位 ID 数组，同上 initG4 不再需要旧格式兼容选项。
+    const RACK_LETTERS = normalizeIdList(META.rackG5);
     let slotCount = 3;
     let slots = new Array(slotCount).fill(null);
     let usedTileIdx = [];

@@ -69,6 +69,7 @@ def build_jobs(temp, quick, skip_baseline, reproducible_fn=reproducible):
             ('word coloring contract', ['node', 'tests/unit/test_word_coloring.js']),
             ('render smoke', ['node', 'tests/unit/test_render_smoke.js']),
             ('strict render ambiguity regression', ['node', 'tests/unit/test_strict_render_ambiguity_regression.js']),
+            ('wall order contract', ['node', 'tests/unit/test_wall_order.js']),
             ('word consumers contract', ['node', 'tests/unit/test_word_consumers.js']),
             ('migration diff contract', ['node', 'tests/unit/test_migration_diff.js']),
             ('grapheme semantics contract', ['node', 'tests/unit/test_grapheme_semantics.js']),

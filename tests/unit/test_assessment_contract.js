@@ -9,7 +9,7 @@ const {validateAssessment, GLOBAL_POOL} = require('../../tools/validation/assess
 // ============================================================================
 function fixture(){
   return {
-    META:{week:4, assessmentMode:'monthly', consolidation:true, wallLetters:'satipnckehrmdgoulfb'},
+    META:{week:4, assessmentMode:'monthly', consolidation:true, wallLetters:'satipnckehrmdgoulfb'.split('')},
     SOUNDS:Object.fromEntries('satipnckehrmdgoulfb'.split('').map(c=>[c,{}])),
     RESERVED:['hem','ram','rid','dam','kid'], RESERVED_RETEST:['hum','hemx','rag','rim','rot'],
     PROBE_A:[],PROBE_B:[],GLOBAL_RESERVED:GLOBAL_POOL,
@@ -133,7 +133,7 @@ function weeklyFixture(week) {
   return {
     META: {
       week, assessmentMode: 'weekly', teachingMode: 'phoneme', consolidation: false,
-      bookMode: 'new', externalReading: false, wallLetters: 'satipnckehrmdgoulfb'
+      bookMode: 'new', externalReading: false, wallLetters: 'satipnckehrmdgoulfb'.split('')
     },
     SOUNDS: Object.fromEntries('satipnckehrmdgoulfb'.split('').map(c => [c, {grapheme: c}])),
     RESERVED: ['hem', 'ram', 'rid', 'dam', 'kid'],

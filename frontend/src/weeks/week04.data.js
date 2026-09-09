@@ -4,9 +4,12 @@ const META = {
   "consolidation": true,
   "assessmentMode": "monthly",
   "groupedRack": true,
-  "wallLetters": "satipnckehrmdgoulfb",
-  "rackG4": "satipnckehrmdgoulfb",
-  "rackG5": "satipnckehrmdgoulfb",
+  "wallLetters": ["s","a","t","i","p","n","c","k","e","h","r","m","d","g","o","u","l","f","b"],
+  "rackG4": ["s","a","t","i","p","n","c","k","e","h","r","m","d","g","o","u","l","f","b"],
+  "rackG5": ["s","a","t","i","p","n","c","k","e","h","r","m","d","g","o","u","l","f","b"],
+  /* 巩固周不教新字位（consolidation:true），newPatterns 为空数组
+   * （规范 v2.0 §3「唯一模型」：「教新字位的周非空，否则空数组」）。 */
+  "newPatterns": [],
   "flashCapacity": {
     "flash_words": 12,
     "flash_sounds": 19

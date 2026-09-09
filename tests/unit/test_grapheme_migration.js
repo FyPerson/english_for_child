@@ -376,10 +376,18 @@ function scanForLResidue(files, patterns, excludedEntries) {
 // 目录不算生产代码，与 sounds_grapheme_adapter.js 等排除清单同一套判断口径）里的
 // legacy:true 都在 KNOWN_LEGACY_TRUE_CALL_SITES 登记范围内——第 4b 步接线前生产代码
 // 是 0 处，接线后新增的每一处都必须先登记（带 count 与撤销说明）才能通过，未登记的
-// 命中仍会被判失败。第 7 步（方案 §3.5）把全部消费方接完线、"legacy 字符串展开"分支
-// 本身被删除（normalizeIdList 收口为 assertIdList）时，这道门槛要连测试代码也一起
-// 管——届时 KNOWN_LEGACY_TRUE_CALL_SITES 应清空，下面的扫描范围也要去掉
-// `rel.startsWith('tests/')` 这条豁免。
+// 命中仍会被判失败。**第 8 步**（方案 §3.5：「第 2 步引入，第 8 步收紧为
+// assertIdList」——不是第 7 步，第 7 步只做数据迁移+启用 DATA-WALL-01，不收紧兼容层）
+// 把 "legacy 字符串展开" 分支本身删除（normalizeIdList 收口为 assertIdList）时，这道
+// 门槛要连测试代码也一起管——届时 KNOWN_LEGACY_TRUE_CALL_SITES 应清空，下面的扫描
+// 范围也要去掉 `rel.startsWith('tests/')` 这条豁免。
+// 2026-09-09 里程碑 2 第 7 步更新：四个字段（wallLetters/rackG4/rackG5）已迁成 ID
+// 数组，下方生产代码条目（games.js 2 处、四个模板各 1 处、check_data.js 4 处，各自
+// revertOn 字段写的正是这个动作）已按各自的撤销说明删除 legacy:true——那些字段
+// 现在恒是数组，normalizeIdList 不再需要 legacy:true 才能消费它们。这些条目本身
+// 保留在清单里（不删除，只是 count 归零/整条撤销），作为"这条调用点历史上为什么
+// 存在过、现在为什么不再需要"的可追溯记录；若未来这些文件又出现新的 legacy:true，
+// 门槛会正常报未登记命中，不会被这些已撤销的旧条目静默放行。
 // ============================================================================
 
 /* KNOWN_LEGACY_TRUE_CALL_SITES：当前全部传 `{ legacy: true }` 的调用点静态清单。
@@ -392,14 +400,20 @@ function scanForLResidue(files, patterns, excludedEntries) {
  * 每条生产代码条目都写明**第 7 步数据改数组后要怎么撤销**——这正是这条 medium 要的
  * 效果：把"新增一处长期兼容后门"变成一个会被看见、需要说明理由和撤销路径的动作。 */
 const KNOWN_LEGACY_TRUE_CALL_SITES = Object.freeze([
-  { file: 'tests/unit/test_migration_diff.js', reason: '差分测试读取真实 W1-W4 的 box.META.rackG4/rackG5，现状仍是迁移前旧格式字符串，用 legacy:true 展开成 ID 数组做差分对照（本文件差分 1，见 diffSpellingComparison）' },
+  { file: 'tests/unit/test_migration_diff.js', reason: '差分测试读取真实 W1-W4 的 box.META.rackG4/rackG5 做"新侧"对照，用 legacy:true 声明这条调用点可能收到旧格式字符串——数组输入下 legacy:true 无影响，保留是防御性写法，不是必须撤销的技术债（测试文件整体豁免，见下方 tests/ 判据）' },
   { file: 'tests/unit/test_graphemes.js', reason: 'normalizeIdList 自身的单测，构造旧格式字符串输入验证 legacy 分支行为' },
-  { file: 'frontend/src/shared/games.js', count: 2, reason: 'G4/G5 的 RACK_LETTERS 仍读 META.rackG4/rackG5 字符串（4b 只接线消费者，字段本身留到第 7 步才改数组），用 legacy:true 双读展开成 ID 数组消费（保留重复项，方案 §2.3）', revertOn: '第 7 步 rackG4/rackG5 迁成数组后，两处改为直接消费数组（或收口后的 assertIdList），删除 legacy:true' },
-  { file: 'frontend/src/weeks/week01.template.html', count: 1, reason: 'hero 积木墙读硬编码字面量 \'satipn\'，第 7 步前墙的 SOURCE 仍是字符串（改读 META.wallLetters 数组是第 7 步「前三周模板改读 META.wallLetters」的事），用 legacy:true 展开成 ID 数组供 graphemeLabel/soundType 消费', revertOn: '第 7 步模板改读 META.wallLetters（数组）后删除 legacy:true，直接消费数组' },
-  { file: 'frontend/src/weeks/week02.template.html', count: 1, reason: '同 week01，hero 积木墙读硬编码字面量 \'ckehrmd\'', revertOn: '同 week01' },
-  { file: 'frontend/src/weeks/week03.template.html', count: 1, reason: '同 week01，hero 积木墙读硬编码字面量 \'goulfb\'', revertOn: '同 week01' },
-  { file: 'frontend/src/weeks/week04.template.html', count: 1, reason: 'hero 积木墙已读 META.wallLetters，但字段本身此刻仍是字符串（第 7 步才改数组），用 legacy:true 双读', revertOn: '第 7 步 META.wallLetters 改数组后删除 legacy:true' },
-  { file: 'tools/validation/check_data.js', count: 4, reason: '④⑤ 两个 head 块（积木架 canSpellIds、点亮墙 wallIds）消费 META.rackG4/rackG5/wallLetters 三个仍是字符串的字段，用 legacy:true 双读展开成 ID 数组/多重集（M4 重计数：3→4，`canSpellIds` 那一行同时展开 rackG4 与 rackG5 两个字段，同一行两处 legacy:true）', revertOn: '第 7 步四个字段改数组后，三处改为直接消费数组，删除 legacy:true' }
+  /* 2026-09-09 里程碑 2 第 7 步：以下 5 条生产代码条目已按各自 revertOn 撤销——
+   * wallLetters/rackG4/rackG5 三个字段迁成 ID 数组后，这些调用点不再需要 legacy:true
+   * 才能消费它们，已逐处删除。count 字段改为 0（不是删除整条记录）：留作可追溯的
+   * 历史记录，说明这条调用点为什么存在过、现在为什么不需要——若这些文件将来又
+   * 出现新的 legacy:true，门槛会按未登记命中正常报红，不会被这些已撤销的旧配额
+   * 静默放行（count:0 意味着零配额，任何命中都会被计入 hits）。 */
+  { file: 'frontend/src/shared/games.js', count: 0, reason: '（已撤销）G4/G5 的 RACK_LETTERS 曾用 legacy:true 展开 META.rackG4/rackG5 字符串；第 7 步字段改数组后两处均已删除 legacy:true，直接消费数组（保留重复项，方案 §2.3）' },
+  { file: 'frontend/src/weeks/week01.template.html', count: 0, reason: '（已撤销）hero 积木墙曾读硬编码字面量 \'satipn\'；第 7 步已改读 META.wallLetters（数组）并删除 legacy:true' },
+  { file: 'frontend/src/weeks/week02.template.html', count: 0, reason: '（已撤销）同 week01，hero 积木墙曾读硬编码字面量 \'ckehrmd\'；第 7 步已改读 META.wallLetters（数组）并删除 legacy:true' },
+  { file: 'frontend/src/weeks/week03.template.html', count: 0, reason: '（已撤销）同 week01，hero 积木墙曾读硬编码字面量 \'goulfb\'；第 7 步已改读 META.wallLetters（数组）并删除 legacy:true' },
+  { file: 'frontend/src/weeks/week04.template.html', count: 0, reason: '（已撤销）hero 积木墙已读 META.wallLetters，但字段本身曾仍是字符串；第 7 步字段改数组后已删除 legacy:true' },
+  { file: 'tools/validation/check_data.js', count: 0, reason: '（已撤销）④⑤ 两个 head 块（积木架 canSpellIds、点亮墙 wallIds）曾用 legacy:true 双读 META.rackG4/rackG5/wallLetters；第 7 步四个字段改数组后四处均已删除 legacy:true，直接消费数组' }
 ]);
 
 /* LEGACY_TRUE_DOC_MENTIONS：graphemes.js 里两处提到 `legacy:true` 的地方（一处是

@@ -3,9 +3,12 @@
 const META = {
   "week": 2,
   "storageKey": "soundblocks-w2-v1",
-  "rackG4": "atpncehmrd",
-  "rackG5": "satipnckehrmd",
-  "wallLetters": "ckehrmd",
+  "rackG4": ["a","t","p","n","c","e","h","m","r","d"],
+  "rackG5": ["s","a","t","i","p","n","c","k","e","h","r","m","d"],
+  /* 墙语义统一（方案 §2.4），与 frontend/src/weeks/week02.data.js 同步：wallLetters
+   * 恒为墙上完整的积木集合、按累计教学顺序排列，本周新点亮的由 newPatterns 表达。 */
+  "wallLetters": ["s","a","t","i","p","n","c","k","e","h","r","m","d"],
+  "newPatterns": ["c","k","e","h","r","m","d"],
   "groupedRack": false,
   "consolidation": false,
   "assessmentMode": "weekly",

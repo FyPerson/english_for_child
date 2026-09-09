@@ -1398,7 +1398,7 @@ function renderHome(){
       <h1>十九块积木，<br>这周拼得更稳</h1>
       <p class="hero__lede">这周<b>不教新音</b>。把学过的十九块积木重新拼一拼，复读前三本小书，让孩子先读、再核对。第七天留下第一份<b>十词解码基线</b>和月测阅读记录，决定怎样进入下一阶段。</p>
       <div class="tiles-demo">
-        ${normalizeIdList(META.wallLetters, {legacy:true}).map(c=>{
+        ${normalizeIdList(META.wallLetters).map(c=>{
           const lit = true;   // 积木点亮墙：不存状态，现算首教日是否已完成
           const canHear = hasPhoneme(c);
           const label = graphemeLabel(c, SOUNDS);

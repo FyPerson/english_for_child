@@ -18,6 +18,7 @@ QUICK_NAMES_WITH_BASELINE = ['build', 'reproducible build', 'reproducible build:
                              'check_data unreviewed marker gate', 'check_data sounds schema global gate',
                              'directory layout', 'build boundaries', 'run_checks contract', 'graphemes contract',
                              'word coloring contract', 'render smoke', 'strict render ambiguity regression',
+                             'wall order contract',
                              'word consumers contract', 'migration diff contract', 'grapheme semantics contract',
                              'synthetic ai integration contract',
                              'migration audit contract', 'grapheme migration contract', 'assessment contract', 'media coverage']
@@ -31,6 +32,7 @@ POST_BASELINE_NAMES = ['size budget', 'baseline contract', 'size budget contract
                         'check_data unreviewed marker gate', 'check_data sounds schema global gate',
                         'directory layout', 'build boundaries', 'run_checks contract', 'graphemes contract',
                         'word coloring contract', 'render smoke', 'strict render ambiguity regression',
+                        'wall order contract',
                         'word consumers contract', 'migration diff contract', 'grapheme semantics contract',
                         'synthetic ai integration contract',
                         'migration audit contract', 'grapheme migration contract', 'assessment contract', 'media coverage']

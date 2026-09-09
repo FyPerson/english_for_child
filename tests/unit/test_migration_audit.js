@@ -320,7 +320,10 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
      一段"字段信任模型"说明注释（M2），tileHTML/forms-join 各 +9 行；games.js 的
      flash 卡面渲染函数上方新增了 s.mem 转义决策注释（M2），games-flash-display
      +13 行；check_data.js 新增了 H3（表级 schema 问题单独 ok()）与 L2（纯文本字段
-     禁止出现标签）两段代码，check-data-schema-gate +10 行。 */
+     禁止出现标签）两段代码，check-data-schema-gate +10 行。
+     2026-09-09 里程碑 2 第 7 步（数据迁移 + 启用 DATA-WALL-01）五次更新：check_data.js
+     顶部新增一行 require('./wall_order')（墙真相源模块），check-data-schema-gate
+     单纯因这一行插入而 +1 行（103→104）；pattern 本身未变，不是消费点代码形状变化。 */
   const expectMigrated = (id, file, line) => {
     const f = lConsumerFindings.find(x => x.findingId === 'l-field-consumer:' + id);
     assert(f, `应有 l-field-consumer:${id}`);
@@ -332,7 +335,7 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   expectMigrated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 90);
   expectMigrated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 93);
   expectMigrated('games-flash-display', 'frontend/src/shared/games.js', 1209);
-  expectMigrated('check-data-schema-gate', 'tools/validation/check_data.js', 103);
+  expectMigrated('check-data-schema-gate', 'tools/validation/check_data.js', 104);
   console.log('PASS migration_audit（H-3 验证 + H2 回归 + 4b 二次更新）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass（pattern 随 4b 消费者兼容层改动同步更新，精确定位到各自代码行）');
 }
 
@@ -495,7 +498,11 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
 {
   const REAL_STATUS_COUNTS_BY_RULE = {
     'DATA-ASSESS-01': { pass: 30, fail: 6, 'not-applicable': 0, unknown: 0 },
-    'DATA-PATTERN-02': { pass: 0, fail: 13, 'not-applicable': 0, unknown: 0 },
+    /* 2026-09-09 里程碑 2 第 7 步（数据迁移）后更新：wallLetters/rackG4/rackG5 四周
+       12 条 legacy-format fail 全部转 pass（三个字段已迁成 ID 数组）；仅剩
+       legacy-html-fallback 1 条 fail（load_data.js 的 HTML 兜底按方案 §3.8 延后到
+       第 8 步处置，本步不动）。 */
+    'DATA-PATTERN-02': { pass: 12, fail: 1, 'not-applicable': 0, unknown: 0 },
     'DATA-RESERVED-01': { pass: 35, fail: 5, 'not-applicable': 0, unknown: 0 },
     /* 2026-09-09 里程碑 2 第 5 步 P8：W1 周检词 spit（4 字位）换成 pit（3 字位）后，
        segment-count 24 条全部 pass，不再有 fail。 */
@@ -505,7 +512,16 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
        本批把 pattern 改指向 grapheme 等价写法后，从 unknown 恢复为 pass（消费点确实
        按预期读取 grapheme，见 §287 附近 expectMigrated 断言）。8 条全部 pass。 */
     'DATA-SOUNDS-01': { pass: 8, fail: 0, 'not-applicable': 0, unknown: 0 },
-    'DATA-WALL-01': { pass: 2, fail: 2, 'not-applicable': 0, unknown: 4 }
+    /* 2026-09-09 里程碑 2 第 7 步后更新：wallLetters 已按方案 §2.4 统一为累计全集
+       （W2 7→13、W3 6→19），w2/w3:wall-covers-all-sounds 从 fail 转 pass（w1/w4 本就
+       pass），DATA-WALL-01 现在 4 条 pass、0 条 fail。newPatterns-presence 仍是
+       4 条 unknown——migration_audit.js 里这条 status 按设计恒为 'unknown'（见
+       :341 附近注释），与 present 是否为 true 无关：这个一次性快照工具的职责止于
+       "报告字段现状"，累计教学顺序真相源的实际计算已经在 check_data.js（wall_order.js
+       的 computeTeachingOrder/gatherWeekRecordsUpTo）里落地并对四周真实数据验证通过
+       （0 fail，见 tests/unit/test_wall_order.js），不重复在这个预迁移快照工具里
+       实现第二套真相源计算——那正是方案警告过的"两个实现者分别做出结果、两端漂移"。 */
+    'DATA-WALL-01': { pass: 4, fail: 0, 'not-applicable': 0, unknown: 4 }
   };
   const actualByRule = {};
   for (const f of realDoc.findings) {
@@ -515,9 +531,10 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   assert.deepEqual(actualByRule, REAL_STATUS_COUNTS_BY_RULE,
     '真实四周审计的 status 分布必须与钉住的期望值一致——如果这条红了，说明某条规则的判定逻辑或语料覆盖发生了变化，需要人工核实是修复还是回归');
   assert.equal(realDoc.findings.length, 129, `真实审计总条数应为 129，实际 ${realDoc.findings.length}`);
-  /* 总条数不变（129）：P8 只是让 w1:segment-count:spit 这条从 fail 变成
-     w1:segment-count:pit 的 pass（同一 findingId 数量、同一 RESERVED 5 词，只是
-     内容换了），不新增不减少 finding 条数。 */
+  /* 总条数不变（129）：第 7 步只是把已有 finding 的 status 从 fail 改判为 pass
+     （字段格式与墙集合从不合规变成合规），不新增不减少 finding 条数——newPatterns
+     字段本身虽新增到 META 里，但 newPatterns-presence 这条 finding 本来就存在
+     （只是 details.present 从 false 变 true，status 不变仍是 unknown，不影响计数）。 */
 
   const REAL_FAIL_FINDING_IDS = [
     'DATA-ASSESS-01/w4:forbidden-block:retest',
@@ -527,25 +544,11 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     'DATA-ASSESS-01/w4:forbidden:PROBE_B',
     'DATA-ASSESS-01/w4:forbidden:RESERVED_RETEST',
     'DATA-PATTERN-02/legacy-html-fallback',
-    'DATA-PATTERN-02/w1:legacy-format:rackG4',
-    'DATA-PATTERN-02/w1:legacy-format:rackG5',
-    'DATA-PATTERN-02/w1:legacy-format:wallLetters',
-    'DATA-PATTERN-02/w2:legacy-format:rackG4',
-    'DATA-PATTERN-02/w2:legacy-format:rackG5',
-    'DATA-PATTERN-02/w2:legacy-format:wallLetters',
-    'DATA-PATTERN-02/w3:legacy-format:rackG4',
-    'DATA-PATTERN-02/w3:legacy-format:rackG5',
-    'DATA-PATTERN-02/w3:legacy-format:wallLetters',
-    'DATA-PATTERN-02/w4:legacy-format:rackG4',
-    'DATA-PATTERN-02/w4:legacy-format:rackG5',
-    'DATA-PATTERN-02/w4:legacy-format:wallLetters',
     'DATA-RESERVED-01/w4:definition:dab',
     'DATA-RESERVED-01/w4:definition:nag',
     'DATA-RESERVED-01/w4:definition:nod',
     'DATA-RESERVED-01/w4:definition:rot',
-    'DATA-RESERVED-01/w4:definition:sob',
-    'DATA-WALL-01/w2:wall-covers-all-sounds',
-    'DATA-WALL-01/w3:wall-covers-all-sounds'
+    'DATA-RESERVED-01/w4:definition:sob'
   ].sort();
   const actualFailIds = realDoc.findings.filter(f => f.status === 'fail').map(f => f.ruleId + '/' + f.findingId).sort();
   assert.deepEqual(actualFailIds, REAL_FAIL_FINDING_IDS,
@@ -561,13 +564,30 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
 // findingId——这里显式钉住 W1/W2/W3 这三条的 findingId 与 status，不能静默滑过。
 // 这三条本身归第 7 步落定（newPatterns 真相源第 7 步才引入），本条只负责在第 5 步
 // 收口时把「已知还没做」显式记录下来，不是要在第 5 步修掉它们。
+//
+// 2026-09-09 里程碑 2 第 7 步开工前审计核对（不写死数字，现跑现取）：本步开工前
+// 审计的 unknown 清单仍恰好是这 4 条（W1—W4 各一条 newPatterns-presence），已按
+// 方案第 7 步「两类 unknown 分开处置」核对：这条判定为「真的判不了」——不是数据
+// 缺失（newPatterns 本步已迁入四周 META），而是 migration_audit.js 这个一次性
+// 预迁移快照工具的 status 按设计恒为 'unknown'（源码 :341 附近：「与 present 是
+// true 是 false 无关」），它不打算实现累计教学顺序真相源的完整计算——那份计算
+// （wall_order.js 的 computeTeachingOrder/gatherWeekRecordsUpTo）已经在
+// check_data.js 的 DATA-WALL-01 三条断言里落地并对四周真实数据验证通过（见上面
+// ⑨ 的 DATA-WALL-01: {pass:4, fail:0, unknown:4}）。第 7 步后这 4 条 unknown 因此
+// 保持不变——不是遗留缺口，是这个工具的既定职责边界；本条断言把这个结论显式钉住，
+// 不让它被静默改判成别的 status。
 // ============================================================================
 {
-  const EXPECTED_UNKNOWN_NEW_PATTERNS_IDS = ['w1:newPatterns-presence', 'w2:newPatterns-presence', 'w3:newPatterns-presence'];
+  const EXPECTED_UNKNOWN_NEW_PATTERNS_IDS = ['w1:newPatterns-presence', 'w2:newPatterns-presence', 'w3:newPatterns-presence', 'w4:newPatterns-presence'];
   for (const findingId of EXPECTED_UNKNOWN_NEW_PATTERNS_IDS) {
     const f = realDoc.findings.find(x => x.ruleId === 'DATA-WALL-01' && x.findingId === findingId);
     assert(f, `真实四周审计应存在 DATA-WALL-01/${findingId} 这条发现`);
-    assert.equal(f.status, 'unknown', `DATA-WALL-01/${findingId} 的 status 应为 unknown（归第 7 步落定，不是 pass 也不是被遗漏），实际：${f.status}`);
+    assert.equal(f.status, 'unknown', `DATA-WALL-01/${findingId} 的 status 应为 unknown（migration_audit.js 职责边界之外，不是 pass 也不是被遗漏），实际：${f.status}`);
+    // 第 7 步后 present 应为 true（newPatterns 字段已迁入四周 META），value 应是
+    // 该周真实的 newPatterns 数组——status 恒 unknown 不代表这条 finding 的 details
+    // 没有随数据迁移更新，两件事分开验证。
+    assert.equal(f.details.present, true, `DATA-WALL-01/${findingId} 的 details.present 第 7 步后应为 true`);
+    assert(Array.isArray(f.details.value), `DATA-WALL-01/${findingId} 的 details.value 第 7 步后应是数组`);
   }
-  console.log('PASS M3 回归：W1/W2/W3 各一条 DATA-WALL-01/newPatterns-presence 的 unknown 已显式钉住 findingId + status，登记归第 7 步落定，不被「范围停手」静默跳过');
+  console.log('PASS M3 回归 + 第 7 步核对：W1—W4 各一条 DATA-WALL-01/newPatterns-presence 的 unknown 已显式钉住 findingId + status（present 已变 true，status 按工具设计仍是 unknown），不被「范围停手」静默跳过');
 }

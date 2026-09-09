@@ -1,9 +1,13 @@
 const META = {
   "week": 3,
   "storageKey": "soundblocks-w3-v1",
-  "rackG4": "aouhmdglfb",
-  "rackG5": "satipnckehrmdgoulfb",
-  "wallLetters": "goulfb",
+  "rackG4": ["a","o","u","h","m","d","g","l","f","b"],
+  "rackG5": ["s","a","t","i","p","n","c","k","e","h","r","m","d","g","o","u","l","f","b"],
+  /* 墙语义统一（方案 §2.4）：wallLetters 恒为墙上完整的积木集合、按累计教学顺序排列
+   * （旧值只有本周新教的 "goulfb" 六块）；本周新点亮的由下面 newPatterns 表达。
+   * 6 块 → 19 块（前两周累计 13 块 + 本周新教 6 块）。 */
+  "wallLetters": ["s","a","t","i","p","n","c","k","e","h","r","m","d","g","o","u","l","f","b"],
+  "newPatterns": ["g","o","u","l","f","b"],
   "groupedRack": true,
   "consolidation": false,
   "assessmentMode": "weekly",
