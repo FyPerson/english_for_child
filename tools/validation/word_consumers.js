@@ -9,17 +9,51 @@
  * 局部变量，没有导出。这里从零对照《周课件数据层交接规范 v2.0》§3 的块类型表（24 种）与
  * 12 个常量表，逐项判定"是不是词消费入口"，判定依据见下方 ENTRY CATALOG 注释。
  *
+ * ⚠️ 「12 个常量表」不是顶层声明的全部——tools/validation/load_data.js 的 NAMES 实际有
+ * 20 项（多出 META/FIRST_TEACH_DAY/RESERVED_RETEST/PROBE_A/PROBE_B/GLOBAL_RESERVED/
+ * ASSESS_TEXT/ASSESSMENT_WORDS/TAUGHT_SIGHT 这 8 个不在 12 常量表里的声明，其中后三个
+ * W4 实测真的会用到）。下面的排除清单按这 20 项全部过一遍，逐项给理由，不是只覆盖
+ * 12 常量表那 12 个（coordinator M-4：声明覆盖范围不能大于实作核实过的范围）。
+ *
  * 已确认收录的入口（本次一并补全，不止 wordforge / BOOK.pages 两处已知缺口）：
  *   DAYS 块级：blend、initialpick、words、pair（当天块）、sight、flash（k:'w' 项）、
  *              sentences（整句需要分词）、wordforge（family / swap 两种模式）
  *   顶层常量：BOOK.pages[].line（整句需要分词）、G1_ROUNDS（pos/neg）、G3_PAIRS、
  *              G4_WORDS、G5_WHITELIST、WALL_HINT（键本身就是词）
  *
- * 已确认排除的入口（连同排除理由，供审查核对"是不是漏了"）：
+ * 已确认排除的入口（20 项 NAMES 逐项过，连同排除理由，供审查核对"是不是漏了"）：
+ *   META / FIRST_TEACH_DAY / DAYS —— 结构/配置字段，不是词列表（DAYS 本身是主要扫描对象，
+ *                          逐块进 switch 处理，不是被排除，这里只是说它自己不算"一个词条目"）；
+ *                          SOUNDS 同理，它是音素表不是词表——它唯一含词的子字段是 .demo，
+ *                          单独在下面处理。
+ *   W                   —— 词典/释义表，回答"某词是什么意思"，不是"教学消费某词的活动"。
+ *                          `DATA-RESERVED-01` 明确要求"每个 RESERVED 必须在 W 里"——如果把
+ *                          W 的键当消费入口收录，RESERVED 词就会因为"必须在 W 里"这条规则
+ *                          本身而被判定"泄漏"，逻辑自相矛盾，所以排除。
  *   RESERVED           —— 它是审计目标本身（周检词不许出现在别处），
  *                          折进消费集合会让"泄漏检测"变成用自己比自己，恒真。
  *   RESERVED_RETEST/PROBE_A/PROBE_B/GLOBAL_RESERVED/ANNUAL_DECODING —— 同上，全部是测评池，
- *                          不是教学消费。
+ *                          不是教学消费（ANNUAL_DECODING 现在没有任何真实周声明它，
+ *                          规范里是 W40 专用、里程碑 2b 范围，这里先按同一理由预先排除，
+ *                          将来它出现时不用改这份清单）。
+ *   ASSESS_TEXT         —— 测评短文本身（W4 实测：真实英文短文，含 pup/cub/rug 等词）。
+ *                          它与测评池的重叠已经由 assessment_contract.js:55
+ *                          `if(owner.has(w)) fail('测评短文与测评词冲突：'+w)` 专门检查，
+ *                          语义是"两个测评工具间是否冲突"，不是"教学/练习是否泄漏了
+ *                          测评词"——概念上是另一件事，纳入本抽取器会造成语义混淆和
+ *                          重复判定，故排除，交给 assessment_contract.js 专职处理。
+ *   ASSESSMENT_WORDS    —— W4 实测：`{词:{zh}}` 形状的释义字典，键**就是**全部 5 个
+ *                          RESERVED 词加 5 个 RESERVED_RETEST 词（dab/nag/nod/sob/rot +
+ *                          gab/gal/hub/rib/sod，逐一核对过）。它是测评词的释义来源，
+ *                          结构和用途都跟 W 一样（回答"这个词是什么意思"），只是服务对象
+ *                          是测评池而不是教学词——若被收录，RESERVED 词会因为"释义字典里
+ *                          有自己"而被判定"泄漏"，是与排除 W 完全相同的自相矛盾，故排除。
+ *   TAUGHT_SIGHT        —— W4 实测：`["i","a","see","the","is","to"]`，是"累计认读词"的
+ *                          历史汇总声明（assessment_contract.js 用它核对"认读词只能沿用
+ *                          前三周六词"），不是某个具体教学块的消费记录——它汇总的内容本来
+ *                          就来自历次 `sight` 块（本抽取器已经按 kind='sight' 逐周收了当周
+ *                          新增部分），整体再收一次 TAUGHT_SIGHT 会把同一批词重复计入，
+ *                          故排除。
  *   SOUNDS[id].demo     —— 音素卡的"听老师说"示范词，规范设计上允许包含未教字位
  *                          （如 week01 's' 的 demo 含 'snake'，'k' 未教）用于纯听力展示，
  *                          不是孩子要能读出来的解码内容，check_data.js 现状也从不把它

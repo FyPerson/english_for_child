@@ -28,6 +28,17 @@ const WEEKLY_FORBIDDEN_CONSTANTS = ['RESERVED_RETEST', 'ASSESS_TEXT', 'GLOBAL_RE
 const WEEKLY_FORBIDDEN_BLOCKS = ['retest', 'probe'];
 const LEGACY_ARRAY_FIELDS = ['wallLetters', 'rackG4', 'rackG5'];
 
+/* 「L 字段消费点」（方案 §5「迁移前审计」行 + §3.1 影响面表）：这是代码侧的事实，与具体
+ * 某一周的数据无关，所以清单直接照抄方案 §3.1 已经做过四模式扫描确认过的四个生产消费点，
+ * 不在这里重新写一套扫描逻辑去"重新发现"——重新扫描属于第 4a 步双保险门槛（AST/六写法
+ * 源码扫描）的职责，本审计只负责核对这份已知清单当前是否还在、精确定位到哪一行。 */
+const L_FIELD_CONSUMER_SPECS = [
+  { id: 'render-blocks-tileHTML', file: 'frontend/src/shared/render-blocks.js', pattern: /SOUNDS\[f\]\.L\s*,/, label: 'tileHTML(SOUNDS[f].L, …) 传字形' },
+  { id: 'render-blocks-forms-join', file: 'frontend/src/shared/render-blocks.js', pattern: /forms\.map\(f\s*=>\s*SOUNDS\[f\]\.L\)\.join/, label: 'forms.map(f=>SOUNDS[f].L).join(\' 和 \')' },
+  { id: 'games-flash-display', file: 'frontend/src/shared/games.js', pattern: /\$\{s\.L\}/, label: 'flash 卡面显示 s.L' },
+  { id: 'check-data-schema-gate', file: 'tools/validation/check_data.js', pattern: /s\.L\s*&&\s*s\.ipa/, label: 'SOUNDS 条目字段齐全门槛（缺 L 就报错）' }
+];
+
 const STATUS_VALUES = new Set(['pass', 'fail', 'not-applicable', 'unknown']);
 
 function lineOf(raw, index) {
@@ -79,13 +90,36 @@ function auditWeek(box, raw, file) {
   const RESERVED = Array.isArray(box.RESERVED) ? box.RESERVED : [];
   const SOUNDS = box.SOUNDS || {};
   const W = box.W || {};
-  const adaptedSounds = withGraphemeFallback(SOUNDS);
+  /* 适配层遇到 grapheme/L 冲突对（同一条目两个字段都在但值不同——典型形态是别名派生
+     Object.assign 在 4a 迁移过程中只改了基类没改派生行，见 sounds_grapheme_adapter.js
+     的注释）会显式抛错，不静默选一个可能错的值。这里接住，转成一条 fail finding，
+     不让整个审计工具因为一条数据的冲突而崩溃；分词相关的其余发现继续用未适配的
+     SOUNDS 兜底跑（大概率因缺 grapheme 而报 segment-unknown，如实反映"适配失败"的后果，
+     不是掩盖）。 */
+  let adaptedSounds, graphemeConflictError = null;
+  try {
+    adaptedSounds = withGraphemeFallback(SOUNDS);
+  } catch (e) {
+    graphemeConflictError = e;
+    adaptedSounds = SOUNDS;
+  }
   const consumption = collectWordConsumption(box);
 
   const reservedLoc = locateDeclaration(raw, 'RESERVED');
   const soundsLoc = locateDeclaration(raw, 'SOUNDS');
   const wLoc = locateDeclaration(raw, 'W');
   const metaLoc = locateDeclaration(raw, 'META');
+
+  if (graphemeConflictError) {
+    pushFinding(findings, {
+      findingId: weekTag + 'grapheme-l-conflict',
+      ruleId: 'DATA-SOUNDS-01',
+      week: week,
+      status: 'fail',
+      source: { file: file, line: soundsLoc.present ? soundsLoc.line : null, column: null },
+      details: { message: graphemeConflictError.message }
+    });
+  }
 
   /* ---- DATA-ASSESS-01：weekly 列必需 RESERVED + 8 项禁止（现状事实，不预判本周是否会
      声明 assessmentMode:'weekly'——见方案 §0.3，W1-W3 会走 weekly、W4 走 monthly，
@@ -133,22 +167,22 @@ function auditWeek(box, raw, file) {
     source: { file: file, line: reservedLoc.present ? reservedLoc.line : null, column: null },
     details: { count: RESERVED.length }
   });
-  /* check_data.js:127 现状对 week 1 整周豁免"三字位"要求
-     （`META.week === 1 || RESERVED.every(w => w.length === 3)`）——豁免粒度是整周，不是
-     单个词，所以该周全部 5 个词的这一项一并标 not-applicable，而不是只标真正超长的那个。 */
-  const week1Exempt = week === 1;
+  /* ⚠️ 判据方向（coordinator C-1 修复）：这条必须按「规范 §4.3 weekly 列的目标契约」判，
+     不能按「check_data.js:127 现状怎么校验」判——那条豁免正是第 5 步启用 weekly 契约后
+     会消失的东西（W1-W3 在第 5 步会声明 assessmentMode:'weekly'，规范 §5「测评路由」行
+     写死 RESERVED 的"每词三个字位"共用校验对 weekly 周照常执行，不因当前豁免而放行）。
+     `DATA-ASSESS-01` 对 W4（永远不会是 weekly）套用 weekly 禁止项清单是"现状 vs 目标契约"
+     的统一记录方式，这里的 W1 也必须用同一套逻辑：按真实分词结果判 pass/fail，
+     只在 details.currentlyExempted 里如实标注"当前校验器还豁免着"，不能让豁免升格成
+     "这条规则不适用"（not-applicable 会被第 5 步的停机条款读成"审计证明不需要改"，
+     从而漏修 spit 这个真正的四字位词）。 */
   RESERVED.forEach(word => {
-    if (week1Exempt) {
-      pushFinding(findings, {
-        findingId: weekTag + 'segment-count:' + word,
-        ruleId: 'DATA-RESERVED-02',
-        week: week,
-        status: 'not-applicable',
-        source: { file: file, line: reservedLoc.present ? reservedLoc.line : null, column: null },
-        details: { word: word, reason: 'check_data.js:127 对 week===1 整体豁免"三字位"要求，规则本身当前不适用于本周' }
-      });
-      return;
-    }
+    const currentlyExempted = week === 1;
+    const exemptedNote = currentlyExempted
+      ? 'check_data.js:127 现状对 week===1 整体豁免"三字位"要求（`META.week === 1 || RESERVED.every(...)`）；'
+        + '该豁免会在第 5 步启用 weekly 契约后消失（规范 §4.3 weekly 列对 RESERVED 的共用校验照常执行），'
+        + '本发现按目标契约判定，不代表当前校验器会拦下'
+      : null;
     try {
       const ids = segmentWord(word, adaptedSounds);
       pushFinding(findings, {
@@ -157,7 +191,7 @@ function auditWeek(box, raw, file) {
         week: week,
         status: ids.length === 3 ? 'pass' : 'fail',
         source: { file: file, line: reservedLoc.present ? reservedLoc.line : null, column: null },
-        details: { word: word, graphemeCount: ids.length, graphemeIds: ids }
+        details: { word: word, graphemeCount: ids.length, graphemeIds: ids, currentlyExempted: currentlyExempted, note: exemptedNote }
       });
     } catch (e) {
       pushFinding(findings, {
@@ -166,7 +200,10 @@ function auditWeek(box, raw, file) {
         week: week,
         status: 'fail',
         source: { file: file, line: reservedLoc.present ? reservedLoc.line : null, column: null },
-        details: { word: word, error: e.code || 'unknown-error', message: e.message, offset: e.offset, candidates: e.candidates }
+        details: {
+          word: word, error: e.code || 'unknown-error', message: e.message, offset: e.offset, candidates: e.candidates,
+          currentlyExempted: currentlyExempted, note: exemptedNote
+        }
       });
     }
   });
@@ -223,10 +260,19 @@ function auditWeek(box, raw, file) {
   });
   {
     const wallLetters = META.wallLetters;
-    const wallSet = new Set(typeof wallLetters === 'string' ? wallLetters.split('') : (Array.isArray(wallLetters) ? wallLetters : []));
+    // 有序、保留重复项——第 7 步要拿它当"累计 newPatterns"真相源落地前的现状参照
+    // （方案 §2.4），只给一个 Set 看不出顺序也看不出重复，details 必须留下原始有序值。
+    const wallOrdered = typeof wallLetters === 'string' ? wallLetters.split('') : (Array.isArray(wallLetters) ? wallLetters.slice() : []);
+    const wallSet = new Set(wallOrdered);
     const soundsSet = new Set(Object.keys(SOUNDS));
     const missingFromWall = [...soundsSet].filter(id => !wallSet.has(id));
     const extraInWall = [...wallSet].filter(id => !soundsSet.has(id));
+    const seenOnce = new Set();
+    const duplicateIds = [];
+    wallOrdered.forEach(id => {
+      if (seenOnce.has(id)) { if (!duplicateIds.includes(id)) duplicateIds.push(id); }
+      else seenOnce.add(id);
+    });
     pushFinding(findings, {
       findingId: weekTag + 'wall-covers-all-sounds',
       ruleId: 'DATA-WALL-01',
@@ -234,9 +280,11 @@ function auditWeek(box, raw, file) {
       status: (missingFromWall.length === 0 && extraInWall.length === 0) ? 'pass' : 'fail',
       source: { file: file, line: metaLoc.present ? metaLoc.line : null, column: null },
       details: {
+        wallLettersOrdered: wallOrdered, duplicateIds: duplicateIds,
         wallCount: wallSet.size, soundsCount: soundsSet.size,
         missingFromWall: missingFromWall, extraInWall: extraInWall,
-        note: '规范 v2.0 §3「唯一模型」要求 wallLetters 统一后等于 SOUNDS 全部键；统一动作本身是第 7 步的工作，这里只报告现状是否已经满足'
+        note: '规范 v2.0 §3「唯一模型」要求 wallLetters 统一后等于 SOUNDS 全部键；统一动作本身是第 7 步的工作，这里只报告现状是否已经满足。'
+          + 'wallLettersOrdered 保留原始顺序与重复项，供第 7 步核对累计 newPatterns 真相源迁入前后是否一致'
       }
     });
   }
@@ -282,8 +330,15 @@ function auditWeek(box, raw, file) {
 }
 
 /* buildAudit(weekSources) -> 完整审计文档。weekSources: Array<{file, raw}>（raw 是
- * weekNN.data.js 的原始文本），按方案要求"计算函数是纯函数"（方案 §2.4 取数规则），
- * 不在这里自己去扫工作树——调用方（CLI 或测试）负责传入要审计的源。 */
+ * weekNN.data.js 的原始文本）由调用方（CLI 或测试）传入——**周记录**这一部分符合方案
+ * §2.4"计算函数是纯函数，输入为按周排序的规范化周记录数组，不直接读工作树"的要求，
+ * auditWeek() 本身不碰文件系统。
+ *
+ * 但本函数另外产出少量"全局/工具自身事实"发现（load_data.js 的旧格式兜底是否还在、
+ * L 字段消费点清单是否还在），这些检查的对象根本不是"某一周的数据记录"，而是仓库里
+ * 固定路径的工具/生产代码本身——它们不是 §2.4 讨论的"周记录"，所以这里直接
+ * fs.readFileSync 读那几个固定文件，不算破坏"周记录取数是纯函数"这条约束，也不需要
+ * 由调用方把工具代码也包装成 weekSources 传进来。 */
 function buildAudit(weekSources, opts) {
   opts = opts || {};
   const findings = [];
@@ -308,6 +363,27 @@ function buildAudit(weekSources, opts) {
         '按方案 §3.8：第 4b 步给旧入口显式 schemaVersion/适配器，第 8 步拒绝缺内联 META 的旧 HTML。' +
         '四周现有产物都内联了 META，此兜底当前是死路径，但不能靠"碰巧不触发"，故仍记为待处置项。'
     }
+  });
+
+  /* 「L 字段消费点」全局发现：逐个核对 L_FIELD_CONSUMER_SPECS 这份已知清单（照抄方案
+     §3.1，不重新扫描）当前是否还在，精确定位到行——供第 4a 步直接拿着清单去改，
+     不用重新翻一遍四模式扫描。 */
+  L_FIELD_CONSUMER_SPECS.forEach(spec => {
+    const specRaw = fs.readFileSync(path.join(REPO, spec.file), 'utf8');
+    const m = spec.pattern.exec(specRaw);
+    pushFinding(findings, {
+      findingId: 'l-field-consumer:' + spec.id,
+      ruleId: 'DATA-SOUNDS-01',
+      week: null,
+      status: m ? 'fail' : 'unknown',
+      source: { file: spec.file, line: m ? lineOf(specRaw, m.index) : null, column: null },
+      details: {
+        label: spec.label, stillPresent: !!m,
+        note: m
+          ? '仍在读 SOUNDS[id].L 取显示字形；第 4a 步要改走 graphemeLabel(id)/SOUNDS[id].grapheme（方案 §3.1）'
+          : '按已知模式没能定位到——可能代码形状已变化，需要人工核实这份清单是否已过期'
+      }
+    });
   });
 
   sortFindings(findings);

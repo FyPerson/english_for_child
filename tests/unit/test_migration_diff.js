@@ -23,6 +23,10 @@ const { segmentWord, surfaceOf, graphemeLabel, soundType, normalizeIdList } = re
 const { collectWordConsumption } = require('../../tools/validation/word_consumers');
 const { withGraphemeFallback } = require('../../tools/validation/sounds_grapheme_adapter');
 const { loadData } = require('../../tools/validation/load_data');
+// 只读取它已经导出的 tokens()（assessment_contract.js:2 的整句分词口径），不修改该文件，
+// 用来把差分 4 的语料从"教学消费词"扩到"assessment_contract.js:57 真正处理的
+// ASSESS_TEXT 分词结果"——这条语料此前完全没进过差分（coordinator H-2）。
+const { tokens } = require('../../tools/validation/assessment_contract');
 
 const WEEKS = [1, 2, 3, 4].map(n => {
   const file = 'frontend/src/weeks/week0' + n + '.data.js';
@@ -37,14 +41,21 @@ function tally(n) { checked += n; }
 // ============================================================================
 // 差分 1 · 摆词比较
 // 旧侧：games.js:483/491（G4 validate）、:673/691/766（G5 slots.join('')）"整词填槽"
-//        逐字符相等；games.js:451/:710（G4/G5 retractSlot）与
-//        check_data.js:138-142 canSpell 的"字符多重集消耗"。
+//        逐字符相等；check_data.js:138-142 canSpell 的"字符多重集消耗"。
+//        （只实现了这两处——games.js:451/:710 的 retractSlot 单块撤回不是"比较"逻辑，
+//        没有对应的新旧算法可差分，不在本项范围内，头注释不再声称覆盖它）
 // 新侧：ID 数组逐项相等；rack 多重集消耗改按字位 ID（rack 当前仍是旧格式字符串，
 //        用 graphemes.js 已导出的 normalizeIdList 按§3.5 契约展开成 ID 数组，
 //        这正是它在第 4b/7 步接线时会被消费者调用的方式，这里只读不改）。
 // ============================================================================
-function canSpellOldChars(word, rackString) {
-  // 照抄 tools/validation/check_data.js:138-142
+function canSpellOldChars(word, rackValue) {
+  // 照抄 tools/validation/check_data.js:138-142——但那段代码写的时候 rack 还是字符串。
+  // 「旧侧」的定义是"迁移前的算法"，它的入参形态本来就该是迁移前的字符串；第 7 步把
+  // rackG4/rackG5 迁成 ID 数组后，本函数如果直接对数组调 .split('') 会 TypeError，而不是
+  // 给出一个"旧侧的答案"用来跟新侧比较——那样整个差分测试就跑不起来，方案第 4b/7 步
+  // 验收的"差分仍绿"/"差分与 ai fixture 均绿"都无法达成。所以这里先把输入防御性归一成
+  // 字符串（数组则 join('')，得到迁移前那个等价的紧凑串），旧侧算法本身一个字都不改。
+  const rackString = Array.isArray(rackValue) ? rackValue.join('') : rackValue;
   const pool = rackString.split('');
   for (const c of word) {
     const i = pool.indexOf(c);
@@ -100,6 +111,20 @@ function diffSpellingComparison() {
   console.log(`PASS diff1 摆词比较：canSpell（rackG4/rackG5）+ 整词填槽比较，共 ${n} 次比较`);
 }
 
+/* H-1 回归证明：构造一个 rackG4 为 ID 数组（第 7 步迁移后的形态）的合成场景，
+ * 证明 canSpellOldChars 现在能吃数组输入而不是 TypeError，且结果与等价字符串一致。
+ * 这不是"新旧两套实现的语义差分"（数组本来就不是旧侧的原生输入形态），而是防御性
+ * 归一逻辑本身的正确性证明——单独一段，不计入 diff1 的 n 计数。 */
+function regressionCanSpellOldCharsAcceptsArrayRack() {
+  const arrayResult = canSpellOldChars('cat', ['c', 'a', 't', 'd']);
+  const stringResult = canSpellOldChars('cat', 'catd');
+  assert.equal(arrayResult, true, 'canSpellOldChars 应能处理数组形态的 rack（防御性归一为字符串）并给出正确结果');
+  assert.equal(arrayResult, stringResult, '数组形态的 rack 与等价字符串形态的 rack 应给出相同结果');
+  // 反例：数组里没有需要的字母，应该正确返回 false，而不是意外抛错或误判
+  assert.equal(canSpellOldChars('cat', ['c', 'a']), false, '积木不够时应返回 false（数组输入下同样成立）');
+  console.log('PASS diff1 回归（H-1）：canSpellOldChars 对 rackG4 数组形态防御性归一，不再 TypeError（第 7 步迁移后仍可用）');
+}
+
 // ============================================================================
 // 差分 2 · 首字位
 // 旧侧：games.js:851/:915 current.charAt(0)（G1 听音找首字母揭示判定）、
@@ -153,13 +178,17 @@ function diffFirstGrapheme() {
 // 旧侧：check_data.js:127 RESERVED.every(w => w.length === 3)（字符长度）；
 //        assessment_contract.js:23 的 /^[^aeiou][aeiou][^aeiou]$/ CVC 正则（字符级）。
 // 新侧：segmentWord(word).length === 3（字位数）；soundType 三态序列 c/v/c。
-// week1 按 check_data.js:127 的 `META.week === 1 || …` 整体豁免，两侧一致地跳过。
+// ⚠️ W1 不跳过（coordinator C-1 修复）：check_data.js:127 现状对 week===1 整体豁免
+// "三字位"要求，但那是"现状校验器怎么放行"，不是"差分要不要测"——差分的职责恰恰是
+// 揭示"字符长度===3"与"字位数===3"这两套判据在真实数据上是否一致，跳过 W1 会让
+// week01.data.js 的 RESERVED 里 `spit`（4 个字母、但按单字母字位表也是 4 个字位，
+// 二者仍然一致=false，不会导致断言失败）永远进不了这份差分证据，第 5 步据此判断
+// "只用改 RESERVED 相关常量"时会漏看这条真正需要修的词。两侧算法照旧不变，
+// 只是不再跳过这一周的语料。
 // ============================================================================
 function diffGraphemeCount() {
   let n = 0;
-  const VOWELS_FALLBACK = 'aeiou'; // 仅用于旧侧 CVC 正则本身（不依赖 SOUNDS.type，照抄原正则）
   for (const { box, sounds } of WEEKS) {
-    if (box.META.week === 1) continue; // 两侧一致地跳过：这正是"差分"要如实反映的现状豁免
     for (const word of box.RESERVED) {
       const oldLen3 = word.length === 3;
       let ids;
@@ -182,13 +211,17 @@ function diffGraphemeCount() {
   }
   assert(n > 15, `差分 3 语料太少（仅 ${n} 次比较）`);
   tally(n);
-  console.log(`PASS diff3 字位数：RESERVED 长度===3 与 CVC 正则 vs 字位数与 type 三态序列，共 ${n} 次比较（W1 按现状豁免两侧一致跳过）`);
+  console.log(`PASS diff3 字位数：RESERVED 长度===3 与 CVC 正则 vs 字位数与 type 三态序列，共 ${n} 次比较（含 W1，check_data.js:127 的整周豁免不影响两套判据本身是否一致）`);
 }
 
 // ============================================================================
 // 差分 4 · 陌生度 / 已教范围
 // 旧侧：check_data.js:133 [...w.toLowerCase()] 逐字符成员检查；
-//        assessment_contract.js:23/:57 的 [...normalize(w)].some(c=>!taught.has(c))。
+//        assessment_contract.js:23 的 [...normalize(w)].some(c=>!taught.has(c))；
+//        assessment_contract.js:57 的
+//        `for (const w of new Set(tokens(passage))) … [...w].some(c=>!taught.has(c))`
+//        ——这一处的真实语料是 W4 的 ASSESS_TEXT 分词结果，不是 collectWordConsumption
+//        收的教学消费词，之前完全没有语料覆盖到它（coordinator H-2），现在补上。
 // 新侧：segmentWord(word) 的 ID 数组逐项成员检查；解析不出来（segment-unknown）
 //        视为"含未教内容"（与旧侧"字符不在 TAUGHT 集合里"同一结论：都读不出来）。
 // ============================================================================
@@ -198,6 +231,10 @@ function diffTaughtRange() {
     const TAUGHT_CHARS = new Set(Object.keys(box.SOUNDS)); // 当前数据下字符集与 ID 集合重合
     const TAUGHT_IDS = new Set(Object.keys(box.SOUNDS));
     const corpusWords = new Set([...collectWordConsumption(box).map(r => r.word.toLowerCase()), ...box.RESERVED.map(w => w.toLowerCase())]);
+    // assessment_contract.js:57 的真实语料：ASSESS_TEXT 只有 W4 声明，其余周没有这个常量。
+    if (typeof box.ASSESS_TEXT === 'string') {
+      tokens(box.ASSESS_TEXT).forEach(w => corpusWords.add(w));
+    }
     for (const word of corpusWords) {
       const oldUntaught = [...word.toLowerCase()].some(c => !TAUGHT_CHARS.has(c));
       let newUntaught;
@@ -213,7 +250,7 @@ function diffTaughtRange() {
   }
   assert(n > 50, `差分 4 语料太少（仅 ${n} 次比较）`);
   tally(n);
-  console.log(`PASS diff4 陌生度/已教范围：字符级成员检查 vs 字位级成员检查（含解析失败=未教内容），共 ${n} 次比较`);
+  console.log(`PASS diff4 陌生度/已教范围：字符级成员检查 vs 字位级成员检查（含解析失败=未教内容，含 W4 ASSESS_TEXT 分词语料），共 ${n} 次比较`);
 }
 
 // ============================================================================
@@ -249,6 +286,7 @@ function diffMinimalPair() {
 }
 
 diffSpellingComparison();
+regressionCanSpellOldCharsAcceptsArrayRack();
 diffFirstGrapheme();
 diffGraphemeCount();
 diffTaughtRange();

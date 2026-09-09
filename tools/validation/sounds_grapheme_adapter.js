@@ -13,15 +13,28 @@
  * 处置要求（已拍板，见任务书）：
  *   1. 明确标注临时——见上。
  *   2. 不修改仓库里的任何数据文件——本文件只在读取时派生新对象，不做任何写操作。
- *   3. 同时容忍三种形态：只有 L / 只有 grapheme / 两者都有——见 withGraphemeFallback()。
+ *   3. 同时容忍三种形态：只有 L / 只有 grapheme / 两者都有且一致——见 withGraphemeFallback()。
  *      这样第 4a 步做完后，SOUNDS 条目变成"只有 grapheme"，本适配层依然透传不报错，
  *      S3 产出的差分测试与审计工具不需要跟着改。
- *   4. 配测试：tests/unit/test_migration_audit.js 用三种形态的合成表验证得到同一结果。
+ *   4. 配测试：tests/unit/test_migration_audit.js 用三种形态的合成表验证得到同一结果，
+ *      另配一条"两者都有但不一致"的冲突对负例，验证显式抛错。
+ *
+ * ⚠️ 「两者都有」只容忍值一致的情形。真实风险形态是别名派生：
+ * week02.data.js:106 的 `SOUNDS.k = Object.assign({}, SOUNDS.c, { L:'k' })`——
+ * 第 4a 步迁移时如果只改了 `SOUNDS.c` 本体（加上 grapheme:'c'）却忘了把这行派生也从
+ * `{L:'k'}` 改成 `{grapheme:'k'}`，`Object.assign` 会先继承到 `SOUNDS.c` 的
+ * grapheme:'c'，再被 `{L:'k'}` 盖出一个 grapheme:'c' + L:'k' 的条目——如果适配层这时
+ * 仍然"有 grapheme 就不理会 L"，会静默把 k 积木显示成 'c'，没有任何信号。所以"两者都有
+ * 但值不同"必须显式失败，不能悄悄选 grapheme——这不是"L 更权威"，而是"两个字段互相矛盾
+ * 时，适配层没有能力替调用方仲裁哪个对，仲裁应该由人来做"。
  */
 
 /* withGraphemeFallback(sounds) -> 新对象：sounds 的浅拷贝，缺 grapheme 但有 L 的条目
- * 派生出 grapheme:=L；已有 grapheme 的条目原样保留（哪怕同时还带着 L，也不理会 L，
- * 因为 grapheme 才是权威字段——见规范 v2.0 §3「SOUNDS 单条」）。
+ * 派生出 grapheme:=L；已有 grapheme 且与 L 一致（或没有 L）的条目原样保留——
+ * grapheme 才是权威字段（见规范 v2.0 §3「SOUNDS 单条」），L 只是拿来兜底派生，不是拿来
+ * 覆盖或校验 grapheme 的。
+ * 两者都在但值不同时抛错（见上方注释），不静默选 grapheme——这种冲突多半意味着别名派生
+ * 行在迁移中被漏改，选错的一方会把错误的字形悄悄展示给孩子。
  * 不修改传入对象及其内部条目对象，返回全新对象树的第一层（条目对象本身仅在需要派生时
  * 才浅拷贝，其余条目按引用复用，足够安全，因为调用方只读不写）。 */
 function withGraphemeFallback(sounds) {
@@ -31,6 +44,16 @@ function withGraphemeFallback(sounds) {
     const entry = sounds[id];
     const hasGrapheme = entry && typeof entry === 'object' && typeof entry.grapheme === 'string' && entry.grapheme.length > 0;
     const hasLegacyL = entry && typeof entry === 'object' && typeof entry.L === 'string' && entry.L.length > 0;
+    if (hasGrapheme && hasLegacyL && entry.grapheme !== entry.L) {
+      const err = new Error(
+        'sounds_grapheme_adapter: SOUNDS.' + id + ' 的 grapheme("' + entry.grapheme + '") 与 L("' + entry.L +
+        '")不一致——很可能是别名派生（Object.assign）在 L→grapheme 迁移过程中只改了基类' +
+        '没改派生行，两个字段互相矛盾时适配层不替你选，请人工核实后只保留正确的 grapheme'
+      );
+      err.code = 'grapheme-l-conflict';
+      err.id = id;
+      throw err;
+    }
     if (!hasGrapheme && hasLegacyL) {
       out[id] = Object.assign({}, entry, { grapheme: entry.L });
     } else {
