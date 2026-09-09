@@ -290,6 +290,65 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(baseline.differences({'w': entry}, {}), ['w: present in baseline but not built'])
 
 
+class MediaExceptionsTests(unittest.TestCase):
+    """L1（外审 low，2026-09-09）：媒体唯一例外要有机器可断言的分类，不能只靠注释。"""
+
+    def test_classify_separates_known_from_unexpected_with_precise_conservation(self):
+        exceptions = [
+            {'week': 'week01.html', 'decl': 'WORD_AUDIO', 'key': 'pit', 'change': 'removed', 'reason': 'data-decision'},
+        ]
+        known_line = "week01.html: WORD_AUDIO keys differ: removed 'pit'"
+        # ①命中已知例外的一行，应分进 known。
+        self.assertEqual(baseline.classify_media_differences([known_line], exceptions), {'known': [known_line], 'unexpected': []})
+        # ②同一 decl 但还带着别的变化（同一行里 removed 了两个键，不只是登记的那一个）——
+        #   "精确守恒"要求这种合并行整条判 unexpected，不能因为其中包含被允许的那个键
+        #   就放行，否则新的、未登记的媒体漂移会搭已知例外的车悄悄溜过去。
+        combined_line = "week01.html: WORD_AUDIO keys differ: removed 'pit', 'sat'"
+        self.assertEqual(baseline.classify_media_differences([combined_line], exceptions), {'known': [], 'unexpected': [combined_line]})
+        # ③不相干的差异（别的周/别的 decl/别的键）应分进 unexpected。
+        unrelated = "week02.html: WORD_AUDIO keys differ: removed 'pit'"
+        self.assertEqual(baseline.classify_media_differences([unrelated], exceptions), {'known': [], 'unexpected': [unrelated]})
+        # ④非媒体差异（骨架哈希/声明顺序）这份清单从不覆盖，恒为 unexpected——例外清单
+        #   只保护"媒体键被移除"这一种变化，骨架结构变化永远需要人核实。
+        skeleton_line = 'week01.html: skeletonSha256 differs (aaaaaaaaaaaa expected, bbbbbbbbbbbb built)'
+        self.assertEqual(baseline.classify_media_differences([skeleton_line], exceptions), {'known': [], 'unexpected': [skeleton_line]})
+        # ⑤混合列表：known 与 unexpected 各自正确分组，互不影响。
+        mixed = baseline.classify_media_differences([known_line, unrelated, skeleton_line], exceptions)
+        self.assertEqual(mixed, {'known': [known_line], 'unexpected': [unrelated, skeleton_line]})
+
+    def test_default_exceptions_constant_matches_the_real_week01_pit_removal_wording(self):
+        # KNOWN_MEDIA_EXCEPTIONS 的默认清单必须能精确复现 _media_difference() 真正会
+        # 产出的那一行文案——不是靠人眼对齐，用 baseline 自己的比较逻辑反向验证。
+        entry = lambda rows: {'sha256': '0' * 64, 'skeletonSha256': 's' * 64, 'declarationOrder': baseline.NAMES,
+                               'media': {name: [] for name in baseline.NAMES}}
+        expected = entry([])
+        expected['media']['WORD_AUDIO'] = [['pit', 'audio/mpeg', 'x' * 64], ['sat', 'audio/mpeg', 'y' * 64]]
+        actual = json.loads(json.dumps(expected))
+        actual['media']['WORD_AUDIO'] = [['sat', 'audio/mpeg', 'y' * 64]]   # 'pit' 已被移除
+        diffs = baseline.differences({'week01.html': expected}, {'week01.html': actual})
+        classified = baseline.classify_media_differences(diffs)
+        self.assertEqual(classified, {'known': ["week01.html: WORD_AUDIO keys differ: removed 'pit'"], 'unexpected': []},
+                          'KNOWN_MEDIA_EXCEPTIONS 里 pit 的登记文案应与 differences() 真正产出的那一行逐字一致')
+
+    def test_live_repository_media_drift_is_fully_explained_by_known_exceptions(self):
+        """当前迁移期基线必然与实测产物有差异（骨架哈希会变，是引擎改造的正常代价）——
+        这条测试只盯媒体这一类差异（"keys differ" / "mime differs" / "bytes differ"），
+        断言任何媒体漂移要么命中 KNOWN_MEDIA_EXCEPTIONS（带 reason 分类），要么就必须
+        被当成新问题拦下来，不能靠人眼在一堆 diff 里分辨。这是 L1"对允许删除的键与
+        其余媒体清单做精确守恒断言"的实测落地：一旦未来某次引擎改造意外动了媒体
+        （比如误删了别的键），这条测试会先转红，逼着人把它按"数据决策"还是"引擎改造"
+        分类登记，而不是被当前这一条已知例外的宽容掩盖过去。"""
+        subprocess.run([sys.executable, 'tools/build_lessons.py'], cwd=ROOT, check=True)
+        data = baseline.load()
+        actual = {name: baseline.analyze(baseline.BUILD / name) for name in baseline.COVERED_WEEKS}
+        diffs = baseline.differences(data['weeks'], actual)
+        media_diffs = [d for d in diffs if ' keys differ:' in d or ' mime differs for ' in d or ' bytes differ for ' in d]
+        classified = baseline.classify_media_differences(media_diffs)
+        self.assertEqual(classified['unexpected'], [],
+                          '出现未登记在 KNOWN_MEDIA_EXCEPTIONS 里的媒体差异，需要先查清是数据决策还是引擎改造，'
+                          '登记对应 reason 后再放行，不能直接忽略：' + json.dumps(classified['unexpected'], ensure_ascii=False))
+
+
 class ReadOnlyBehaviourTests(unittest.TestCase):
     def test_repository_fixture_exists_and_build_plus_check_leave_it_untouched(self):
         """build 与 baseline --check 都不得改动 fixture 文件（只读行为契约）。

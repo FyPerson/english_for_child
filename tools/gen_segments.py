@@ -15,12 +15,18 @@ Usage:
   python tools/gen_segments.py --target frontend/src/weeks/week05.data.js --write            # 写回唯一解（无歧义）的词
   python tools/gen_segments.py --target frontend/src/weeks/week05.data.js --write-heuristic   # 额外写回启发式候选（多解词，务必先读警告）
 
-退出码：0=全部处理完毕；1=存在需要人工处理的词（并列 tie / 无法识别 unknown / 分析出错
-error），这些词不会被写回；2=用法错误；3=存在按"字位数最少"启发式选出、但尚未落盘/未经
-复核确认的 resolved 候选（未加 --write-heuristic，dry-run 与默认 --write 都可能命中）。
-1/2/3 都算失败退出（非 0），调用方按"非 0 即不可放行"处理即可；细分只是给人读日志时
-定位问题严重程度用（2026-09-09 外审 H1 修复：改前一份只含 resolved 的文件在任何模式下
-都会得到退出码 0，掩盖了"仍有候选未经人工复核"这件事）。
+退出码（2026-09-09 外审 H1/H2 修复）：0=全部处理完毕（没有 tie/unknown/error，也没有
+已落盘但未复核的候选）；1=存在需要人工处理的词（并列 tie / 无法识别 unknown / 分析出错
+error），这些词不会被写回；2=用法错误；3=存在按"字位数最少"启发式选出、但尚未落盘的
+resolved 候选（dry-run 或默认 --write，即未加 --write-heuristic 时命中）；4=已用
+--write-heuristic 把 resolved 候选落盘、但那些候选仍带 @gen-segments-unreviewed 标记、
+未经人工复核（check_data.js 会拦截带此标记的数据）。
+1/2/3/4 都算失败退出（非 0），调用方按"非 0 即不可放行"处理即可；细分只是给人读日志时
+定位问题严重程度用。3 与 4 的区别：3="候选还没被写进文件"（该考虑要不要加
+--write-heuristic 重跑），4="候选已经写进文件了，但还没人复核过、标记还在"（该去打开
+文件删标记做复核）——H1 修复的是"只含 resolved 的文件在任何模式下都得到退出码 0"；
+H2 修复的是"--write-heuristic 写回未复核标记后，仍会得到退出码 0，与 check_data.js
+会拦截同一份数据这件事矛盾"，两条 high 都在 2026-09-09 里程碑 2 收口批修复。
 
 M5（2026-09-09 里程碑 2 收口批）：`--write` 默认只写"唯一解"（不需要启发式、没有歧义）的
 词；多解词（按"字位数最少"这条编辑启发式选出候选的那些）一律不自动写回，只在报告里列出
@@ -68,7 +74,9 @@ def main():
                      help='在 --write 的基础上，额外写回"字位数最少"这条编辑启发式选出的候选（多解词）。'
                           '⚠️ 基于未经验证的启发式，bat fixture 已证明它会给错（会把 b+a+t 误判成 b+at）——'
                           '写回的每一处仍带 @gen-segments-unreviewed 标记并被 check_data.js 拦下，交付前'
-                          '必须逐条人工复核；传本参数会隐含启用写回（不需要再单独加 --write）。')
+                          '必须逐条人工复核；传本参数会隐含启用写回（不需要再单独加 --write）。'
+                          '本次运行若确有候选被这样写回，退出码是 4（不是 0）——0 只留给"没有任何未复核'
+                          '标记残留"的状态，见上方退出码说明。')
     args = ap.parse_args()
     result = run(args.target, args.write, write_heuristic=args.write_heuristic)
     sys.exit(result.returncode)

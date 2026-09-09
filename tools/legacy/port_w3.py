@@ -6,6 +6,11 @@ tests/fixtures/week03-data.js 切片注入（不手抄，规范"誊抄类产出�
 每一处替换都断言锚点唯一命中，漏一处即报错退出，不产出半成品。
 
 用法：python tools/legacy/port_w3.py
+
+M4 顺带修复（外审 medium 点名的是同目录下 port.py 的同类问题，2026-09-09，"换词影响面
+的第五层"）：⚠️ 本脚本同样不可重放，只作历史归档保留——理由与 port.py 头部注释一致：
+里程碑 0 阶段的一次性移植脚本已交付（产物是 frontend/src/weeks/week03.data.js /
+week03.template.html），仓库结构后来重排，顶层 week02.html/week03.html 已不存在。
 """
 import re
 import sys
@@ -16,6 +21,13 @@ for _s in (sys.stdout, sys.stderr):
         _s.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
+
+raise SystemExit(
+    'REFUSED: tools/legacy/port_w3.py 是历史归档的一次性移植脚本（week02.html → week03.html），'
+    '早已执行完毕并交付，仓库结构后来重排（顶层 week02.html/week03.html 已不存在），'
+    '本脚本不可重放，仅供历史查阅——不要尝试重新运行；需要做类似的换数据层移植，'
+    '请照当前 docs/ 下最新的交接规范另写新脚本。'
+)
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SRC = ROOT / "week02.html"

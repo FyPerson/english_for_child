@@ -3,9 +3,35 @@
 
 严格按 docs/声音积木周课件设计规范_20260831_v1.0.md §5.1 的 22 项清单执行。
 每一处替换都断言锚点唯一命中，漏一处即报错退出，不产出半成品。
+
+M4 修复（外审 medium，2026-09-09，"换词影响面的第五层"）：⚠️ 本脚本不可重放，只作历史
+归档保留。它是里程碑 0 阶段的一次性移植脚本，已经执行完毕并交付——真正的产物早已是
+frontend/src/weeks/week02.data.js / week02.template.html。仓库结构后来整体重排，
+顶层 week01.html/week02.html 这两个输入/输出文件已经不存在；脚本里 22 处 sub()/cut()
+断言的旧字面量也随后续数据变化逐条过期了（例如 #7 保留词那一行断言的
+`const RESERVED = [...,'spit']`，2026-09-09 W1 周检词把 'spit' 换成 'pit' 后就已经
+匹配不到）。这里不去逐条更新这些过期字面量——那是在维护一份根本不该再被维护的迁移
+脚本，与"legacy/归档"的定位矛盾——而是让"不可重放"这件事本身在运行时就明确拒绝，
+不依赖一段容易被忽略的注释、也不依赖 FileNotFoundError 这种偶然出现的报错。
 """
 import sys
 from pathlib import Path
+
+# 与 tools/legacy/port_w3.py 同款：Windows 终端默认控制台代码页不是 UTF-8，直接打印下面
+# 这条中文 REFUSED 消息会乱码——本脚本存在的目的就是让人一眼看懂"为什么不能跑"，消息本身
+# 乱码会削弱这一点，所以先重配置成 UTF-8（拿不到就算了，不影响拒绝执行这件事本身）。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+raise SystemExit(
+    'REFUSED: tools/legacy/port.py 是历史归档的一次性移植脚本（week01.html → week02.html），'
+    '早已执行完毕并交付，仓库结构后来重排（顶层 week01.html/week02.html 已不存在，脚本内'
+    '22 处断言字面量也已随后续数据变化过期），本脚本不可重放，仅供历史查阅——不要尝试'
+    '重新运行；需要做类似的换数据层移植，请照当前 docs/ 下最新的交接规范另写新脚本。'
+)
 
 sys.path.insert(0, str(Path(__file__).parent))
 import w2data as D

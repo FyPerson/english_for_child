@@ -268,6 +268,9 @@ class InteractiveElement {
     this._named = new Map();
     this._listeners = {};
     this._html = ''; this._text = '';
+    this.style = {};   // bindLongPress（frontend/src/shared/longpress.js）直接写 el.style.userSelect
+                        // 等属性，缺这个字段会在长按挂载那一刻直接抛 TypeError（见下方 querySelector
+                        // 自动补全的同一条注释）。
     const classes = new Set();
     this.classList = {
       add: (...cs) => cs.forEach(c => classes.add(c)),
@@ -289,7 +292,16 @@ class InteractiveElement {
   removeEventListener() { }
   fire(type, evt) { (this._listeners[type] || []).forEach(fn => fn(evt)); }
   registerNamed(sel, el) { this._named.set(sel, el); return el; }
-  querySelector(sel) { return this._named.get(sel) || null; }
+  // H1 修复带出的连锁问题（2026-09-09）：改前 querySelector 找不到就返回 null——真实 DOM
+  // 语义没错，但 G4/G5 摆对/摆出真词时，renderConfirmFeedback()/render() 会调用
+  // `bindLongPress(body.querySelector('.g4__confirm'|'.g5__confirm'), ...)`，这两个深层
+  // CSS 选择器从没被显式 registerNamed 过（body.innerHTML 只是字符串赋值，不会被解析成
+  // 真实子节点树），传 null 给 bindLongPress 会在它内部 `el.querySelector(...)` 处直接
+  // 抛 TypeError——G5 的"填满恰好拼出白名单真词"分支就踩了这个坑（week02 数据实测触发）。
+  // 参照 tests/unit/test_synthetic_ai_integration.js 的 El.querySelector 同款处理：找不到
+  // 就现造一个空元素返回并记住，不影响任何一条断言的判定依据（这类深层选择器从不被拿来
+  // 断言 innerHTML，只被 bindLongPress 用来挂空的长按视觉效果），只是让长按能正常挂载。
+  querySelector(sel) { if (!this._named.has(sel)) this._named.set(sel, new InteractiveElement('div')); return this._named.get(sel); }
   querySelectorAll() { return []; }
   closest(sel) { return matchesSelector(this, sel) ? this : null; }
   appendChild(c) { return c; }
@@ -344,10 +356,14 @@ async function runInteractionScenarios(templatePath, weekName) {
   // （sloppy 模式下等价于隐式全局属性赋值）挂到 sandbox 自身上，Node 侧才能读到同一个
   // 对象引用（对象引用本身与"怎么绑定"无关，读到之后修改 WordAudio.play 这类属性，
   // vm 内部代码看到的是同一个对象，修改立即生效）。
-  new vm.Script('__BRIDGE_DAYS = DAYS; __BRIDGE_WORD_AUDIO = WordAudio; __BRIDGE_BOOK = BOOK;',
+  // H1（外审 high，2026-09-09）：G5 场景要真正解锁摆词态，需要直接读写 state.js 顶层
+  // 声明的 `state`（同 DAYS/WordAudio/BOOK 的桥接手法）——examRecorded(day) 读的是
+  // state.days[day].checks[key]，不经桥接就没有任何办法从 Node 侧把它置位。
+  new vm.Script('__BRIDGE_DAYS = DAYS; __BRIDGE_WORD_AUDIO = WordAudio; __BRIDGE_BOOK = BOOK; __BRIDGE_STATE = state;',
     { filename: templatePath + ' (bridge)' }).runInContext(sandbox);
   const DAYS = sandbox.__BRIDGE_DAYS;
   const BOOK = sandbox.__BRIDGE_BOOK;
+  const STATE = sandbox.__BRIDGE_STATE;
   const blockHTML = sandbox.blockHTML;
 
   // 音频层整体替桩：只用于把 G1/G4/G5 从"等音频结束"推进到下一个可交互态，
@@ -455,28 +471,56 @@ async function runInteractionScenarios(templatePath, weekName) {
         root.fire('click', { target: new InteractiveElement('button', { 'data-g4-order': orderBtnMatch[1] }) });
         await flushMicrotasks();
         check('G4 选单后进入摆词态（出现槽位）', /data-g4-slot="0"/.test(body.innerHTML), body.innerHTML);
+        // M2 修复带出的连锁问题（2026-09-09，week02/03/04 实测触发）：改前用
+        // `/data-g4-tile="(\d+)"[^>]*data-g4-letter="([^"]*)"/.exec(body.innerHTML)` 找
+        // "下一块要点的积木"，不检查 disabled——rack 顺序固定不变（用过的积木原地变灰，
+        // 不会从 DOM 里挪走），regex 永远匹配到文本上第一块积木，不管它是否已经被用过；
+        // 而合成点击事件的 target 也没有真的 `.disabled` 属性可读（games.js 的
+        // `if(tile && !tile.disabled)` 检查形同虚设），于是同一块积木会被反复点、同一个
+        // 字母被重复摆进多个槽——槽位永远填不满（因为同一个 emptyIdx 逻辑虽然会往下一个
+        // 空槽摆，但摆的都是同一个字母，凑不出目标词，也可能因为改前的"兜底防死循环"
+        // 判据用错（见下方）而在填满前就提前退出循环）。改成显式跳过 disabled 积木，
+        // 参照 G5 已有的同款处理（本文件 G5 场景的 firstEnabledTile）。
+        const firstEnabledG4Tile = htmlStr => {
+          const re = /<button[^>]*data-g4-tile="(\d+)"[^>]*data-g4-letter="([^"]*)"[^>]*>/g;
+          let m;
+          while ((m = re.exec(htmlStr))) { if (!/\bdisabled\b/.test(m[0])) return { idx: m[1], letter: m[2] }; }
+          return null;
+        };
         // 撤回：先摆一块，确认槽 0 有内容，再点该槽把它撤回，确认槽 0 变回空。
-        const firstTileMatch = /data-g4-tile="(\d+)"[^>]*data-g4-letter="([^"]*)"/.exec(body.innerHTML);
-        if (firstTileMatch) {
-          root.fire('click', { target: new InteractiveElement('button', { 'data-g4-tile': firstTileMatch[1], 'data-g4-letter': firstTileMatch[2] }) });
+        const firstTile = firstEnabledG4Tile(body.innerHTML);
+        if (firstTile) {
+          root.fire('click', { target: new InteractiveElement('button', { 'data-g4-tile': firstTile.idx, 'data-g4-letter': firstTile.letter }) });
           const slot0Empty = /tile--empty\s*"\s*data-g4-slot="0"/;
           check('G4 摆入一块后槽 0 非空（tile--empty 类名消失）', !slot0Empty.test(body.innerHTML), body.innerHTML);
           root.fire('click', { target: new InteractiveElement('button', { 'data-g4-slot': '0' }) });
           check('G4 点已摆入的槽 0 后应撤回、槽位重新变空', slot0Empty.test(body.innerHTML), body.innerHTML);
         }
-        // 依次点摆满全部字位积木（tile 索引与 rack 顺序一致，第一遍点击总能命中未用过的块）。
+        // 依次点未用过（非 disabled）的积木，直到槽位全部填满触发 validate()。停止条件
+        // 用"body 里还有没有 tile--empty"而不是"槽位元素总数变没变"——槽位元素总数从
+        // 渲染起就固定不变（是槽的个数，不是"填了几个"），改前拿它当"卡住了"的判据恒真，
+        // 是这条循环会提前退出的第二个原因。
         let guard = 0;
-        while (/data-g4-tile="\d+"/.test(body.innerHTML) && guard < 20) {
-          const tileMatch = /data-g4-tile="(\d+)"[^>]*data-g4-letter="([^"]*)"/.exec(body.innerHTML);
-          if (!tileMatch) break;
-          const beforeSlots = (body.innerHTML.match(/data-g4-slot="\d+"/g) || []).length;
-          root.fire('click', { target: new InteractiveElement('button', { 'data-g4-tile': tileMatch[1], 'data-g4-letter': tileMatch[2] }) });
+        while (body.innerHTML.includes('tile--empty') && guard < 20) {
+          const tile = firstEnabledG4Tile(body.innerHTML);
+          if (!tile) break;
+          root.fire('click', { target: new InteractiveElement('button', { 'data-g4-tile': tile.idx, 'data-g4-letter': tile.letter }) });
           guard++;
-          if (!/data-g4-tile="\d+"/.test(body.innerHTML)) break; // 摆满后 renderPlacing 不再出现 rack（校验反馈接管了 body）
-          const afterSlots = (body.innerHTML.match(/data-g4-slot="\d+"/g) || []).length;
-          if (afterSlots === beforeSlots && guard > 1) break; // 兜底防止死循环
         }
-        check('G4 摆满全部积木后触发校验反馈（不再是纯摆词态 rack）', !body.innerHTML.includes('g4__rack') || body.innerHTML.includes('g1__hint'), body.innerHTML);
+        // M2 修复（外审 medium，2026-09-09）：改前的断言 `!includes('g4__rack') ||
+        // includes('g1__hint')` 是一条空 HTML、错误页面、任意不含 g4__rack 的内容都能
+        // 通过的宽松析取式，而且 'g1__hint' 是 G1 的反馈类名，与 G4 无关（G4 的反馈段
+        // 恰好复用了同一个 CSS 类名，断言命中的是"字面重合"不是"G4 真的触发了反馈"）。
+        // 改成三条具体断言：①body 确实非空且反馈已接管（g4__rack 消失，body 有内容）；
+        // ②反馈文案是 validate()/renderConfirmFeedback() 那几段固定文案之一（摆错/
+        // 拼对/已确认，三选一，见 games.js 的 validate() 与 renderConfirmFeedback()）；
+        // ③槽位状态确实"全部填满"（g4__slots 存在且不再含 tile--empty）。
+        check('G4 摆满全部积木后 body 非空且不再是纯摆词态 rack', body.innerHTML.length > 0 && !body.innerHTML.includes('g4__rack'), body.innerHTML);
+        check('G4 校验反馈显示具体的对/错文案（摆错提示 / 拼对确认 / 已确认三选一，不是宽松兜底）',
+          /摆错了，点错的字母撤回再试/.test(body.innerHTML) || /拼对了！他自己指读了吗？/.test(body.innerHTML) || /已确认/.test(body.innerHTML),
+          body.innerHTML);
+        check('G4 校验反馈里的槽位确实全部填满（g4__slots 存在且不含 tile--empty）',
+          body.innerHTML.includes('g4__slots') && !body.innerHTML.includes('tile--empty'), body.innerHTML);
       }
     } else {
       check('G4：本周数据里没有 g4 块（跳过，非失败）', true);
@@ -484,15 +528,64 @@ async function runInteractionScenarios(templatePath, weekName) {
   }
 
   // ---- G5：摆词填满 + 撤回 ----
+  // H1 修复（外审 high，2026-09-09，"第五次同一模式"）：改前只调用 initG5() 断言初始
+  // HTML 非空，注释却声称测的是"摆词填满 + 撤回"——实际一次积木点击都没发生，等于只测
+  // 了初始化。真实 G5 有一道程序锁：examRecorded(day) 为 false 时永远渲染 g5__lock-note
+  // （见 games.js renderLockedView()），不真正解锁就点不动任何积木，"填满/撤回"根本
+  // 无从发生。参照 tests/unit/test_synthetic_ai_integration.js 的 testG5SurfaceLookupFindsWord()
+  // ——同样先把 state.days[day].checks[key] 置位解锁，再真正点积木、真正断言状态变化。
   {
     const found = findFirstBlock(DAYS, 'g5');
     if (found) {
+      // 解锁：examRecorded(day) 的判据（state.js:225-231）是"DAYS[day-1] 里含 exam 块
+      // 的那个 step 的下标，拼成 key = day-stepIdx-0"，这里原样复算同一条判据（不是
+      // 凭空编一个 key），再直接写 state.days[day].checks[key]=true——与合成周测试
+      // 桥接 state 的手法一致，只是这里用的是真实周数据，day/stepIdx 是走查出来的。
+      const dayNum = found.ctx.day;
+      const dayDecl = DAYS[dayNum - 1];
+      const examStepIdx = dayDecl.steps.findIndex(s => s.blocks.some(b => b.b === 'exam'));
+      if (examStepIdx !== -1) {
+        const key = dayNum + '-' + examStepIdx + '-0';
+        STATE.days[dayNum] = { checks: { [key]: true } };
+      }
       const html = blockHTML(found.b, found.ctx);
       const root = new InteractiveElement('div', extractRootAttrs(html, ['data-g5', 'data-g5-day']));
       const body = root.registerNamed('[data-g5-body]', new InteractiveElement('div'));
       roots.length = 0; roots.push(root);
       sandbox.initG5();
-      check('G5 初始渲染出提示或造词界面（不抛、不为空）', body.innerHTML.length > 0, body.innerHTML);
+      check('G5：真实数据里这一天确实含 exam 块（解锁判据存在，不是无法解锁的孤儿块）', examStepIdx !== -1, { day: dayNum });
+      check('G5 解锁后不再是锁定提示（g5__lock-note 消失）', !/g5__lock-note/.test(body.innerHTML), body.innerHTML);
+
+      // 依次点未用过（非 disabled）的积木，直到摆满默认 3 槽——G5 的 rack 与 G4 不同，
+      // 摆满后 rack 仍然整段保留在 body 里（只是已用积木带 disabled），不能像 G4 那样
+      // 靠"rack 消失"判断填满，必须显式跳过已 disabled 的积木，否则会重复点同一块。
+      const firstEnabledTile = htmlStr => {
+        const re = /<button[^>]*data-g5-tile="(\d+)"[^>]*data-g5-letter="([^"]*)"[^>]*>/g;
+        let m;
+        while ((m = re.exec(htmlStr))) { if (!/\bdisabled\b/.test(m[0])) return { idx: m[1], letter: m[2] }; }
+        return null;
+      };
+      let guard = 0;
+      while (guard < 10 && !/g1__hint/.test(body.innerHTML)) {
+        const tile = firstEnabledTile(body.innerHTML);
+        if (!tile) break;
+        root.fire('click', { target: new InteractiveElement('button', { 'data-g5-tile': tile.idx, 'data-g5-letter': tile.letter }) });
+        guard++;
+      }
+      check('G5 摆满全部槽位后进入反馈态（出现 g1__hint 反馈文案：拼出一个词 / 这个组合读读看）',
+        /g1__hint/.test(body.innerHTML), body.innerHTML);
+      check('G5 反馈态的槽位确实全部填满（不含 tile--empty）', !body.innerHTML.includes('tile--empty'), body.innerHTML);
+
+      // 撤回：点第一个已摆入的槽位，确认它变回空、反馈文案随之消失（full 变回 false）。
+      const slotMatch = /data-g5-slot="(\d+)"/.exec(body.innerHTML);
+      if (slotMatch) {
+        root.fire('click', { target: new InteractiveElement('button', { 'data-g5-slot': slotMatch[1] }) });
+        const thisSlotEmpty = new RegExp('tile--empty"\\s*data-g5-slot="' + slotMatch[1] + '"');
+        check('G5 点已摆入的槽位后应撤回、该槽位重新变空（tile--empty 类名出现）', thisSlotEmpty.test(body.innerHTML), body.innerHTML);
+        check('G5 撤回后不再是"全部填满"的反馈态（g1__hint 消失）', !/g1__hint/.test(body.innerHTML), body.innerHTML);
+      } else {
+        check('G5：未找到任何已摆入的槽位可供撤回测试（摆满逻辑异常）', false, body.innerHTML);
+      }
     } else {
       check('G5：本周数据里没有 g5 块（跳过，非失败）', true);
     }

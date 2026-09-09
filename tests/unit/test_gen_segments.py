@@ -324,16 +324,37 @@ class GenSegmentsOnlyResolvedExitCodeTests(unittest.TestCase):
         self.assertIsNotNone(m_rain)
         self.assertNotIn('segments', m_rain.group(0), 'rain 是 resolved，默认 --write 不应写回')
 
-    def test_write_heuristic_exits_zero_when_all_resolved_written(self):
-        # --write-heuristic 打开后 rain/aid 也被写回（带标记），不再有"未落盘候选"，
-        # 且没有 tie/unknown/error，退出码应恢复为 0。
+    def test_write_heuristic_exits_nonzero_with_unreviewed_marker_left(self):
+        # H2（外审 high，2026-09-09）：改前这条用例断言退出码 0——"--write-heuristic
+        # 后 rain/aid 也被写回（带标记），不再有'未落盘候选'，且没有 tie/unknown/error，
+        # 退出码应恢复为 0"。这正是 H2 指出的矛盾本身：写回的 segments 仍带
+        # @gen-segments-unreviewed 标记，check_data.js 会拦截这份数据，"退出码 0=全部
+        # 处理完毕"与"下游门槛必然 fail"直接矛盾。改后退出码应为 4（"已落盘但未复核"，
+        # 与 3"根本没落盘"区分），不是 0。
         result = gs.run(str(self.target), write=True, write_heuristic=True, capture_output=True)
-        self.assertEqual(result.returncode, 0,
-                          'H1：--write-heuristic 后全部候选（rain/aid/tan）均已写回、且无 tie/unknown/error，退出码应为 0')
+        self.assertEqual(result.returncode, 4,
+                          'H2：--write-heuristic 写回带 @gen-segments-unreviewed 标记的候选后，'
+                          '退出码应为 4（已落盘但未复核），不能是 0——check_data.js 仍会拦截这份数据')
         after = self.target.read_text(encoding='utf-8')
         m_rain = re.search(r"rain:\{[^{}]*\}", after)
         self.assertIsNotNone(m_rain)
         self.assertIn('@gen-segments-unreviewed', m_rain.group(0))
+        self.assertIn('退出码将是 4', result.stdout, '写回时的提示文案应点名退出码 4，不能只说"需人工复核"却不点出机器可判的退出码')
+
+    def test_unreviewed_marker_matches_the_exact_pattern_check_data_scans_for(self):
+        # H2 的矛盾点是："退出码 4 时写进文件的标记" 与 "check_data.js §⑪ 实际扫描的
+        # 标记" 必须是同一个字符串，否则"退出码 4 提醒人去复核"这件事本身就对不上下游
+        # 门槛真正拦截的依据。不直接跑 check_data.js（它要求一份完整可加载的周数据，
+        # 本测试的合成 fixture 只有 META/SOUNDS/W 三个字段，跑起来会先在无关的 DAYS/
+        # RESERVED 等字段上崩溃，不是这条用例要验证的东西）——改为直接核对两处的
+        # 正则/字面量是同一个标记，这是把"会被拦截"这件事钉死的更精确方式。
+        gs.run(str(self.target), write=True, write_heuristic=True, capture_output=True)
+        after = self.target.read_text(encoding='utf-8')
+        self.assertIn('@gen-segments-unreviewed', after)
+        checker_src = (Path(__file__).resolve().parents[2] / 'tools' / 'validation' / 'check_data.js').read_text(encoding='utf-8')
+        self.assertIn('@gen-segments-unreviewed', checker_src,
+                       'check_data.js 应仍在扫描同一个字面标记 @gen-segments-unreviewed，'
+                       '否则 gen_segments 退出码 4 的"会被下游门槛拦截"这个理由就落空了')
 
 
 if __name__ == '__main__':

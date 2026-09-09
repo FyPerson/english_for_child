@@ -224,6 +224,50 @@ def differences(expected, actual):
     return out
 
 
+# L1 修复（外审 low，2026-09-09）：改前"媒体唯一例外"只靠 docs/ 里的一段说明 + 代码
+# 注释表达（方案 §2 提到的"枚举唯一例外"），check()/differences() 本身对它一无所知——
+# 迁移期间任何一次 `python tools/baseline.py --check` 都会把这条已知例外和其余全部
+# skeletonSha256/媒体差异混在同一份 diff 列表里，靠人眼分辨"这条是已知的"还是"这条是
+# 新出现的引擎改造副作用"。这里补一份带 reason 分类（data-decision / engine-change）
+# 的机器可断言清单：每一条记录哪一周、哪个媒体声明、哪个键、发生了什么变化（目前只有
+# 'removed' 这一种，见下方用途）、为什么允许。
+#
+# 刻意不改 `differences()`/`check()` 本身的行为（那两个函数仍然照原样把这条例外也
+# 报成一行 diff）——本任务的验收标准明确写着"基线差异单独跑，预期 4 条 skeletonSha256
+# + 1 条 WORD_AUDIO keys differ removed 'pit'（已知例外）"，如果让 `differences()`
+# 悄悄把这条例外从输出里过滤掉，验证时看到的只会是 4 条而不是 5 条，反而让人误以为
+# 哪里坏了。这里改成一个独立的分类函数：把 `differences()` 产出的原始 diff 字符串，
+# 按这份清单分成"已知例外"与"未知/意外"两组——`check()`/CI 要不要用它来放宽判据，
+# 由后续阶段（第 9 步重取基线、或未来允许迁移期间部分放行）再决定，本次只补上这个
+# 可断言的分类能力本身，见 tests/unit/test_baseline.py 的 L1 回归用例。
+KNOWN_MEDIA_EXCEPTIONS = [
+    {'week': 'week01.html', 'decl': 'WORD_AUDIO', 'key': 'pit', 'change': 'removed', 'reason': 'data-decision',
+     'note': ("P8（2026-09-09 用户拍板）：W1 周检词 'spit' 换成 'pit'，'pit' 未配真人示范音，"
+              "随词表变化从 WORD_AUDIO 里移除——这是里程碑 2 的数据层教学决策，不是引擎改造"
+              "的副作用，见 docs/里程碑2实施方案 §2「枚举唯一例外」。")},
+]
+
+
+def classify_media_differences(diffs, exceptions=KNOWN_MEDIA_EXCEPTIONS):
+    """把 `differences()` 产出的一条条原始 diff 字符串分成 known（命中已知例外）与
+    unexpected（其余全部——包括非媒体的 skeletonSha256/declarationOrder 差异，那些
+    这份清单从不覆盖）两组。
+
+    只精确匹配"单个键的 removed"这一种最简形态——`_media_difference()` 在同一个
+    decl 里有多处变化时会把它们合并进同一行（比如同时 added 又 removed，或者一次
+    removed 多个键），那种合并后的行不会等于任何一条已知例外的精确文案，会被判
+    unexpected。这是刻意的"精确守恒"：例外只保护"确实只发生了这一个、且只有这一个"
+    的变化，一旦有别的变化混进同一个 decl，哪怕真正的例外也在其中，也要求人重新看一眼，
+    不能让新的、未登记的媒体漂移搭着已知例外的车悄悄放行。"""
+    known_labels = {
+        f"{e['week']}: {e['decl']} keys differ: removed {e['key']!r}"
+        for e in exceptions if e['change'] == 'removed'
+    }
+    known = [d for d in diffs if d in known_labels]
+    unexpected = [d for d in diffs if d not in known_labels]
+    return {'known': known, 'unexpected': unexpected}
+
+
 def check(fixture=FIXTURE, week_paths=None, products_dir=None):
     """Compare built lessons with the fixture.
 

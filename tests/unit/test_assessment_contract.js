@@ -243,6 +243,50 @@ console.log(`PASS weekly 失败例：2 个禁止块类型（${WEEKLY_FORBIDDEN_B
   console.log('PASS M2 回归：周检词出现在别的词条（非自身释义）里仍被查出泄漏');
 }
 
+// ============================================================================
+// M3 回归（外审 medium，2026-09-09）：泄漏判据的书面边界——见 assessment_contract.js
+// 文件头 tokens/normalize 附近的 M3 注释。这里用正反例把边界钉死成可执行断言：
+// ①精确词元命中确实会被查出（已有 M2 用例覆盖，这里只是同一维度的直接版本）；
+// ②形态变体（复数）不会被词元匹配命中——这是当前明确选择的边界，不是判据坏了；
+// ③无关的子串重合（spit 包含 pit 的字母）不会被误判成泄漏——这条正是"不能直接改成
+// 无界子串匹配"的证据，改成子串匹配这条用例会先转红。
+// ============================================================================
+{
+  // ①精确词元命中：教学内容里直接出现测评词本身，应查出。
+  const d = structuredClone(w5);
+  d.DAYS[0].steps[0].blocks.push({b: 'lead', html: '今天要学 hem 这个词。'});
+  const errors = validateAssessment(d);
+  assert(errors.some(e => e.includes('测评词泄漏进教学内容：hem')),
+    'M3：测评词本身作为完整词元出现在教学内容里，应查出泄漏，实际：' + JSON.stringify(errors));
+  console.log('PASS M3 边界①：测评词作为完整词元出现时被查出泄漏');
+}
+{
+  // ②形态变体不命中：hem 的复数 hems 出现在教学内容里（不是通过 W 词典入口，是直接
+  // 出现在某个教学块的正文里），不应被判定为泄漏——当前判据是词元精确匹配，不做
+  // 词形归一化，这是书面记录过的边界，不是遗漏。
+  const d = structuredClone(w5);
+  d.DAYS[0].steps[0].blocks.push({b: 'lead', html: '这周学的都是 hems 这样的词。'});
+  const errors = validateAssessment(d);
+  assert(!errors.some(e => e.includes('测评词泄漏进教学内容：hem')),
+    'M3：hem 的复数形式 hems 按当前"词元精确匹配"边界不应被判定为 hem 泄漏（若未来要扩展这条边界，' +
+    '需要先在 assessment_contract.js 头部注释里显式写清楚新规则，这条断言也要跟着改），实际：' + JSON.stringify(errors));
+  console.log('PASS M3 边界②：hem 的复数 hems 不被词元匹配误判为 hem 泄漏（当前边界，非 bug）');
+}
+{
+  // ③子串重合不误报：spit 包含 pit 的字母，但两者是不同的词元，不应该因为字面包含
+  // 关系就被判定为"pit 泄漏"——这条用例证明当前"词元精确匹配"没有子串误报问题，
+  // 也是"不能直接改成无界子串匹配"这条修法禁令的反面证据（若误改成子串匹配，
+  // 这条断言会先转红）。
+  const d = structuredClone(w5);
+  d.RESERVED[0] = 'pit';
+  d.W.pit = {zh: '坑'};
+  d.DAYS[0].steps[0].blocks.push({b: 'lead', html: '示范一个无关的词：spit。'});
+  const errors = validateAssessment(d);
+  assert(!errors.some(e => e.includes('测评词泄漏进教学内容：pit')),
+    'M3：spit 与测评词 pit 只是字母子串重合，不是同一个词元，不应被误判为 pit 泄漏，实际：' + JSON.stringify(errors));
+  console.log('PASS M3 边界③：spit 与测评词 pit 的子串重合不被误判为泄漏（词元匹配没有子串误报问题）');
+}
+
 // ---- 逐周回归：W1、W2、W3、W5 各一个 weekly 正例。W1-W3 此前被 week<4 早退完全跳过，
 //      补 assessmentMode 后是首次进入 weekly 路径，历史数据可能不满足新检查，必须逐周
 //      验而不是只验 W5。不得以新增正例 fixture 代替真实四周数据回归——W1/W2/W3 直接
@@ -275,3 +319,81 @@ for (let week = 1; week <= 3; week++) {
   assert.deepEqual(baseline.filter(word => exposed.has(word)), [], `W4 baseline exposed in W${week}`);
 }
 console.log('PASS W4 baseline: no exposure in any prior weekly data or explanation');
+
+// ============================================================================
+// M1 回归（外审 medium，2026-09-09）：不支持路由（stage/annual/monthly&&week!==4）
+// 与 checkConsolidation 改前会因为 DAYS/day.steps/step.blocks/FIRST_TEACH_DAY 的
+// 形状问题直接抛 TypeError，而不是返回确定的"不支持/非法"错误；META 是数组时也会被
+// `typeof object` 误判成合法配置。这里逐条造畸形输入，只断言"不抛异常、拿到字符串
+// 数组"，不追求穷尽每种形状组合。
+// ============================================================================
+{
+  // ---- day.steps 缺失：stage/annual 路由改前会在 ctx() 里直接抛 TypeError ----
+  const d = structuredClone(w5);
+  d.META.assessmentMode = 'stage';
+  delete d.DAYS[0].steps;   // 畸形：这一天没有 steps
+  let errors;
+  assert.doesNotThrow(() => { errors = validateAssessment(d); },
+    'M1：day.steps 缺失时 stage 路由不应抛异常');
+  assert(errors.some(e => e.includes('里程碑 2b 前不支持')), 'stage 路由仍应给出「不支持」这条确定错误：' + JSON.stringify(errors));
+  assert(errors.some(e => e.includes('DAYS[0].steps 必须是数组')), 'stage 路由应同时报出 DAYS[0].steps 的形状问题：' + JSON.stringify(errors));
+  console.log('PASS M1 回归：day.steps 缺失时 stage 路由不崩溃，给出「不支持」+ 形状错误两条');
+}
+{
+  // ---- step.blocks 缺失：annual 路由 ----
+  const d = structuredClone(w5);
+  d.META.assessmentMode = 'annual';
+  delete d.DAYS[0].steps[0].blocks;   // 畸形：这一步没有 blocks
+  let errors;
+  assert.doesNotThrow(() => { errors = validateAssessment(d); },
+    'M1：step.blocks 缺失时 annual 路由不应抛异常');
+  assert(errors.some(e => e.includes('里程碑 2b 前不支持')), 'annual 路由仍应给出「不支持」这条确定错误：' + JSON.stringify(errors));
+  assert(errors.some(e => e.includes('DAYS[0].steps[0].blocks 必须是数组')), 'annual 路由应同时报出 step.blocks 的形状问题：' + JSON.stringify(errors));
+  console.log('PASS M1 回归：step.blocks 缺失时 annual 路由不崩溃，给出「不支持」+ 形状错误两条');
+}
+{
+  // ---- DAYS 本身不是数组：monthly && week!==4 路由 ----
+  const d = structuredClone(w5);
+  d.META.assessmentMode = 'monthly';
+  d.META.week = 10;
+  d.DAYS = null;   // 畸形：DAYS 整体缺失
+  let errors;
+  assert.doesNotThrow(() => { errors = validateAssessment(d); },
+    'M1：DAYS 整体非数组时 monthly&&week!==4 路由不应抛异常');
+  assert(errors.some(e => e.includes('里程碑 2b 前不支持')), 'monthly&&week!==4 路由仍应给出「不支持」：' + JSON.stringify(errors));
+  assert(errors.some(e => e.includes('DAYS 必须是数组')), '应同时报出 DAYS 本身的形状问题：' + JSON.stringify(errors));
+  console.log('PASS M1 回归：DAYS 非数组时 monthly&&week!==4 路由不崩溃，给出「不支持」+ 形状错误两条');
+}
+{
+  // ---- consolidation:true 但 FIRST_TEACH_DAY 缺失：checkConsolidation 改前
+  //      Object.keys(undefined) 直接抛 TypeError ----
+  const d = structuredClone(w5);
+  d.META.assessmentMode = 'stage';
+  d.META.consolidation = true;
+  delete d.FIRST_TEACH_DAY;
+  let errors;
+  assert.doesNotThrow(() => { errors = validateAssessment(d); },
+    'M1：consolidation:true 且 FIRST_TEACH_DAY 缺失时不应抛异常');
+  assert(errors.some(e => e.includes('里程碑 2b 前不支持')), 'stage 路由仍应给出「不支持」：' + JSON.stringify(errors));
+  assert(!errors.some(e => e.includes('首教日')), 'FIRST_TEACH_DAY 缺失应视为"没有声明"，不应误判为"巩固周不得声明新字位首教日"：' + JSON.stringify(errors));
+  console.log('PASS M1 回归：consolidation:true 且 FIRST_TEACH_DAY 缺失时不崩溃，且不误报"不得声明首教日"');
+}
+{
+  // ---- weekly 路由本身也要扛住畸形 DAYS，不只是"不支持路由" ----
+  const d = structuredClone(w5);
+  d.DAYS = [{title: '', goal: '', wd: ''}];   // 畸形：这一天连 steps 都没有
+  let errors;
+  assert.doesNotThrow(() => { errors = validateAssessment(d); },
+    'M1：weekly 路由遇到畸形 DAYS 也不应抛异常');
+  assert(errors.some(e => e.includes('DAYS[0].steps 必须是数组')), 'weekly 路由应报出 DAYS[0].steps 的形状问题：' + JSON.stringify(errors));
+  console.log('PASS M1 回归：weekly 路由遇到畸形 DAYS（缺 steps）不崩溃，报出形状错误');
+}
+{
+  // ---- META 是数组：改前 `typeof []==='object'` 会被当成合法 META 放行 ----
+  const d = structuredClone(w5);
+  d.META = ['not', 'a', 'real', 'meta'];
+  const errors = validateAssessment(d);
+  assert(errors.some(e => e.includes('META.assessmentMode 缺失或非法')),
+    'M1：META 是数组时应被视为"缺失或非法"，不能被当成合法配置放行：' + JSON.stringify(errors));
+  console.log('PASS M1 回归：META 是数组时不被 typeof object 误判成合法配置，判「缺失或非法」');
+}

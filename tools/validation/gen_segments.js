@@ -349,8 +349,18 @@ function main() {
     console.error('  --write-heuristic  额外写回"字位数最少"启发式候选（多解词）——基于未经验证的');
     console.error('                     启发式，bat fixture 已证明它会给错，写回的每一处都会带');
     console.error('                     @gen-segments-unreviewed 标记并被 check_data.js 拦下直到人工复核');
-    console.error('退出码：0=全部处理完毕；1=存在 tie/unknown/error（工具排不出候选，需人工处理）；');
-    console.error('        2=用法错误（本分支）；3=存在未落盘的 resolved 候选（未加 --write-heuristic）。');
+    console.error('三种模式的退出码语义（H2 修复，2026-09-09 外审 high，见下方 hasUnreviewedWritten 注释）：');
+    console.error('  dry-run（不加 --write）      ：0=没有任何候选/歧义需要处理；1=存在 tie/unknown/error；');
+    console.error('                               3=存在按启发式选出但尚未落盘的 resolved 候选');
+    console.error('  --write（不加 --write-heuristic）：只落盘 unique 词；resolved 候选一律不写，');
+    console.error('                               退出码含义同 dry-run（0/1/3）');
+    console.error('  --write-heuristic            ：额外落盘 resolved 候选（带 @gen-segments-unreviewed');
+    console.error('                               标记）——0=没有 tie/unknown/error 且没有已落盘但未复核的');
+    console.error('                               候选；1=存在 tie/unknown/error；4=本次确有 resolved 候选');
+    console.error('                               被落盘但仍带未复核标记，check_data.js 会拦截，必须人工');
+    console.error('                               复核删除标记后才算真正完成（不再是这里的 3——3 专指"根本');
+    console.error('                               没落盘"，4 专指"已落盘但还没人复核过"，两者含义不同）');
+    console.error('  2=用法错误（本分支）');
     process.exit(2);
   }
   const targetPath = path.isAbsolute(targetArg) ? targetArg : path.resolve(REPO, targetArg);
@@ -368,8 +378,33 @@ function main() {
    * 连候选都排不出来或分析出错）区分：3 比 1 轻——3 只是"有候选待人挑"，1 是
    * "工具本身无法给出候选，必须人工介入"。两者都不是 0，调用方按"非 0 即不可放行"
    * 处理即可，不需要感知这条细分；细分只是给人读日志时定位问题严重程度用。
-   * writeHeuristic===true 时 resolved 词会被写回（带标记），此时不再算"未落盘"。 */
+   * writeHeuristic===true 时 resolved 词会被写回（带标记），此时不再算"未落盘"——
+   * 但见下方 H2 注释：这不等于可以放行到退出码 0。 */
   const hasUnwrittenCandidates = !writeHeuristic && analysis.items.some(it => it.status === 'resolved');
+  /* H2（外审 high，2026-09-09）：改前只有 hasUnwrittenCandidates 这一档，`writeHeuristic`
+   * 为真时它被强制视为 false，若同时没有 tie/unknown/error，退出码会落到 0——但 0 在
+   * 用法文本里定义为"全部处理完毕"，而 --write-heuristic 写回的 resolved 候选仍然带着
+   * `@gen-segments-unreviewed` 标记，check_data.js（DATA-SEGMENTS-UNREVIEWED 门槛）明确
+   * 会拦截带这个标记的数据。"返回 0 说全做完了"与"下游门槛会因为它写的东西而 fail"
+   * 直接矛盾——调用方/CI 看到退出码 0 会误判可以放行。
+   *
+   * 两种修法都能消除矛盾：①新增一个退出码，把"已落盘但未复核"与"根本没落盘"（现有的 3）
+   * 分开；②把 0 的文案改成"候选均已落盘"（不再承诺"处理完毕"），并在调用方契约里
+   * 强制经过复核门槛。这里选①：新增退出码 4。理由——
+   *   - ②依赖"调用方/人 记得再查一遍复核门槛"这种约定，不是本工具自己能保证的；一旦
+   *     有人跳过 check_data.js 直接用 gen_segments 的退出码判断"能不能往下走"，②仍会
+   *     误放行，矛盾只是被文档挪了个位置，没有被消除。
+   *   - ①让"是否还有未复核标记"这件事本身可机器判断（退出码本身即断言），不依赖调用方
+   *     记得去调用 check_data.js；即使调用方只看 gen_segments 的退出码，也不会被误导。
+   *   - 4 与现有的 3 语义上有真实区别，不是重复：3="工具建议了候选，但这次没有写进
+   *     文件"（比如 dry-run，或 --write 不带 --write-heuristic）；4="工具已经把候选写
+   *     进文件了，但那些候选还没有人复核过、身上还带着标记"——前者是"还没开始"，后者
+   *     是"已经落盘、正等着人复核"，两种状态调用方需要做的下一步动作不一样（3 该考虑
+   *     要不要重跑并加 --write-heuristic；4 该去打开文件删标记做复核），混在一起报告
+   *     会让人不知道该做哪一步。
+   * hasUnreviewedWritten 由下面 write 分支实际写回后据实回填（只有真的写进磁盘的那些
+   * 才算数，不是"analysis 里存在 resolved 就算"——避免 dry-run 或写入被跳过时误报）。 */
+  let hasUnreviewedWritten = false;
 
   if (write) {
     const result = writeSuggestions(raw, analysis, { writeHeuristic });
@@ -378,8 +413,10 @@ function main() {
       console.log('');
       console.log('已写回 ' + result.written.length + ' 个词的 segments：' + result.written.join(', '));
       if (result.writtenHeuristic.length) {
+        hasUnreviewedWritten = true;
         console.log('  其中 ' + result.writtenHeuristic.length + ' 个是按"字位数最少"启发式选出的候选' +
-          '（--write-heuristic 已启用，均带 @gen-segments-unreviewed 标记，需人工复核）：' +
+          '（--write-heuristic 已启用，均带 @gen-segments-unreviewed 标记，需人工复核；退出码将是 4，' +
+          '不是 0——check_data.js 会拦下这些标记，复核并删除标记前不算真正完成）：' +
           result.writtenHeuristic.join(', '));
       }
     } else {
@@ -403,6 +440,7 @@ function main() {
 
   if (needsHumanExit) process.exit(1);
   if (hasUnwrittenCandidates) process.exit(3);
+  if (hasUnreviewedWritten) process.exit(4);
 }
 
 module.exports = {
