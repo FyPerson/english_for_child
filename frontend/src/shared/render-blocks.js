@@ -76,11 +76,20 @@ function blockHTML(b, ctx){
     const forms = [b.s].concat(
       Object.keys(SOUNDS).filter(k => k !== b.s && SOUNDS[k].audioKey === b.s)
     );
+    // 字段信任模型（M2，外审 medium，2026-09-09）：s.mem/s.cue/s.challenge/s.try/
+    // s.pass/s.how/s.warn 是作者手写的"教学叙述"字段，与 b.note/b.lead/b.html 同一
+    // 信任级别——允许内联 <b>/<span class="en"> 等强调标签（真实数据 cue/warn 字段
+    // 已经在用，见 frontend/src/weeks/week01.data.js 的 cue），全部原样插入、不转义。
+    // s.ipa（纯符号）与 s.demo 里的 zh（词义翻译）是声明为纯文本的字段，走
+    // escapeHtmlText；demo 里的 w（单词本身）不在这条判据里，走 colorLenientWord
+    // （它本来就要着色，着色内部已含转义）。这条判据统一了改前"同一字段不同调用点
+    // 转义程度不一致"的问题（M2），不是把全部字段都改成转义——真被作者写了标签的
+    // 字段（cue/warn）转义会把标签当纯文本显示成尖括号，反而破坏既有教学内容。
     return `<div class="sound">
       <div class="sound__hd">
         ${forms.map(f => tileHTML(f,'tile--lg',true)).join('')}
         <div class="sound__meta">
-          <div class="sound__ipa ${isV?'is-v':'is-c'}">${s.ipa}</div>
+          <div class="sound__ipa ${isV?'is-v':'is-c'}">${escapeHtmlText(s.ipa)}</div>
           <div class="sound__hint">${isV?'元音':'辅音'} · ${hasPhoneme(b.s) ? (forms.length>1 ? forms.map(f=>SOUNDS[f].grapheme).join(' 和 ')+' 发同一个音，点哪块都能听' : '点字母积木听真人示范') : '真人示范音待补，先按下面的口令示范'}</div>
         </div>
       </div>
@@ -93,7 +102,7 @@ function blockHTML(b, ctx){
           <div class="soundlab__practice">
             <span class="lablabel"><span class="lablabel__n">1</span>跟我做</span>
             ${hasPhoneme(b.s)
-              ? `<button class="btn btn--ghost soundlab__listen" data-sayph="${escapeHtmlAttribute(b.s)}">${ART.spk} 先听一遍 <span class="en">${s.ipa}</span></button>`
+              ? `<button class="btn btn--ghost soundlab__listen" data-sayph="${escapeHtmlAttribute(b.s)}">${ART.spk} 先听一遍 <span class="en">${escapeHtmlText(s.ipa)}</span></button>`
               : `<p class="lead" style="font-size:13.5px;margin:0;color:var(--ink-2)"><b>这个音还没有真人录音。</b>请按下面的口令亲自示范——<b>不要用手机上的合成语音代替</b>，它会读成字母名或者多带一个元音尾巴。</p>`}
             <p class="soundlab__cue">${s.cue}</p>
             <div class="experiment">
@@ -123,7 +132,7 @@ function blockHTML(b, ctx){
             ${s.demo.map(([w,zh])=>`<button class="wordchip" data-say="${escapeHtmlAttribute(w)}">
               <span class="spk">${ART.spk}</span>
               <span class="wordchip__w en">${colorLenientWord(w, wordColorCtx())}</span>
-              <span class="wordchip__zh">${zh}</span></button>`).join('')}
+              <span class="wordchip__zh">${escapeHtmlText(zh)}</span></button>`).join('')}
           </div>
         </div>
       </div>
@@ -151,7 +160,7 @@ function blockHTML(b, ctx){
             ? illHTML(d.art,72)
             : `<div style="font-family:var(--en);font-size:30px;font-weight:700;color:var(--ink-3)">${colorStrictWord(w, wordColorCtx())}</div>`}</div>
           <div class="wcard__w">${colorStrictWord(w, wordColorCtx())}</div>
-          <div class="wcard__zh">${d.zh}</div>
+          <div class="wcard__zh">${escapeHtmlText(d.zh)}</div>
         </button>`;
       }).join('')}
     </div>`;
@@ -161,7 +170,7 @@ function blockHTML(b, ctx){
       <div class="wcards" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr))">
         ${b.items.map(([w,zh])=>`<button class="wcard" data-say="${escapeHtmlAttribute(w)}" style="border-color:var(--accent-line);background:var(--accent-soft)">
           <div class="wcard__w" style="font-size:30px;margin-top:8px">${escapeHtmlText(w)}</div>
-          <div class="wcard__zh">${zh}</div>
+          <div class="wcard__zh">${escapeHtmlText(zh)}</div>
           <div style="font-size:11px;color:var(--accent);font-weight:700">直接记，不拼</div>
         </button>`).join('')}
       </div>
@@ -171,7 +180,7 @@ function blockHTML(b, ctx){
     return `<div style="display:flex;flex-direction:column;gap:10px">
       ${b.items.map(([en,zh])=>`<button class="checkitem" data-say="${escapeHtmlAttribute(en)}" style="align-items:center">
         <span class="spk">${ART.spk}</span>
-        <span class="checkitem__t"><span class="en" style="font-size:21px;font-weight:700">${colorPlainText(en, wordColorCtx())}</span><small>${zh}</small></span>
+        <span class="checkitem__t"><span class="en" style="font-size:21px;font-weight:700">${colorPlainText(en, wordColorCtx())}</span><small>${escapeHtmlText(zh)}</small></span>
       </button>`).join('')}
     </div>`;
 
@@ -250,7 +259,7 @@ function blockHTML(b, ctx){
             return `<div class="pairbtn" style="pointer-events:none">
               ${hasIll(d.art)?illHTML(d.art,56):''}
               <span class="pairbtn__w">${colorStrictWord(w, wordColorCtx())}</span>
-              <span class="wcard__zh">${d.zh}</span>
+              <span class="wcard__zh">${escapeHtmlText(d.zh)}</span>
             </div>`;
           }).join('')}
         </div>
@@ -378,7 +387,7 @@ function blockHTML(b, ctx){
       <div class="wcards" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
         ${RESERVED.map(w=>`<div class="wcard" style="pointer-events:none">
           <div class="wcard__w" style="font-size:28px;margin:10px 0 2px">${colorStrictWord(w, wordColorCtx())}</div>
-          <div class="wcard__zh">${W[w].zh}</div></div>`).join('')}
+          <div class="wcard__zh">${escapeHtmlText(W[w].zh)}</div></div>`).join('')}
       </div>
       <p class="lead" style="font-size:13.5px">把这五个词写在纸上给孩子读，<b>你先不要发音</b>。读完由你自己核对对错——如果哪个音拿不准，可以回到第 1–6 天的音素卡片，自己先拼读一遍确认。</p>
       <div class="tblwrap"><table>

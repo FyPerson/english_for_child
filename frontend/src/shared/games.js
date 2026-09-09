@@ -1,13 +1,26 @@
 /* surfaceOfSafe(slots) -> string|null：G4/G5 长按确认守卫专用（里程碑 2 第 4b 步收口
- * H1 修复）。surfaceOf 现在对非法 ID（含 slots 里的 null——长按计时期间已撤回/清空/
- * 换槽数时的正常态）按设计原样抛错；这条守卫历史上一直是"状态对不上就悄悄放弃这次
- * 确认"的语义（原实现是 slots.join('')，null 会被拼成字符串 "null"，天然不等于
- * myWord/mySpelled，从不抛），长按回调抛异常会把整条事件处理链炸掉，而不是放弃这次
- * 确认——这正是本函数存在的原因：把"取不出合法表面串"这件事变回一次不匹配，
- * 不是一次异常。 */
+ * H1 修复，M1 复核加固，外审 medium 2026-09-09）。surfaceOf 对非法 ID 按设计原样抛错；
+ * 这条守卫历史上一直是"状态对不上就悄悄放弃这次确认"的语义（原实现是
+ * slots.join('')，null 会被拼成字符串 "null"，天然不等于 myWord/mySpelled，从不抛），
+ * 长按回调抛异常会把整条事件处理链炸掉，而不是放弃这次确认——这正是本函数存在的
+ * 原因：把"取不出合法表面串"这件事变回一次不匹配，不是一次异常。
+ *
+ * M1 修复前的问题：改前用裸 try/catch 包住 surfaceOf 的全部调用，"空槽/长按期间已
+ * 撤回"（slots 含 null，预期态）与"SOUNDS 缺项/非法 sound 类型/实现错误"（真实缺陷）
+ * 被同一个 catch 一并吞掉，与 colorLenientWord 的错误码白名单原则（graphemes.js
+ * DEGRADABLE_ERROR_CODES）不一致——真实缺陷会被表现成一次无声的"摆词不匹配"，
+ * 而不是暴露出来。
+ * 改法：
+ *   1) 先显式检查 slots 是否为数组、是否含 null——这是唯一预期的"未摆满/已撤回"态，
+ *      命中直接返回 null，不进 surfaceOf，不经过任何 catch。
+ *   2) 槽位完整（无 null）时直接调用 surfaceOf，不吞任何错误——G4/G5 的 slots 只会
+ *      被赋值成从合法 rack（本身来自 SOUNDS 的键）里取出的 ID（见 initG4/initG5 里
+ *      slots[emptyIdx] = letter 的赋值来源），槽位一旦摆满，surfaceOf 理应总能成功；
+ *      如果它仍然抛错，说明 SOUNDS 缺项或 rack 数据本身坏了，是需要暴露的真实缺陷，
+ *      不该被这里悄悄吞成"不匹配"。 */
 function surfaceOfSafe(slots){
-  try{ return surfaceOf(slots, SOUNDS); }
-  catch(e){ return null; }
+  if(!Array.isArray(slots) || slots.some(id => id === null)) return null;
+  return surfaceOf(slots, SOUNDS);
 }
 
 function initG2(){
@@ -39,7 +52,7 @@ function initG2(){
       const d = W[w] || {zh:''};
       return `<div class="g2__reveal">
         <div class="g2__art">${meaningArt(w, 96)}</div>
-        <div class="g2__word"><span class="en" style="font-size:26px;font-weight:700">${colorStrictWord(w, wordColorCtx())}</span>　<b>${d.zh}</b></div>
+        <div class="g2__word"><span class="en" style="font-size:26px;font-weight:700">${colorStrictWord(w, wordColorCtx())}</span>　<b>${escapeHtmlText(d.zh)}</b></div>
       </div>`;
     }
     // D6：参数化 w，调用处显式传"当前要播哪个词"，不再隐式读闭包里的 words[cur]——
@@ -185,7 +198,7 @@ function initG3(){
       return `<button class="pairbtn ${cls||''}" data-g3-door="${escapeHtmlAttribute(w)}" ${disabled?'disabled':''}>
         ${art}
         <span class="pairbtn__w">${colorStrictWord(w, wordColorCtx())}</span>
-        <span class="wcard__zh">${d.zh}</span>
+        <span class="wcard__zh">${escapeHtmlText(d.zh)}</span>
       </button>`;
     }
     function stageHTML(disabled, clsByWord, artWord){
@@ -833,7 +846,7 @@ function initInitialPick(){
       const d = W[word] || {zh:'', art:null};
       return `<div class="initialpick__feedback">
         ${hasIll(d.art) ? illHTML(d.art,72) : ''}
-        <span><b>${colorStrictWord(word, wordColorCtx())}</b><br>${d.zh}</span>
+        <span><b>${colorStrictWord(word, wordColorCtx())}</b><br>${escapeHtmlText(d.zh)}</span>
       </div>`;
     }
     function restartBtn(){
@@ -1005,7 +1018,7 @@ function initG1(){
       // 与 sound 块的 demo 词同一判据（②「不保证可解码的词」），走 colorLenientWord，
       // 不能用 colorStrictWord——否则答对后展示反馈就会重复 critical 1 的白屏。
       const d = W[word] || {zh:'', art:null};
-      return `<div class="g1__meaning">${hasIll(d.art)?illHTML(d.art,56):''}<div><b class="en">${colorLenientWord(word, wordColorCtx())}</b>　${d.zh}</div></div>`;
+      return `<div class="g1__meaning">${hasIll(d.art)?illHTML(d.art,56):''}<div><b class="en">${colorLenientWord(word, wordColorCtx())}</b>　${escapeHtmlText(d.zh)}</div></div>`;
     }
     function progressLine(){ return `<p class="g1__progress">第 ${qi+1} / ${queue.length} 题　对 ${correct}</p>`; }
     function restartBtn(){ return `<button class="btn btn--ghost" data-g1-act="restart">重新开始这一轮</button>`; }
@@ -1194,7 +1207,14 @@ function initFlash(){
       }else{
         const s = SOUNDS[it.k];
         face.innerHTML = `<span class="${s.type==='v'?'v':''}">${escapeHtmlText(s.grapheme)}</span>`;
-        tip.innerHTML = `<b>${escapeHtmlText(s.ipa)}</b>　${escapeHtmlText(s.mem)}　<button class="btn btn--ghost" style="padding:6px 14px;font-size:13px" data-sayph="${escapeHtmlAttribute(it.k)}">${ART.spk} 听一下</button>`;
+        // M2（外审 medium，2026-09-09）：s.mem 与 render-blocks.js 里 soundlab 区块的
+        // s.mem/s.cue/s.challenge/s.try/s.pass/s.how/s.warn 是同一族"教学叙述"字段
+        // （与 b.note/b.lead/b.html 同一信任级别——作者手写的课程文案，允许内联
+        // <b>/<span class="en"> 之类的强调标签，真实数据里 cue/warn 已经在用，见
+        // frontend/src/weeks/week01.data.js 的 cue 字段）。改前这里单独对 s.mem 转义、
+        // render-blocks.js 那边同一字段却原样插入，是同一字段两种信任级别的不一致；
+        // 统一为不转义（与 render-blocks.js 一致），ipa 是纯符号字段，继续转义。
+        tip.innerHTML = `<b>${escapeHtmlText(s.ipa)}</b>　${s.mem}　<button class="btn btn--ghost" style="padding:6px 14px;font-size:13px" data-sayph="${escapeHtmlAttribute(it.k)}">${ART.spk} 听一下</button>`;
       }
       meta.textContent = `${i+1} / ${items.length}`;
     }

@@ -12,7 +12,8 @@
  * 本批收口报告，不是断言本身要做的事。 */
 const assert = require('node:assert/strict');
 const {
-  segmentWord, colorStrictWord, colorLenientWord, colorPlainText, validateSoundsSchema
+  segmentWord, colorStrictWord, colorLenientWord, colorPlainText, validateSoundsSchema,
+  escapeHtmlText
 } = require('../../frontend/src/shared/graphemes');
 
 function assertThrows(fn, check, label) {
@@ -129,5 +130,78 @@ const missingTeaching = validateSoundsSchema({ s: { grapheme: 's', type: 'c' } }
 assert(missingTeaching.some(i => i.code === 'ipa-missing'), '缺 ipa 应报 ipa-missing');
 assert(missingTeaching.some(i => i.code === 'teaching-field-missing' && i.message.includes('demo')), '缺 demo 应报 teaching-field-missing（demo）');
 console.log('PASS word_coloring: validateSoundsSchema 正例 + 六类反例（含 L2 新增的原型链检查）');
+
+// ============================================================================
+// ⑤ M5（外审 medium，2026-09-09）：可着色词/grapheme 仅支持 ASCII A-Z/a-z——
+//    组合字符、全角字母、土耳其 İ 的拒绝/降级行为固定断言
+// ============================================================================
+// 组合字符："é" 写成 "e" + U+0301（组合重音符），toLowerCase 前后 UTF-16 长度不变，
+// 但视觉上是一个字符两个 code unit——colorizeToken 按 grapheme.length 切原串的假设
+// 在这种输入上并不成立，必须在切片前就被挡住，而不是切出乱码。
+const COMBINING_ACCENT = 'é'; // "é"（NFD 形式，两个 code unit）
+// 全角字母：Ａ-Ｚ／ａ-ｚ（U+FF21-FF3A / U+FF41-FF5A），常规 toLowerCase 不会把它们
+// 映射成 ASCII，长度和字符集都对不上字位表。
+const FULLWIDTH_WORD = 'Ｓａｔ'; // "Ｓａｔ"
+// 土耳其语 İ（U+0130，带点大写 I）：在土耳其语言环境下 toLowerCase() 可能产出
+// "i̇"（i + 组合点，两个 code unit），与 ASCII 'i' 不是同一回事。
+const TURKISH_DOTTED_I = 'İat'; // "İat"
+
+[COMBINING_ACCENT, FULLWIDTH_WORD, TURKISH_DOTTED_I].forEach(word => {
+  assertThrows(() => colorStrictWord(word, ctx), e => assert.equal(e.code, 'colorize-non-ascii'),
+    `M5：colorStrictWord("${JSON.stringify(word)}") 遇非 ASCII 输入应抛 colorize-non-ascii，不应尝试按长度切片`);
+  assert.equal(colorLenientWord(word, ctx), escapeHtmlText(word),
+    `M5：colorLenientWord("${JSON.stringify(word)}") 遇非 ASCII 输入应降级为原样转义输出，不抛`);
+});
+// colorPlainText：WORD_TOKEN_PATTERN（/([A-Za-z]+)/）本身就只捕获 ASCII 字母片段，
+// 非 ASCII 字符会落进"非词"分隔符段，直接转义拼回——colorizeToken 在这条路径上
+// 根本不会被非 ASCII 输入触发，这里断言的是这条防线本身成立（不会把 é/全角/İ 误判
+// 成"词"送进分词器）。
+const plainSentence = `Nat and ${FULLWIDTH_WORD} play caf${COMBINING_ACCENT}.`;
+assert.equal(stripTags(colorPlainText(plainSentence, ctx)), plainSentence,
+  'M5：colorPlainText 里夹杂非 ASCII 字符的句子应逐字符原样往返（非 ASCII 段落不会被当成词送进分词器）');
+console.log('PASS word_coloring（M5）：组合字符/全角字母/土耳其 İ 的拒绝（colorStrictWord）与降级（colorLenientWord/colorPlainText）行为固定');
+
+// validateSoundsSchema：grapheme 含非 ASCII 字符应报 grapheme-invalid（M5 的 schema 半边）。
+assert.deepEqual(
+  validateSoundsSchema({ e: { grapheme: COMBINING_ACCENT, type: 'v' } }).map(i => i.code),
+  ['grapheme-invalid'],
+  'M5：grapheme 含非 ASCII 组合字符应报 grapheme-invalid'
+);
+assert.deepEqual(
+  validateSoundsSchema({ s: { grapheme: FULLWIDTH_WORD, type: 'c' } }).map(i => i.code),
+  ['grapheme-invalid'],
+  'M5：grapheme 是全角字母应报 grapheme-invalid'
+);
+console.log('PASS word_coloring（M5 schema）：validateSoundsSchema 对非 ASCII grapheme 报 grapheme-invalid');
+
+// ============================================================================
+// ⑥ L1（外审 low，2026-09-09）：多字母字位 + 显式 segments 消歧的精确 HTML 断言
+//    （不只是"剥标签比较"——那种断言证明不了标签结构本身合法、也发现不了错误嵌套/
+//    多余属性；这里对固定输入断言完整、逐字符精确期望的 HTML 输出）
+// ============================================================================
+const AI_SOUNDS = Object.assign({}, SOUNDS, { ai: { grapheme: 'ai', type: 'v' }, r: { grapheme: 'r', type: 'c' } });
+// rain 在 AI_SOUNDS 下天然多解（r/a/i/n 与 r/ai/n 都成立），必须用显式 segments 消歧，
+// 与 check_data.js/render-blocks.js 真实调用点同一种 ctx.segmentsOf 用法一致。
+const explicitCtx = {
+  sounds: AI_SOUNDS,
+  segmentsOf: normalized => (normalized === 'rain' ? ['r', 'ai', 'n'] : undefined)
+};
+assert.equal(
+  colorStrictWord('rain', explicitCtx),
+  'r<span class="v word-vowel">ai</span>n',
+  'L1：显式 segments 消歧的多字母字位（rain -> r/ai/n）应精确输出该 HTML，元音 span 包住整个 "ai" 而不是拆成两个字符'
+);
+// 大小写混合的多字母字位词：显式 segments 仍按同一份 ID 序列消歧，展示文字保留原大小写。
+assert.equal(
+  colorStrictWord('Rain', explicitCtx),
+  'R<span class="v word-vowel">ai</span>n',
+  'L1：大小写混合词 "Rain" 经显式 segments 消歧后，首字母大写保留，"ai" 段落大小写与原词一致'
+);
+assert.equal(
+  colorStrictWord('RAIN', explicitCtx),
+  'R<span class="v word-vowel">AI</span>N',
+  'L1：全大写词 "RAIN" 经显式 segments 消歧后，元音 span 内文字同样保留全大写'
+);
+console.log('PASS word_coloring（L1）：多字母字位 + 显式 segments 消歧的精确 HTML 断言（含大小写混合）');
 
 console.log('PASS word_coloring contract: all fixtures green');

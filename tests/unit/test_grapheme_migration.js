@@ -174,19 +174,24 @@ const EXCLUDED_ENTRIES = [
   // sounds_grapheme_adapter.js：临时适配层本体，同时容忍/派生 L 与 grapheme 两个
   // 字段，必然含 dot-access（entry.L 读值）、key-bare/destructure（错误消息与注释里
   // 的 L: 字面量、以及本文件内部变量赋值场景）。
-  { file: 'tools/validation/sounds_grapheme_adapter.js', patternId: 'dot-access', count: 5, reason: '适配层读取 entry.L 派生 grapheme，属设计意图' },
-  { file: 'tools/validation/sounds_grapheme_adapter.js', patternId: 'key-bare', count: 6, reason: '错误消息/注释里的 L: 字面量说明' },
+  // M4 重计数（外审 medium，2026-09-09）：改前的行级判据把「命中的行数」当成
+  // 「命中次数」，count 是按行数标定的；改成按 occurrence 精确计数后，用同一套
+  // 判据重新实测本文件每种写法的真实出现次数，二者不同的条目在这里更新——不是
+  // 数据变了，是量尺变了（改前会漏数同一行里的第二处 .L/L:，见 migration_audit.js
+  // 那条 `entry.L === 'string' && entry.L.length > 0` 同一行两次 dot-access 的实证）。
+  { file: 'tools/validation/sounds_grapheme_adapter.js', patternId: 'dot-access', count: 6, reason: '适配层读取 entry.L 派生 grapheme，属设计意图（M4 重计数：5→6，第 78 行 `typeof entry.L === \'string\' && entry.L.length > 0` 同一行两处 .L）' },
+  { file: 'tools/validation/sounds_grapheme_adapter.js', patternId: 'key-bare', count: 7, reason: '错误消息/注释里的 L: 字面量说明（M4 重计数：6→7）' },
   { file: 'tools/validation/sounds_grapheme_adapter.js', patternId: 'destructure', count: 3, reason: '同上，key-bare 正则同时命中的对象字面量场景' },
   // migration_audit.js：DATA-SOUNDS-01 的 l-field-present 规则本身职责就是"检测
   // SOUNDS 条目是否仍只有 L 没有 grapheme"，必须读 entry.L 才能判定，这是规则的
   // 核心逻辑而不是残留（L_FIELD_CONSUMER_SPECS 已在 H2 改指向 grapheme，不再需要
   // 排除；仅剩 l-field-present 这一处 dot-access）。
-  { file: 'tools/validation/migration_audit.js', patternId: 'dot-access', count: 3, reason: 'DATA-SOUNDS-01 l-field-present 规则读取 entry.L 判定是否仍缺 grapheme，是规则本身，不是残留' },
+  { file: 'tools/validation/migration_audit.js', patternId: 'dot-access', count: 4, reason: 'DATA-SOUNDS-01 l-field-present 规则读取 entry.L 判定是否仍缺 grapheme，是规则本身，不是残留（M4 重计数：3→4，第 405 行 `typeof entry.L === \'string\' && entry.L.length > 0` 同一行两处 .L）' },
   // test_migration_audit.js：为验证适配层三态兼容与冲突检测，故意构造带 L 字段的
   // 合成 SOUNDS 常量（L_ONLY/BOTH/CONFLICTING_ALIAS 等），是测试数据。
   { file: 'tests/unit/test_migration_audit.js', patternId: 'dot-access', count: 1, reason: '合成测试数据里访问 .L 字段核对适配层行为' },
-  { file: 'tests/unit/test_migration_audit.js', patternId: 'key-bare', count: 9, reason: '合成测试数据的对象字面量 L: 值' },
-  { file: 'tests/unit/test_migration_audit.js', patternId: 'destructure', count: 7, reason: '同上，key-bare 正则同时命中的对象字面量场景' },
+  { file: 'tests/unit/test_migration_audit.js', patternId: 'key-bare', count: 14, reason: '合成测试数据的对象字面量 L: 值（M4 重计数：9→14，L_ONLY/BOTH 两个合成常量各在一行内连写 r/ai/n 三个 L: 字面量，单行各命中 3 处，改前的行级判据只按行数记成 2）' },
+  { file: 'tests/unit/test_migration_audit.js', patternId: 'destructure', count: 11, reason: '同上，key-bare 正则同时命中的对象字面量场景（M4 重计数：7→11，同一行多个 L: 的场景）' },
   // test_word_coloring.js（里程碑 2 第 4b 步收口批新增）：validateSoundsSchema 的
   // legacy-l-field 反例断言故意构造 { L: 's' } 这个合成对象字面量，用来验证"仍有
   // 遗留 L 字段"这条 issue 码；不是生产代码里的残留读取。
@@ -212,6 +217,11 @@ const EXCLUDED_ENTRIES = [
   // M2 二次修复注释——自我指涉不绑定命中数，整段豁免。
   ...SEVEN_PATTERNS.map(p => ({ file: 'tests/unit/test_grapheme_migration.js', patternId: p.id, unbounded: true, reason: '本文件的 SEVEN_PATTERNS 正则源码与注释自我指涉' }))
 ];
+function countMatches(re, text) {
+  const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+  const m = text.match(g);
+  return m ? m.length : 0;
+}
 function excludedKey(file, patternId) { return file + '\u0000' + patternId; }
 const EXCLUDED_SET = new Set(EXCLUDED_ENTRIES.map(e => excludedKey(e.file, e.patternId)));
 
@@ -298,9 +308,13 @@ function scanForLResidue(files, patterns, excludedEntries) {
       let remaining = entry ? entry.count : 0; // 未声明的 {file,patternId} 组合 remaining=0，即完全不豁免
       lines.forEach((lineText, idx) => {
         if (lineText.length > LONG_LINE_THRESHOLD) return; // M1：跳过 base64 字体等超长行
-        if (!re.test(lineText)) return;
-        if (remaining > 0) { remaining--; return; } // 消耗一处已声明的白名单命中，不计入 hits
-        hits.push({ file: rel, patternId: id, line: idx + 1 });
+        // M4：按整行出现次数逐个消耗/逐个记 hit，不是"这行命中就算 1 次"——
+        // 同一行出现两次 .L 时，第二次不该被第一次剩下的配额悄悄免检。
+        const n = countMatches(re, lineText);
+        for (let k = 0; k < n; k++) {
+          if (remaining > 0) { remaining--; continue; } // 消耗一处已声明的白名单命中，不计入 hits
+          hits.push({ file: rel, patternId: id, line: idx + 1 });
+        }
       });
     }
   }
@@ -331,7 +345,9 @@ function scanForLResidue(files, patterns, excludedEntries) {
     if (!fs.existsSync(abs)) { staleEntries.push({ ...entry, why: '文件已不存在' }); continue; }
     const lines = fs.readFileSync(abs, 'utf8').split('\n');
     const re = patternById.get(entry.patternId);
-    const actualCount = lines.filter(lt => lt.length <= LONG_LINE_THRESHOLD && re.test(lt)).length;
+    // M4：同 scanForLResidue，按出现次数求和，不是"命中的行数"——否则本该抓住的
+    // "同一行第二次命中"漂移，在这道陈旧自检里也会被静默放过。
+    const actualCount = lines.reduce((sum, lt) => sum + (lt.length <= LONG_LINE_THRESHOLD ? countMatches(re, lt) : 0), 0);
     if (entry.unbounded) {
       if (actualCount === 0) staleEntries.push({ ...entry, why: '当前一处都不命中（自我指涉豁免已陈旧）' });
       continue;
@@ -383,7 +399,7 @@ const KNOWN_LEGACY_TRUE_CALL_SITES = Object.freeze([
   { file: 'frontend/src/weeks/week02.template.html', count: 1, reason: '同 week01，hero 积木墙读硬编码字面量 \'ckehrmd\'', revertOn: '同 week01' },
   { file: 'frontend/src/weeks/week03.template.html', count: 1, reason: '同 week01，hero 积木墙读硬编码字面量 \'goulfb\'', revertOn: '同 week01' },
   { file: 'frontend/src/weeks/week04.template.html', count: 1, reason: 'hero 积木墙已读 META.wallLetters，但字段本身此刻仍是字符串（第 7 步才改数组），用 legacy:true 双读', revertOn: '第 7 步 META.wallLetters 改数组后删除 legacy:true' },
-  { file: 'tools/validation/check_data.js', count: 3, reason: '④⑤ 两个 head 块（积木架 canSpellIds、点亮墙 wallIds）消费 META.rackG4/rackG5/wallLetters 三个仍是字符串的字段，用 legacy:true 双读展开成 ID 数组/多重集', revertOn: '第 7 步四个字段改数组后，三处改为直接消费数组，删除 legacy:true' }
+  { file: 'tools/validation/check_data.js', count: 4, reason: '④⑤ 两个 head 块（积木架 canSpellIds、点亮墙 wallIds）消费 META.rackG4/rackG5/wallLetters 三个仍是字符串的字段，用 legacy:true 双读展开成 ID 数组/多重集（M4 重计数：3→4，`canSpellIds` 那一行同时展开 rackG4 与 rackG5 两个字段，同一行两处 legacy:true）', revertOn: '第 7 步四个字段改数组后，三处改为直接消费数组，删除 legacy:true' }
 ]);
 
 /* LEGACY_TRUE_DOC_MENTIONS：graphemes.js 里两处提到 `legacy:true` 的地方（一处是
@@ -418,10 +434,14 @@ function scanForLegacyTrue(files) {
     let callSiteRemaining = KNOWN_CALL_SITE_COUNTS.has(rel) ? KNOWN_CALL_SITE_COUNTS.get(rel) : 0;
     raw.split('\n').forEach((lineText, idx) => {
       if (lineText.length > LONG_LINE_THRESHOLD) return; // 同 M1：跳过 base64 等超长行
-      if (!LEGACY_TRUE_PATTERN.test(lineText)) return;
-      if (docRemaining > 0) { docRemaining--; return; } // 消耗掉已登记的文档提及，不计入 hits
-      if (callSiteRemaining > 0) { callSiteRemaining--; return; } // 消耗掉 KNOWN_LEGACY_TRUE_CALL_SITES 登记的调用点
-      hits.push({ file: rel, line: idx + 1 });
+      // M4：同 scanForLResidue，按整行出现次数逐个消耗/逐个记 hit——一行里第二个
+      // `legacy:true` 不该被第一个消耗剩下的配额悄悄免检。
+      const n = countMatches(LEGACY_TRUE_PATTERN, lineText);
+      for (let k = 0; k < n; k++) {
+        if (docRemaining > 0) { docRemaining--; continue; } // 消耗掉已登记的文档提及，不计入 hits
+        if (callSiteRemaining > 0) { callSiteRemaining--; continue; } // 消耗掉 KNOWN_LEGACY_TRUE_CALL_SITES 登记的调用点
+        hits.push({ file: rel, line: idx + 1 });
+      }
     });
   }
   return hits;
@@ -513,4 +533,54 @@ function scanForLegacyTrue(files) {
   const hitIdSet = new Set(hits.map(h => h.patternId));
   assert.deepEqual([...hitIdSet].sort(), SEVEN_PATTERNS.map(p => p.id).sort(), '七种写法应各自至少被对应的模式命中一次，不漏任何一种');
   console.log('PASS grapheme migration（分辨力验证②，内存构造，不落盘）：七写法坏源码全部被源码扫描门槛命中');
+}
+
+// ============================================================================
+// ⑤ M4 反例（外审 medium，2026-09-09）：同一行出现两次同一种写法，必须被算作两次
+//    命中，不能被"这行命中过一次"悄悄合并成一次——这正是改前的漏洞：白名单 count
+//    实际统计的是"命中的行数"，配额按行消耗，同一行第二次出现不会多算，可以绕过门槛。
+//    两组反例都先用"零白名单额度"证明会各自报出 2 处 hits（不是 1 处），再用"额度恰好
+//    为 1"证明会消耗 1 处、剩 1 处仍报出来（不是被 1 份配额一次性免掉整行）。
+// ============================================================================
+{
+  const fakeRel = '__synthetic__/fake-two-per-line.js';
+  const fakeSource = "const a = SOUNDS[x].L, b = SOUNDS[y].L;"; // 同一行两处 .L（dot-access 模式）
+  const originalReadFileSync = fs.readFileSync;
+  fs.readFileSync = function (p, enc) {
+    if (String(p).replace(/\\/g, '/').endsWith(fakeRel)) return fakeSource;
+    return originalReadFileSync(p, enc);
+  };
+  try {
+    const hitsNoWhitelist = scanForLResidue([fakeRel], SEVEN_PATTERNS, []);
+    const dotAccessHits = hitsNoWhitelist.filter(h => h.patternId === 'dot-access');
+    assert.equal(dotAccessHits.length, 2,
+      'M4 反例：同一行两处 .L，零白名单额度时应报 2 处 hits（改前的行级判据只会报 1 处，第二处被同一行"已经命中过"悄悄吞掉）');
+
+    const hitsWithOneQuota = scanForLResidue([fakeRel], SEVEN_PATTERNS,
+      [{ file: fakeRel, patternId: 'dot-access', count: 1, reason: 'M4 反例：只声明 1 处配额，验证第二处仍会被抓' }]);
+    const dotAccessHitsWithQuota = hitsWithOneQuota.filter(h => h.patternId === 'dot-access');
+    assert.equal(dotAccessHitsWithQuota.length, 1,
+      'M4 反例：白名单声明 1 处配额时，应消耗掉第一处、仍报出第二处（不是 1 份配额把整行两处一起免检）');
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+  }
+  console.log('PASS grapheme migration（M4 反例①，内存构造，不落盘）：scanForLResidue 对同一行两处 .L 精确计数为 2，白名单按处消耗不按行消耗');
+}
+{
+  const fakeRel = 'frontend/src/__synthetic__/fake-two-legacy-per-line.js';
+  const fakeSource = "const a = normalizeIdList(x, { legacy: true }), b = normalizeIdList(y, { legacy: true });"; // 同一行两处 legacy:true
+  const originalReadFileSync = fs.readFileSync;
+  fs.readFileSync = function (p, enc) {
+    if (String(p).replace(/\\/g, '/').endsWith(fakeRel)) return fakeSource;
+    return originalReadFileSync(p, enc);
+  };
+  let hits;
+  try {
+    hits = scanForLegacyTrue([fakeRel]); // fakeRel 未登记进 KNOWN_LEGACY_TRUE_CALL_SITES，零配额
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+  }
+  assert.equal(hits.length, 2,
+    'M4 反例：同一行两处 legacy:true，未登记调用点时应报 2 处 hits（改前的行级判据只会报 1 处）');
+  console.log('PASS grapheme migration（M4 反例②，内存构造，不落盘）：scanForLegacyTrue 对同一行两处 legacy:true 精确计数为 2');
 }

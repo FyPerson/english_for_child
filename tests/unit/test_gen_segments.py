@@ -260,5 +260,81 @@ class GenSegmentsTests(unittest.TestCase):
         self.assertIn('已声明 segments（本工具不覆盖）：5 个词', second.stdout, '第二次运行时 rain/aid/tan/bat/paid 共 5 个词都已有 segments')
 
 
+# ---- H1（外审 high，2026-09-09）：只含 unique + resolved（没有 tie/unknown/error）
+# 的合成周——旧 fixture（SYNTHETIC_WEEK_JS）永远带着 pqr（tie）与 zap（unknown），
+# needsHumanExit 恒为 true，从未覆盖过"文件只有 resolved 候选"这一种场景，而这正是
+# 这条 high 指出的漏报场景：resolved 候选未经复核也会被判定为「可以放行」。
+# 复用 rain/aid（与主 fixture 同款 r/a/i/n/ai 共存，两个词都会被 resolved 为唯一的
+# 最短解）+ tan（unique，无歧义），不含 pqr/zap，也不含任何已带 segments 的词。
+ONLY_UNIQUE_AND_RESOLVED_WEEK_JS = """/* 合成周数据（H1 专用：只含 unique + resolved，不含 tie/unknown/error）。 */
+
+const META = {
+  "week": 98,
+  "storageKey": "test-gen-segments-h1",
+  "newPatterns": ["ai"]
+};
+
+const SOUNDS = {
+  r:{grapheme:'r', type:'c'},
+  a:{grapheme:'a', type:'v'},
+  i:{grapheme:'i', type:'v'},
+  n:{grapheme:'n', type:'c'},
+  d:{grapheme:'d', type:'c'},
+  t:{grapheme:'t', type:'c'},
+  ai:{grapheme:'ai', type:'v'}
+};
+
+const W = {
+  rain:{zh:'雨',art:'rain'},
+  aid:{zh:'帮助',art:null},
+  tan:{zh:'晒黑',art:null}
+};
+"""
+
+
+class GenSegmentsOnlyResolvedExitCodeTests(unittest.TestCase):
+    """H1：只含 unique + resolved 的文件，dry-run / --write / --write-heuristic 三种
+    模式的退出码断言。这条 fixture 本身没有 tie/unknown/error，是专门用来证明"改前
+    退出码恒为 0"这个漏洞、以及"改后退出码按模式正确区分"这两件事的最小复现。"""
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.target = Path(self.tmpdir.name) / 'week98.data.js'
+        self.target.write_text(ONLY_UNIQUE_AND_RESOLVED_WEEK_JS, encoding='utf-8')
+
+    def test_dry_run_exits_nonzero_when_only_resolved_present(self):
+        # 改前：dry-run 只看 tie/unknown/error，本 fixture 三者都没有，退出码会是 0——
+        # 这正是 H1 指出的漏报（"没有 tie/unknown/error 就等于全部处理完成"是假的，
+        # rain/aid 仍是未经人工复核的候选）。改后应为退出码 3。
+        result = gs.run(str(self.target), write=False, capture_output=True)
+        self.assertEqual(result.returncode, 3,
+                          'H1：dry-run 时存在未落盘的 resolved 候选（rain/aid），退出码应为 3，不能是 0')
+        self.assertIn('rain -> [r, ai, n]', result.stdout)
+        self.assertIn('aid -> [ai, d]', result.stdout)
+
+    def test_write_without_heuristic_exits_nonzero(self):
+        # 默认 --write 只写 unique（tan），rain/aid 仍是未落盘的候选，退出码应为 3。
+        result = gs.run(str(self.target), write=True, capture_output=True)
+        self.assertEqual(result.returncode, 3,
+                          'H1：--write（不加 --write-heuristic）后 rain/aid 仍未落盘，退出码应为 3，不能是 0')
+        self.assertIn('已写回 1 个词的 segments：tan', result.stdout)
+        after = self.target.read_text(encoding='utf-8')
+        m_rain = re.search(r"rain:\{[^{}]*\}", after)
+        self.assertIsNotNone(m_rain)
+        self.assertNotIn('segments', m_rain.group(0), 'rain 是 resolved，默认 --write 不应写回')
+
+    def test_write_heuristic_exits_zero_when_all_resolved_written(self):
+        # --write-heuristic 打开后 rain/aid 也被写回（带标记），不再有"未落盘候选"，
+        # 且没有 tie/unknown/error，退出码应恢复为 0。
+        result = gs.run(str(self.target), write=True, write_heuristic=True, capture_output=True)
+        self.assertEqual(result.returncode, 0,
+                          'H1：--write-heuristic 后全部候选（rain/aid/tan）均已写回、且无 tie/unknown/error，退出码应为 0')
+        after = self.target.read_text(encoding='utf-8')
+        m_rain = re.search(r"rain:\{[^{}]*\}", after)
+        self.assertIsNotNone(m_rain)
+        self.assertIn('@gen-segments-unreviewed', m_rain.group(0))
+
+
 if __name__ == '__main__':
     unittest.main()

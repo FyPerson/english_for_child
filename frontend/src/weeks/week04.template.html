@@ -1516,8 +1516,8 @@ function renderWall(){
             : `<div style="font-family:var(--en);font-size:36px;font-weight:700">${colorStrictWord(w, wordColorCtx())}</div>`}</div>
           <div class="wcard__w">${colorStrictWord(w, wordColorCtx())}</div>
           ${hint
-            ? `<div class="wall-hint"><span class="wall-hint__en">${hint.en}</span><span class="wall-hint__zh">${hint.zh}</span></div>`
-            : `<div class="wcard__zh">${d.zh}</div>`}
+            ? `<div class="wall-hint"><span class="wall-hint__en">${escapeHtmlText(hint.en)}</span><span class="wall-hint__zh">${escapeHtmlText(hint.zh)}</span></div>`
+            : `<div class="wcard__zh">${escapeHtmlText(d.zh)}</div>`}
         </button>`;
       }).join('')}
     </div>
@@ -1555,7 +1555,7 @@ function renderDay(n){
       <button class="backlink" data-goto="0">${ART.arrowL} 返回本周总览</button>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span class="pill pill--c">${d.wd}</span>
-        ${d.sounds.length?`<span class="pill">今日音 ${[...new Set(d.sounds.map(s=>SOUNDS[s].ipa))].join(' ')}</span>`:''}
+        ${d.sounds.length?`<span class="pill">今日音 ${[...new Set(d.sounds.map(s=>escapeHtmlText(SOUNDS[s].ipa)))].join(' ')}</span>`:''}
         <span class="pill ${d.rest?'pill--a':''}">${d.rest?'休息日':'共 '+total+' 分钟'}</span>
       </div>
       <h1>${d.title}</h1>
@@ -1722,13 +1722,13 @@ function printBook(){
     el.innerHTML = `
       <div class="pb-page">
         <div class="pb-cover-t">${colorPlainText(BOOK.title, wordColorCtx())}</div>
-        <div class="pb-cover-zh">${BOOK.zh}</div>
+        <div class="pb-cover-zh">${escapeHtmlText(BOOK.zh)}</div>
         <div class="pb-zh">我自己复读的三本英文书</div>
       </div>
       ${BOOK.pages.map(pg=>`<div class="pb-page">
-        ${BOOK_IMG[pg.art] ? `<img class="pb-art" src="${BOOK_IMG[pg.art]}" alt="">` : ''}
+        ${BOOK_IMG[pg.art] ? `<img class="pb-art" src="${escapeHtmlAttribute(BOOK_IMG[pg.art])}" alt="">` : ''}
         <div class="pb-line">${colorPlainText(pg.line, wordColorCtx())}</div>
-        <div class="pb-zh">${pg.zh}</div>
+        <div class="pb-zh">${escapeHtmlText(pg.zh)}</div>
       </div>`).join('')}
       <div class="pb-page">
         <div class="pb-sign">

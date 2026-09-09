@@ -89,10 +89,23 @@ for (const p of BOOK.pages) ok(typeof p.line === 'string' && p.zh && p.art, `小
 // 覆盖的对象之一，不能假设它已经过滤过）；用普通对象字面量时 `__proto__` 这个键
 // 不会变成自有属性，而是被当成设置原型链的特殊语法，那一条 issue 会被静默吞掉，
 // 不会出现在任何一个 SOUNDS 键的报告里。
+/* H3 修复（外审 high，2026-09-09）：validateSoundsSchema 对表级问题（sounds 本身不是
+ * 普通映射、原型链携带额外数据——issue.id === null，见 graphemes.js 的
+ * sounds-invalid/sounds-prototype-chain）与逐键问题（issue.id 是 SOUNDS 的某个键）
+ * 用同一个数组混装返回。改前这里只按 `soundsIssuesByKey[k] || []`（k 取自
+ * `Object.keys(SOUNDS)`）读取，表级问题的 issue.id 是 null，永远不会等于任何一个
+ * 真实键，会被塞进 soundsIssuesByKey[null]（对象键强转成字符串 'null'）却从未被
+ * 任何循环读取——这类问题会被 validateSoundsSchema 正确识别出来，却从未传到 ok()，
+ * 是"校验器本身没问题、生产入口漏报"的典型案例。改法：先把 issue.id == null 的
+ * 表级问题单独收集，跑一次独立的 ok()；再处理逐键问题，不改变原有报告粒度。 */
 const soundsIssuesByKey = Object.create(null);
+const soundsGlobalIssues = [];
 for (const issue of validateSoundsSchema(SOUNDS, {requireTeachingFields: true})) {
+  if (issue.id == null) { soundsGlobalIssues.push(issue); continue; }
   (soundsIssuesByKey[issue.id] = soundsIssuesByKey[issue.id] || []).push(issue);
 }
+ok(soundsGlobalIssues.length === 0,
+  `SOUNDS 表本身不合法（${soundsGlobalIssues.map(i => i.message).join('；')}）`);
 for (const k of Object.keys(SOUNDS)) {
   const issues = soundsIssuesByKey[k] || [];
   const teaching = issues.filter(i => i.code === 'teaching-field-missing');
@@ -257,6 +270,60 @@ const unreviewedMatches = [...raw.matchAll(/@gen-segments-unreviewed/g)];
 ok(unreviewedMatches.length === 0,
   `数据里还有 ${unreviewedMatches.length} 处 gen_segments 未复核标记（@gen-segments-unreviewed）——` +
   `这些 segments 只是"字位数最少"启发式给出的候选，需人工复核教学意图后删除标记才能交付`);
+
+head('⑫ 富文本未实现前，纯文本字段禁止出现标签（外审 L2）');
+/* colorRichText（frontend/src/shared/graphemes.js）尚未实现——Node 侧 DOM 解析方案
+ * （方案 §5「Node 侧 DOM 解析」）未裁定，里程碑 2 第 4b 步按停机条款挂起，见该函数
+ * 头部注释。当前全部渲染路径（colorStrictWord/colorLenientWord/colorPlainText，
+ * 以及 games.js 里对 zh/ipa/cue 等字段的直接插值）都假设这些字段是"纯文本"，一律走
+ * escapeHtmlText 转义；数据若先一步塞进 <...> 标签，要么被转义显示成难看的尖括号，
+ * 要么诱使某处调用方绕开转义直接走 innerHTML 拼接（M2 的隐患正来自这类字段）。
+ * 在 colorRichText 补上白名单解析实现之前，这里显式拒绝：纯文本字段一律不许出现
+ * `<`/`>`，把"数据先出现标签"这条路堵在数据层，不留到渲染时才炸。 */
+function assertPlainTextField(label, value) {
+  if (typeof value !== 'string') return;
+  ok(!/[<>]/.test(value),
+    `${label} 应为纯文本，但含 "<" 或 ">"（colorRichText 尚未实现，见 graphemes.js 头注释）：${value}`);
+}
+Object.keys(W).forEach(w => assertPlainTextField(`W.${w}.zh`, W[w] && W[w].zh));
+Object.keys(SOUNDS).forEach(id => {
+  const s = SOUNDS[id] || {};
+  /* 只有 ipa 是声明为纯文本的字段。mem/cue/challenge/try/pass/how/warn 是作者手写的
+   * "教学叙述"字段，与 b.note/b.lead/b.html 同一信任级别，真实数据里 cue（六周全部
+   * 已教字位）与 warn（week03 的 l/b 两条）已经在用 <span class="en">/<b> 做内联强调
+   * ——这条判据与 render-blocks.js 渲染这组字段时的决定一致（见该文件 case 'sound'
+   * 上方注释），此处不重复对它们判 fail，否则会把已交付的真实数据全部判假失败。 */
+  assertPlainTextField(`SOUNDS.${id}.ipa`, s.ipa);
+  if (Array.isArray(s.demo)) {
+    s.demo.forEach((pair, i) => {
+      if (!Array.isArray(pair)) return;
+      assertPlainTextField(`SOUNDS.${id}.demo[${i}][0]`, pair[0]);
+      assertPlainTextField(`SOUNDS.${id}.demo[${i}][1]`, pair[1]);
+    });
+  }
+});
+Object.entries(WALL_HINT || {}).forEach(([id, h]) => {
+  assertPlainTextField(`WALL_HINT.${id}.en`, h && h.en);
+  assertPlainTextField(`WALL_HINT.${id}.zh`, h && h.zh);
+});
+assertPlainTextField('BOOK.title', BOOK.title);
+assertPlainTextField('BOOK.zh', BOOK.zh);
+(BOOK.pages || []).forEach((p, i) => {
+  assertPlainTextField(`BOOK.pages[${i}].line`, p.line);
+  assertPlainTextField(`BOOK.pages[${i}].zh`, p.zh);
+});
+for (const d of DAYS) {
+  for (const st of d.steps) {
+    for (const b of st.blocks) {
+      if (b.b === 'sentences') {
+        (b.items || []).forEach(([s, zh], i) => {
+          assertPlainTextField(`DAYS[${d.n}] sentences[${i}][0]`, s);
+          assertPlainTextField(`DAYS[${d.n}] sentences[${i}][1]`, zh);
+        });
+      }
+    }
+  }
+}
 
 console.log(`\n${'='.repeat(46)}\n通过 ${pass} 项，失败 ${fail} 项`);
 if (fail) process.exit(1);

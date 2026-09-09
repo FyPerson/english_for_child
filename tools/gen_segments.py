@@ -15,7 +15,12 @@ Usage:
   python tools/gen_segments.py --target frontend/src/weeks/week05.data.js --write            # 写回唯一解（无歧义）的词
   python tools/gen_segments.py --target frontend/src/weeks/week05.data.js --write-heuristic   # 额外写回启发式候选（多解词，务必先读警告）
 
-退出码：非 0 表示存在需要人工处理的词（并列 / 无法识别 / 分析出错），这些词不会被写回。
+退出码：0=全部处理完毕；1=存在需要人工处理的词（并列 tie / 无法识别 unknown / 分析出错
+error），这些词不会被写回；2=用法错误；3=存在按"字位数最少"启发式选出、但尚未落盘/未经
+复核确认的 resolved 候选（未加 --write-heuristic，dry-run 与默认 --write 都可能命中）。
+1/2/3 都算失败退出（非 0），调用方按"非 0 即不可放行"处理即可；细分只是给人读日志时
+定位问题严重程度用（2026-09-09 外审 H1 修复：改前一份只含 resolved 的文件在任何模式下
+都会得到退出码 0，掩盖了"仍有候选未经人工复核"这件事）。
 
 M5（2026-09-09 里程碑 2 收口批）：`--write` 默认只写"唯一解"（不需要启发式、没有歧义）的
 词；多解词（按"字位数最少"这条编辑启发式选出候选的那些）一律不自动写回，只在报告里列出

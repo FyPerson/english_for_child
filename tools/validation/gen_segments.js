@@ -349,6 +349,8 @@ function main() {
     console.error('  --write-heuristic  额外写回"字位数最少"启发式候选（多解词）——基于未经验证的');
     console.error('                     启发式，bat fixture 已证明它会给错，写回的每一处都会带');
     console.error('                     @gen-segments-unreviewed 标记并被 check_data.js 拦下直到人工复核');
+    console.error('退出码：0=全部处理完毕；1=存在 tie/unknown/error（工具排不出候选，需人工处理）；');
+    console.error('        2=用法错误（本分支）；3=存在未落盘的 resolved 候选（未加 --write-heuristic）。');
     process.exit(2);
   }
   const targetPath = path.isAbsolute(targetArg) ? targetArg : path.resolve(REPO, targetArg);
@@ -358,6 +360,16 @@ function main() {
   console.log(formatReport(analysis));
 
   const needsHumanExit = analysis.items.some(it => it.status === 'tie' || it.status === 'unknown' || it.status === 'error');
+  /* H1（外审 high，2026-09-09）：改前只用 needsHumanExit 判定退出码——一份只含
+   * resolved（多解但按"字位数最少"能选出候选，仍需人工复核）的文件在任何模式下都会
+   * 得到退出码 0，CI/调用者据此误认为"全部处理完成"，实际这些词仍未落盘（默认
+   * --write 不写 resolved）或即便落盘也仍带 @gen-segments-unreviewed 标记未经复核。
+   * 用独立退出码 3 表示"存在未落盘/未经复核确认的候选"，与 1（tie/unknown/error，
+   * 连候选都排不出来或分析出错）区分：3 比 1 轻——3 只是"有候选待人挑"，1 是
+   * "工具本身无法给出候选，必须人工介入"。两者都不是 0，调用方按"非 0 即不可放行"
+   * 处理即可，不需要感知这条细分；细分只是给人读日志时定位问题严重程度用。
+   * writeHeuristic===true 时 resolved 词会被写回（带标记），此时不再算"未落盘"。 */
+  const hasUnwrittenCandidates = !writeHeuristic && analysis.items.some(it => it.status === 'resolved');
 
   if (write) {
     const result = writeSuggestions(raw, analysis, { writeHeuristic });
@@ -390,6 +402,7 @@ function main() {
   }
 
   if (needsHumanExit) process.exit(1);
+  if (hasUnwrittenCandidates) process.exit(3);
 }
 
 module.exports = {

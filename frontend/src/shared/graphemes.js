@@ -53,9 +53,24 @@ function assertSoundsShape(sounds) {
   }
 }
 
+/* M5（外审 medium，2026-09-09）：可着色词/grapheme 的字符集显式限定为 ASCII 字母
+ * A-Z/a-z——不是新限制，是把一直隐含成立、从未写进 schema 的前提显式化。colorizeToken
+ * 按 graphemeLabel(id).length 在*原始* word 字符串上切片（graphemes.js 头部注释），
+ * 这条切片逻辑只对"规范化前后 UTF-16 长度不变"的输入可靠：Unicode 组合字符（如
+ * "e" + U+0301 组合重音，toLowerCase 前后长度不变但视觉上是一个字符两个 code unit）、
+ * 全角字母（Ａ-Ｚ，toLowerCase 通常不处理全角，长度也不匹配 ASCII grapheme 表）、
+ * 部分大小写映射（土耳其语 İ.toLowerCase() 在土耳其语言环境下可能产出多字符结果）
+ * 都会被切错位置或触发长度不一致。真实四周数据的 grapheme 与词全部是 ASCII 字母
+ * （见本文件校验），这条判据不影响现状，只是把"支持范围"从"没写"变成"写死并校验"。 */
+var ASCII_ALPHA_PATTERN = /^[A-Za-z]+$/;
+function isAsciiAlpha(str) {
+  return typeof str === 'string' && ASCII_ALPHA_PATTERN.test(str);
+}
+
 function isValidSoundEntryGrapheme(entry) {
   return !!entry && typeof entry === 'object' && typeof entry.grapheme === 'string' &&
-    entry.grapheme.length > 0 && entry.grapheme.toLowerCase().length > 0;
+    entry.grapheme.length > 0 && entry.grapheme.toLowerCase().length > 0 &&
+    isAsciiAlpha(entry.grapheme);
 }
 
 /* segmentWord 建索引前的全表校验：sounds 形状 + 每个自有键是合法字位 ID + 每一项
@@ -431,6 +446,15 @@ function normalizeWord(word) {
  * 断言失败说明实现出了错（比如 grapheme 长度与规范化长度不一致的非 ASCII 情形），
  * 直接抛出而不是静默吞掉——错误的大小写比抛错更难被发现。 */
 function colorizeToken(word, ctx) {
+  /* M5（外审 medium，2026-09-09）：先显式拒绝非 ASCII 输入，不让它流进按长度切片的
+   * 逻辑——见本函数上方大段注释与 isAsciiAlpha 定义处的说明。这是"拒绝"这一半：
+   * colorStrictWord 直接调用本函数，遇到这个错误码会照常原样抛出（不在白名单
+   * DEGRADABLE_ERROR_CODES 里的错误一律不降级）；colorLenientWord/colorPlainText
+   * 把这个码加进了白名单，走的是"降级"那一半——原样转义输出，不影响整页渲染。 */
+  if (!isAsciiAlpha(word)) {
+    throw GraphemeError('colorize-non-ascii',
+      '着色仅支持 ASCII 字母 A-Z/a-z 组成的词，遇到非 ASCII 输入：' + word, { word: word });
+  }
   var normalized = normalizeWord(word);
   var explicit = ctx.segmentsOf(normalized);
   var ids = segmentWord(word, ctx.sounds, explicit);
@@ -466,7 +490,7 @@ function colorStrictWord(word, ctx) {
  * 是数据坏了或代码本身有 bug，裸 catch 会把这些也吞成"看起来正常的降级输出"，制造
  * 假象（2026-09-09 核实 critical 2 时真实踩过：ctx 构造错导致 TypeError，被裸 catch
  * 吞成"大小写全部保持"的假降级，险些据此驳回一条真 critical）。白名单外一律重抛。 */
-var DEGRADABLE_ERROR_CODES = { 'segment-unknown': true, 'segment-ambiguous': true };
+var DEGRADABLE_ERROR_CODES = { 'segment-unknown': true, 'segment-ambiguous': true, 'colorize-non-ascii': true };
 
 /* colorLenientWord(word, ctx) -> string：单个"不保证可解码的词"（里程碑 2 第 4b 步
  * 收口 critical 1 新增）。用于 SOUNDS[id].demo「放进单词里听」的展示性举例、G1
@@ -594,6 +618,12 @@ function validateSoundsSchema(sounds, options) {
     var hasOwnGrapheme = Object.prototype.hasOwnProperty.call(entry, 'grapheme');
     if (!hasOwnGrapheme || typeof entry.grapheme !== 'string' || entry.grapheme.length === 0) {
       issue('grapheme-invalid', id, 'SOUNDS.' + id + '.grapheme 必须是非空字符串');
+    } else if (!isAsciiAlpha(entry.grapheme)) {
+      // M5（外审 medium，2026-09-09）：grapheme 字符集限定为 ASCII 字母，与
+      // isValidSoundEntryGrapheme（segmentWord 内部硬校验）同一判据，理由见该函数
+      // 上方注释——colorizeToken 按 grapheme 长度在原始 word 上切片，非 ASCII（组合
+      // 字符/全角/部分大小写映射）会切错位置或长度不一致。
+      issue('grapheme-invalid', id, 'SOUNDS.' + id + '.grapheme 必须只含 ASCII 字母 A-Z/a-z：' + entry.grapheme);
     }
     if (Object.prototype.hasOwnProperty.call(entry, 'L')) {
       issue('legacy-l-field', id, 'SOUNDS.' + id + ' 仍有遗留的自有键 L（4a 步应已收敛为 grapheme）');
