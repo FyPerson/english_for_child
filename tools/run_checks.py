@@ -71,6 +71,7 @@ def build_jobs(temp, quick, skip_baseline, reproducible_fn=reproducible):
             ('word consumers contract', ['node', 'tests/unit/test_word_consumers.js']),
             ('migration diff contract', ['node', 'tests/unit/test_migration_diff.js']),
             ('grapheme semantics contract', ['node', 'tests/unit/test_grapheme_semantics.js']),
+            ('synthetic ai integration contract', ['node', 'tests/unit/test_synthetic_ai_integration.js']),
             ('migration audit contract', ['node', 'tests/unit/test_migration_audit.js']),
             ('grapheme migration contract', ['node', 'tests/unit/test_grapheme_migration.js']),
             ('assessment contract', ['node', 'tests/unit/test_assessment_contract.js']),

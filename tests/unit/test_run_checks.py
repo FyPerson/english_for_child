@@ -18,6 +18,7 @@ QUICK_NAMES_WITH_BASELINE = ['build', 'reproducible build', 'reproducible build:
                              'directory layout', 'build boundaries', 'run_checks contract', 'graphemes contract',
                              'word coloring contract', 'render smoke', 'strict render ambiguity regression',
                              'word consumers contract', 'migration diff contract', 'grapheme semantics contract',
+                             'synthetic ai integration contract',
                              'migration audit contract', 'grapheme migration contract', 'assessment contract', 'media coverage']
 
 QUICK_NAMES_WITHOUT_BASELINE = [n for n in QUICK_NAMES_WITH_BASELINE if n != 'single-file baseline']
@@ -29,6 +30,7 @@ POST_BASELINE_NAMES = ['size budget', 'baseline contract', 'size budget contract
                         'directory layout', 'build boundaries', 'run_checks contract', 'graphemes contract',
                         'word coloring contract', 'render smoke', 'strict render ambiguity regression',
                         'word consumers contract', 'migration diff contract', 'grapheme semantics contract',
+                        'synthetic ai integration contract',
                         'migration audit contract', 'grapheme migration contract', 'assessment contract', 'media coverage']
 
 BROWSER_SUITE_NAMES = ['test_audio_touch', 'test_date_schedule', 'test_progress', 'test_games', 'test_initialpick',
