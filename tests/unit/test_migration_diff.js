@@ -31,7 +31,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { segmentWord, surfaceOf, graphemeLabel, soundType, normalizeIdList } = require('../../frontend/src/shared/graphemes');
-const { collectWordConsumption } = require('../../tools/validation/word_consumers');
+const { collectWordConsumption, ENTRY_KINDS } = require('../../tools/validation/word_consumers');
 const { withGraphemeFallback } = require('../../tools/validation/sounds_grapheme_adapter');
 const { loadData } = require('../../tools/validation/load_data');
 // 只读取它已经导出的 tokens()（assessment_contract.js:2 的整句分词口径），不修改该文件，
@@ -381,6 +381,45 @@ function tallySourceCoverage() {
   }
 }
 tallySourceCoverage();
+
+/* H-1 修复①（预筛 high：「守恒断言是恒真式」）：total===executed+skipped 挡不住
+ * "抽取器整类少收一种 kind"——那种情况下这个 kind 干脆不会出现在 sourceStats 里，
+ * 连行都不打印，守恒断言对它无感。这里显式核对 sourceStats 实际收到的 kind 集合
+ * 与 word_consumers.js 权威声明的 ENTRY_KINDS 逐字深相等（排序后比较，不比原始
+ * 顺序）——某个来源整类消失（或多出一个未登记的 kind）会在这里立刻报红，而不是
+ * "少了一行看起来没人注意"。 */
+assert.deepEqual(
+  [...sourceStats.keys()].sort(), ENTRY_KINDS.slice().sort(),
+  `来源分布实际收到的 kind 集合与 word_consumers.ENTRY_KINDS 不一致——` +
+  `说明抽取器整类漏收了某种来源，或多出了一个未登记的 kind，光靠 total===executed+skipped ` +
+  `逐来源守恒抓不住这种退化（该来源根本不会出现在统计里）`
+);
+
+/* H-1 修复②：把每个 kind 的 total 钉成基线常量表（2026-09-09 里程碑 2 收口批实测，
+ * 跑 `node tests/unit/test_migration_diff.js` 直接读上面"来源分布"那段打印得到，
+ * 非抄任务书里的示例数字）。任何一个 kind 的 total 变化都会让下面的断言报红——
+ * ⚠️ 改这张表必须写明理由：是"数据真的变了"（比如新增/删除了某周的词条目，
+ * 应先确认改动符合预期再更新数字）还是"抽取器坏了"（少收/多收，应先修抽取器，
+ * 不能反手改表格掩盖回归）。两者外观相同（这里都是数字对不上），区分靠人读 diff。 */
+const BASELINE_KIND_TOTALS = Object.freeze({
+  'blend': 106, 'book-page': 132, 'day-pair': 26, 'flash': 99, 'g1-rounds': 64,
+  'g3-pairs': 26, 'g4-words': 29, 'g5-whitelist': 209, 'initialpick': 13,
+  'sentences': 9, 'sight': 6, 'wall-hint': 3, 'wordforge-family': 20,
+  'wordforge-swap': 6, 'words': 124
+});
+assert.deepEqual(
+  Object.keys(BASELINE_KIND_TOTALS).sort(), ENTRY_KINDS.slice().sort(),
+  '基线常量表本身必须覆盖 ENTRY_KINDS 全部 kind，一个都不能漏（否则基线表自己就是残缺的）'
+);
+for (const kind of ENTRY_KINDS) {
+  const actual = sourceStats.has(kind) ? sourceStats.get(kind).total : 0;
+  assert.equal(
+    actual, BASELINE_KIND_TOTALS[kind],
+    `来源 "${kind}" 的实测 total(${actual}) 与基线常量表(${BASELINE_KIND_TOTALS[kind]}) 不一致——` +
+    `请先判断是数据真变了还是抽取器坏了，确认后再更新 BASELINE_KIND_TOTALS，不要不加理由地改数字`
+  );
+}
+console.log(`PASS 来源分布基线（H-1）：${ENTRY_KINDS.length} 个 kind 的 total 均与基线常量表一致，且 sourceStats 的 kind 集合与 ENTRY_KINDS 深相等`);
 
 let sourceReportLines = [];
 let totalWords = 0, totalExecuted = 0, totalSkippedMultiLetter = 0, totalSkippedUnknown = 0;

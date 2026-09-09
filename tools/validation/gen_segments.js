@@ -126,8 +126,14 @@ function resolveWord(word, sounds, newPatternIds) {
         '这只是候选，不具契约优先级，算法无法判断这是否为教学意图'
     };
   }
+  // L3 修复（预筛 low：「candidates 字段在 resolved 下是全集、在 tie 下只是
+  // minSet，同名不同义」）：resolved 分支的 `candidates` 字段值等于完整枚举
+  // （与 allCandidates 相同，见上方 return），而这里改前也叫 `candidates` 却只是
+  // "字位数最少"这一个子集（minSet）——同一个字段名在两个分支里装的是不同范围的
+  // 东西，读代码/读 formatReport 输出时容易搞混。这里把 tie 分支改名为
+  // `minCandidates`，语义与实际内容对齐；allCandidates 不变，始终是完整枚举。
   return {
-    word, status: 'tie', candidates: minSet, allCandidates: candidates,
+    word, status: 'tie', minCandidates: minSet, allCandidates: candidates,
     touchesNewPattern: minSet.some(touchesNewPattern),
     needsHumanReview: true,
     reason: '字位数最少的解有 ' + minSet.length + ' 个并列（' + minSet.map(c => c.join('+')).join(' / ') + '），需要人工决定'
@@ -239,9 +245,16 @@ function injectSegmentsIntoWDeclaration(wDeclText, updates) {
       // codex medium（2026-09-09）：写回时也要留证据说明这不是权威答案——不能只在
       // dry-run 的终端输出里提醒，写进源码的这一行本身也要带同一句话，因为复核者
       // 之后可能只看 diff/源码，不会重新跑一遍 CLI 看头部警告。
+      // M4 修复（预筛 medium：「--write 会自动写入 fixture 自己证明是错的建议」）：
+      // resolveWord 给 resolved 结果设了 needsHumanReview:true（见上方 resolveWord），
+      // 但改前 writeSuggestions 完全不读这个字段，凡 resolved 一律写回——唯一护栏是
+      // 这段行内注释，注释没有任何机器判据。改成机器可识别标记 `@gen-segments-unreviewed`
+      // + tools/validation/check_data.js 的门槛（数据里含该标记即 fail，直到人复核后
+      // 删掉标记），这样"未复核的建议"不可能悄悄进入交付——不再只靠人去读注释文案。
       const seg = 'segments:[' + ids.map(id => JSON.stringify(id)).join(',') + ']' +
-        ' /* gen_segments 候选：按"字位数最少"启发式选出，不具契约优先级，' +
-        '算法无法判断这是否为教学意图——人工复核确认后可删除本注释 */';
+        ' /* @gen-segments-unreviewed：按"字位数最少"启发式选出的候选，不具契约优先级，' +
+        '算法无法判断这是否为教学意图——tools/validation/check_data.js 会拦下带此标记的数据，' +
+        '人工复核确认后请删除本行的 @gen-segments-unreviewed 标记（连同本条注释一起删或改写皆可） */';
       const sep = trimmed.trim() ? ',' : '';
       return pre + word + colonOpen + trimmed + sep + seg + close;
     });

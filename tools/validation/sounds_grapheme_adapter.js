@@ -1,8 +1,21 @@
-/* 临时只读适配层 —— L → grapheme（里程碑 2 第 3 步专用）。
+/* 只读适配层 —— L → grapheme（里程碑 2 第 3 步引入）。
  *
- * ⚠️ 临时代码：第 4a 步「L → grapheme 收敛」完成后删除本文件及其全部调用点。
- * 届时四周 weekNN.data.js 的 SOUNDS 条目将直接带 grapheme 字段，本适配层不再需要。
+ * ⚠️（M6 修复，2026-09-09 里程碑 2 收口批）头部原写着"4a 步完成后删除本文件及其全部
+ * 调用点"，但 4a 已完成而本文件与 4 个调用点都还在——**这条生命周期声明与现状矛盾**。
+ * 现状是：冲突检测（grapheme 与 L 都存在但值不同）与"键存在但值非法"检测这两项能力
+ * 仍有价值，不该删——它们是审计/生成器工具对"数据 schema 是否自洽"的独立校验，与
+ * "要不要兜底派生"是两件事。真正有风险的是"L 键存在、grapheme 键完全缺失"时的
+ * 兜底派生分支：`gen_segments.js` 会跑在副机将来新写的 `week05.data.js` 上，那里若
+ * 手滑写成 `L:'ai'`（没有 grapheme），旧行为会**静默**派生出 grapheme 并让工具照常
+ * 出建议——而 H3 的运行时门槛硬编码的来源清单又扫不到 W5 这类新文件（H3 已改成 glob
+ * 发现，但门槛只在 CI 跑时才生效，人手滑写坏数据的当下不会立刻被拦），两个洞正好对齐。
  *
+ * 现在的生命周期定位改为：**4a 后保留为冲突检测层**——默认不再从 L 派生兜底（键存在
+ * grapheme 缺失时默认直接抛错，逼人把 grapheme 写全，而不是让适配层悄悄替你填上一个
+ * 可能是笔误的值），只有显式传 `{ allowLegacyFallback: true }` 才启用旧的派生兜底
+ * （给 migration_audit.js 这类"审的就是迁移前状态"的调用方用，见下方参数说明）。
+ *
+
  * 背景（docs/里程碑2实施方案_20260908_v1.7.md 编码任务书「一个必须处理的依赖问题」）：
  * 真实 frontend/src/weeks/weekNN.data.js 的 SOUNDS 条目目前仍是 L 字段，而
  * frontend/src/shared/graphemes.js 的 segmentWord 要求 grapheme——直接把真实 SOUNDS
@@ -37,17 +50,24 @@
  * 兜底**；键存在但值非法，必须显式失败，不能被"缺失兜底"的逻辑捎带覆盖过去。
  */
 
-/* withGraphemeFallback(sounds) -> 新对象：sounds 的浅拷贝。
- * grapheme 键完全缺失、且 L 合法时，派生 grapheme:=L；grapheme 键存在且合法（或没有
- * L）时原样保留——grapheme 才是权威字段（见规范 v2.0 §3「SOUNDS 单条」），L 只是拿来
- * 兜底派生，不是拿来覆盖或校验 grapheme 的。
- * 两种情况显式抛错，不静默：① grapheme 键存在但值非法（不是非空字符串）——不允许被
+/* withGraphemeFallback(sounds, options) -> 新对象：sounds 的浅拷贝。
+ * grapheme 键存在且合法（或没有 L）时原样保留——grapheme 才是权威字段（见规范 v2.0
+ * §3「SOUNDS 单条」）。
+ * 三种情况显式抛错，不静默：① grapheme 键存在但值非法（不是非空字符串）——不允许被
  * L 兜底覆盖过去；② grapheme 与 L 都存在且都合法，但值不同——多半是别名派生只改了
- * 基类没改派生行，适配层不替你选，由人核实。
+ * 基类没改派生行，适配层不替你选，由人核实；③（M6 新增）grapheme 键完全缺失、L 合法，
+ * 但调用方没有显式打开 `options.allowLegacyFallback`——4a 收敛后本仓真实数据已不该
+ * 再出现这种形态，默认直接报错逼人把 grapheme 写全，不悄悄用 L 派生一个可能是笔误的
+ * 值（H3/M6 联合要挡的场景：gen_segments.js 跑在 W5 手滑写成 `L:'ai'` 缺 grapheme 的
+ * 数据上，静默派生会让工具照常出建议，人毫无感知）。
+ * `options.allowLegacyFallback === true` 时保留旧行为：grapheme 键完全缺失、且 L 合法
+ * 时派生 grapheme:=L——只给"审的就是迁移前状态"的调用方用（如 migration_audit.js，
+ * 它的测试还在用只有 L 的合成 SOUNDS 常量核对适配层三态兼容）。
  * 不修改传入对象及其内部条目对象，返回全新对象树的第一层（条目对象本身仅在需要派生时
  * 才浅拷贝，其余条目按引用复用，足够安全，因为调用方只读不写）。 */
-function withGraphemeFallback(sounds) {
+function withGraphemeFallback(sounds, options) {
   if (sounds === null || typeof sounds !== 'object') return sounds;
+  const allowLegacyFallback = !!(options && options.allowLegacyFallback === true);
   const out = {};
   for (const id of Object.keys(sounds)) {
     const entry = sounds[id];
@@ -73,6 +93,16 @@ function withGraphemeFallback(sounds) {
         '没改派生行，两个字段互相矛盾时适配层不替你选，请人工核实后只保留正确的 grapheme'
       );
       err.code = 'grapheme-l-conflict';
+      err.id = id;
+      throw err;
+    }
+    if (!hasOwnGrapheme && lValid && !allowLegacyFallback) {
+      const err = new Error(
+        'sounds_grapheme_adapter: SOUNDS.' + id + ' 只有 L（"' + entry.L + '"）没有 grapheme——' +
+        '4a 收敛后默认不再从 L 静默派生 grapheme，请直接把 grapheme 字段写全；' +
+        '如确实需要兼容迁移前的旧数据，显式传 { allowLegacyFallback: true }'
+      );
+      err.code = 'grapheme-missing-legacy-fallback-disabled';
       err.id = id;
       throw err;
     }

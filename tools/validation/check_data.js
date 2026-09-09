@@ -204,5 +204,17 @@ const assessmentErrors = validateAssessment(box);
 assessmentErrors.forEach(message=>ok(false,message));
 if(!assessmentErrors.length) ok(true,'测评契约');
 
+head('⑪ gen_segments 未复核建议门槛（里程碑 2 收口批 M4）');
+/* tools/validation/gen_segments.js 的 --write 会把候选 segments 写回 W 声明，
+ * 并在同一行打上机器可识别标记 `@gen-segments-unreviewed`（见该文件 injectSegmentsIntoWDeclaration
+ * 附近注释）——resolveWord 生成的建议只是"字位数最少"这条编辑启发式选出来的候选，
+ * 不具契约优先级，必须人工复核确认后删除标记才能进入交付。这里直接在原始源码文本
+ * 里找这个标记：数据里只要还含它，就说明存在未经复核的 gen_segments 建议，判 fail，
+ * 不能悄悄放行。人工复核确认后删除该行的标记即可通过。 */
+const unreviewedMatches = [...raw.matchAll(/@gen-segments-unreviewed/g)];
+ok(unreviewedMatches.length === 0,
+  `数据里还有 ${unreviewedMatches.length} 处 gen_segments 未复核标记（@gen-segments-unreviewed）——` +
+  `这些 segments 只是"字位数最少"启发式给出的候选，需人工复核教学意图后删除标记才能交付`);
+
 console.log(`\n${'='.repeat(46)}\n通过 ${pass} 项，失败 ${fail} 项`);
 if (fail) process.exit(1);

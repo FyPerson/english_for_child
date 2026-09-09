@@ -29,6 +29,20 @@
  * 故意改坏的 graphemes.js 副本验证过（segmentWord 退化成逐字符切分后，本文件的
  * assertion 1/2/3/4 全部转红）——过程与结果见本次任务收口报告，验证用的临时副本已
  * 删除，不在仓库里留痕。
+ *
+ * ⚠️（M5，2026-09-09 里程碑 2 收口批）本文件证明的范围与不证明的范围要分清楚：
+ *   - **证明的**：字位级实现（frontend/src/shared/graphemes.js 的 segmentWord/
+ *     surfaceOf/graphemeLabel 等公开导出）在合成语料上按预期动作——即"新实现自己是
+ *     否内部一致、行为是否符合方案 §3.9 规定的四类差异"。
+ *   - **不证明的**：不证明"被替换掉的那一行生产算法（games.js/check_data.js/
+ *     render-blocks.js 里被点名的旧字符级逻辑）在同一批词上确实会给出不同结果"——
+ *     那是 tests/unit/test_migration_diff.js（迁移前兼容差分）的职责，它直接照抄
+ *     生产代码里被点名的那一行作为"旧侧"，与本文件的合成对照组不是同一套可信度。
+ *   本文件字符级一侧全是当场写的 `'rain'.length` / `[...'rain']` / `'aid'.slice(1)`
+ *   这类就地手写的字符级参照，不是照抄生产代码；虽然四类差异断言本身确实锁住了
+ *   元素与位置（不是松断言），但"这就是生产代码会给出的旧结果"这件事，靠的是
+ *   test_migration_diff.js 而不是本文件——两套测试合起来才构成完整证明链，不能
+ *   把本文件单独当作"新旧算法确实不同"的证据。
  */
 const assert = require('node:assert/strict');
 const { segmentWord, surfaceOf, graphemeLabel } = require('../../frontend/src/shared/graphemes');

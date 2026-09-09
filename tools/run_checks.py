@@ -59,6 +59,7 @@ def build_jobs(temp, quick, skip_baseline, reproducible_fn=reproducible):
             ('archive inventory contract', [sys.executable, 'tests/unit/test_verify_archive.py']),
             ('theme palette contract', [sys.executable, 'tests/unit/test_theme_palette.py']),
             ('gen segments contract', [sys.executable, 'tests/unit/test_gen_segments.py']),
+            ('check_data unreviewed marker gate', [sys.executable, 'tests/unit/test_check_data_unreviewed_marker.py']),
             ('directory layout', [sys.executable, 'tests/unit/test_layout.py']),
             ('build boundaries', [sys.executable, 'tests/unit/test_build.py']),
             ('run_checks contract', [sys.executable, 'tests/unit/test_run_checks.py']),

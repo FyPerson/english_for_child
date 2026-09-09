@@ -31,12 +31,27 @@ const LEGACY_ARRAY_FIELDS = ['wallLetters', 'rackG4', 'rackG5'];
 /* 「L 字段消费点」（方案 §5「迁移前审计」行 + §3.1 影响面表）：这是代码侧的事实，与具体
  * 某一周的数据无关，所以清单直接照抄方案 §3.1 已经做过四模式扫描确认过的四个生产消费点，
  * 不在这里重新写一套扫描逻辑去"重新发现"——重新扫描属于第 4a 步双保险门槛（AST/六写法
- * 源码扫描）的职责，本审计只负责核对这份已知清单当前是否还在、精确定位到哪一行。 */
+ * 源码扫描）的职责，本审计只负责核对这份已知清单当前是否还在、精确定位到哪一行。
+ *
+ * ⚠️ 语义变化（里程碑 2 收口批 H2，2026-09-09）：第 4a 步已把这四个消费点从
+ * `SOUNDS[id].L` 改写成 `SOUNDS[id].grapheme`（render-blocks.js/games.js/
+ * check_data.js 均已实测核对过），若仍用旧 `.L` 正则去找，这四条永远匹配不上，
+ * status 会一直卡在 unknown（"清单可能过期，需要人工核实"）——但这四条明明是
+ * **可判定**的（跟 newPatterns 那 4 条"真的缺独立教学顺序真相源判不了"不是一回事），
+ * 留成 unknown 是错的。这里把每条 spec 的 pattern 改指向 grapheme 等价写法，
+ * 让审计恢复"这个消费点是否按预期读取字形字段"的判定能力。
+ * **随之而来的语义变化**：这份清单原本的意思是"找出还在消费旧 L 字段的地方"
+ * （找到=fail=还没迁移完）；现在 pattern 已经指向 grapheme，找到的意思变成
+ * "找出消费字形字段（grapheme）的地方"——找到=pass=消费点确实按预期读取 grapheme
+ * （迁移已完成且没有回退），找不到=fail=这个已知消费点的代码形状变了（可能是
+ * 迁移回退回 L、也可能是消费点代码本身被改写/删除），需要人工核实，不再是"清单过期"
+ * 这一种更宽松的 unknown 解释。下面 pushFinding 那段的 status 判据与 note 文案
+ * 已同步改写，别让后人以为它还在找 `L`。 */
 const L_FIELD_CONSUMER_SPECS = [
-  { id: 'render-blocks-tileHTML', file: 'frontend/src/shared/render-blocks.js', pattern: /SOUNDS\[f\]\.L\s*,/, label: 'tileHTML(SOUNDS[f].L, …) 传字形' },
-  { id: 'render-blocks-forms-join', file: 'frontend/src/shared/render-blocks.js', pattern: /forms\.map\(f\s*=>\s*SOUNDS\[f\]\.L\)\.join/, label: 'forms.map(f=>SOUNDS[f].L).join(\' 和 \')' },
-  { id: 'games-flash-display', file: 'frontend/src/shared/games.js', pattern: /\$\{s\.L\}/, label: 'flash 卡面显示 s.L' },
-  { id: 'check-data-schema-gate', file: 'tools/validation/check_data.js', pattern: /s\.L\s*&&\s*s\.ipa/, label: 'SOUNDS 条目字段齐全门槛（缺 L 就报错）' }
+  { id: 'render-blocks-tileHTML', file: 'frontend/src/shared/render-blocks.js', pattern: /SOUNDS\[f\]\.grapheme\s*,/, label: 'tileHTML(SOUNDS[f].grapheme, …) 传字形' },
+  { id: 'render-blocks-forms-join', file: 'frontend/src/shared/render-blocks.js', pattern: /forms\.map\(f\s*=>\s*SOUNDS\[f\]\.grapheme\)\.join/, label: 'forms.map(f=>SOUNDS[f].grapheme).join(\' 和 \')' },
+  { id: 'games-flash-display', file: 'frontend/src/shared/games.js', pattern: /\$\{s\.grapheme\}/, label: 'flash 卡面显示 s.grapheme' },
+  { id: 'check-data-schema-gate', file: 'tools/validation/check_data.js', pattern: /s\.grapheme\s*&&\s*s\.ipa/, label: 'SOUNDS 条目字段齐全门槛（缺 grapheme 就报错）' }
 ];
 
 const STATUS_VALUES = new Set(['pass', 'fail', 'not-applicable', 'unknown']);
@@ -95,10 +110,14 @@ function auditWeek(box, raw, file) {
      sounds_grapheme_adapter.js 的两种错误码 grapheme-l-conflict / grapheme-field-invalid。
      这里接住，转成一条 fail finding，不让整个审计工具因为一条数据的问题而崩溃；
      分词相关的其余发现继续用未适配的 SOUNDS 兜底跑（大概率因缺 grapheme 而报
-     segment-unknown，如实反映"适配失败"的后果，不是掩盖）。 */
+     segment-unknown，如实反映"适配失败"的后果，不是掩盖）。
+     ⚠️（M6）显式传 { allowLegacyFallback: true }：本审计工具审的就是"迁移前状态"，
+     必须能吃只有 L 没有 grapheme 的合成/历史数据（tests/unit/test_migration_audit.js
+     的 L_ONLY 三态兼容用例即依赖这一点）；适配层默认已改为不再静默派生，这里是唯一
+     需要保留旧兜底行为的调用方，其余调用方（gen_segments.js 等）用默认行为即可。 */
   let adaptedSounds, graphemeAdapterError = null;
   try {
-    adaptedSounds = withGraphemeFallback(SOUNDS);
+    adaptedSounds = withGraphemeFallback(SOUNDS, { allowLegacyFallback: true });
   } catch (e) {
     graphemeAdapterError = e;
     adaptedSounds = SOUNDS;
@@ -429,17 +448,21 @@ function buildAudit(weekSources, opts) {
   L_FIELD_CONSUMER_SPECS.forEach(spec => {
     const specRaw = fs.readFileSync(path.join(REPO, spec.file), 'utf8');
     const m = spec.pattern.exec(specRaw);
+    // H2：pattern 现在指向 grapheme 等价写法（见上方常量注释的语义变化说明）——
+    // 找到 = pass（消费点确实按预期读取 grapheme，4a 迁移已生效且未回退）；
+    // 找不到 = fail（这个已知消费点的代码形状变了：可能回退回 L，也可能被改写/
+    // 删除，需要人工核实，不再是"清单过期"那种更宽松的 unknown）。
     pushFinding(findings, {
       findingId: 'l-field-consumer:' + spec.id,
       ruleId: 'DATA-SOUNDS-01',
       week: null,
-      status: m ? 'fail' : 'unknown',
+      status: m ? 'pass' : 'fail',
       source: { file: spec.file, line: m ? lineOf(specRaw, m.index) : null, column: null },
       details: {
-        label: spec.label, stillPresent: !!m,
+        label: spec.label, consumesGrapheme: !!m,
         note: m
-          ? '仍在读 SOUNDS[id].L 取显示字形；第 4a 步要改走 graphemeLabel(id)/SOUNDS[id].grapheme（方案 §3.1）'
-          : '按已知模式没能定位到——可能代码形状已变化，需要人工核实这份清单是否已过期'
+          ? '按预期读取 SOUNDS[id].grapheme 取显示字形（第 4a 步 L→grapheme 迁移已生效）'
+          : '按已知的 grapheme 消费写法没能定位到——这个已知消费点的代码形状发生了变化（可能回退回 L，也可能被改写/删除），需要人工核实'
       }
     });
   });

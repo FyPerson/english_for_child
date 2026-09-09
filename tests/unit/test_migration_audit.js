@@ -205,9 +205,25 @@ console.log('PASS migration_audit（codex high②）：auditWeek 把 grapheme-fi
 
 // 键完全不存在（不是"存在但非法"）时，兜底行为必须保持不变——不能矫枉过正
 const trulyMissingGrapheme = { z: { L: 'a', type: 'c' } }; // 没有 grapheme 键
-assert.doesNotThrow(() => withGraphemeFallback(trulyMissingGrapheme), 'grapheme 键完全缺失、L 合法时应正常派生，不应该被 high② 的修复误伤');
-assert.equal(withGraphemeFallback(trulyMissingGrapheme).z.grapheme, 'a', '键完全缺失时仍应派生出 grapheme:=L');
-console.log('PASS migration_audit（回归）：grapheme 键完全缺失（不是存在但非法）时仍正常从 L 派生，未被 high② 误伤');
+// M6（2026-09-09 里程碑 2 收口批）：4a 收敛后适配层默认不再从 L 静默派生 grapheme——
+// 必须显式传 { allowLegacyFallback: true } 才启用旧兜底行为，逼人把 grapheme 写全，
+// 不让"键存在但笔误"这类情况被悄悄放行。
+assert.doesNotThrow(() => withGraphemeFallback(trulyMissingGrapheme, { allowLegacyFallback: true }),
+  'grapheme 键完全缺失、L 合法、显式打开 allowLegacyFallback 时应正常派生，不应该被 high② 的修复误伤');
+assert.equal(withGraphemeFallback(trulyMissingGrapheme, { allowLegacyFallback: true }).z.grapheme, 'a',
+  '键完全缺失且显式打开兜底时仍应派生出 grapheme:=L');
+console.log('PASS migration_audit（回归）：grapheme 键完全缺失（不是存在但非法）、显式打开 allowLegacyFallback 时仍正常从 L 派生，未被 high② 误伤');
+
+// M6 新增：不传 allowLegacyFallback（默认行为）时，同样的"只有 L 没有 grapheme"必须
+// 显式抛错，不能悄悄派生——这是防止 gen_segments.js 之类的调用方在 W5 手滑写成
+// `L:'ai'` 缺 grapheme 的数据上静默出错误建议的核心防线。
+assert.throws(() => withGraphemeFallback(trulyMissingGrapheme),
+  e => e.code === 'grapheme-missing-legacy-fallback-disabled' && /allowLegacyFallback/.test(e.message),
+  '默认（不传 allowLegacyFallback）时，grapheme 键完全缺失、L 合法应显式抛错，不再静默派生');
+assert.throws(() => withGraphemeFallback(trulyMissingGrapheme, {}),
+  e => e.code === 'grapheme-missing-legacy-fallback-disabled',
+  '显式传空 options（未打开 allowLegacyFallback）同样应抛错，不能被"传了 options 就当作打开"误判');
+console.log('PASS migration_audit（M6）：默认（或未显式打开）不再从 L 静默派生 grapheme，需显式 { allowLegacyFallback: true } 才兜底');
 
 // ============================================================================
 // ⑥ 真实 W1–W4：跑真实 buildAudit，做结构性断言（不是内容快照，内容摘要见任务报告）
@@ -277,25 +293,25 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   const lConsumerFindings = realDoc.findings.filter(f => f.ruleId === 'DATA-SOUNDS-01' && f.findingId.startsWith('l-field-consumer:'));
   assert.equal(lConsumerFindings.length, 4, '「L 字段消费点」应精确对应方案 §3.1 影响面表点名的四处');
   assert(lConsumerFindings.every(f => f.week === null), 'L 字段消费点是代码事实，不挂在具体某一周');
-  /* 2026-09-09 里程碑 2 第 4a 步「L → grapheme 收敛」已把这四处消费点从 .L 改成
-     .grapheme——L_FIELD_CONSUMER_SPECS 的正则按方案 §3.1 硬编码的是旧形状 .L，此时
-     必然不再匹配。这不是审计工具的 bug：它自己的 note 已写明"按已知模式没能定位到——
-     可能代码形状已变化，需要人工核实这份清单是否已过期"，status 因此从 fail 降为
-     unknown、source.line 为 null，这正是设计好的行为。人工核实结论：清单已过期
-     （四处均已改用 grapheme），过期原因是预期内的 4a 收敛，不代表遗漏。重新扫描
-     patttern 本身是否要跟着改指向 grapheme 属于第 4a 步之外的事，留给后续步骤按需处理。 */
-  const expectStale = (id, file) => {
+  /* 2026-09-09 里程碑 2 收口批 H2：L_FIELD_CONSUMER_SPECS 的正则已改指向 grapheme
+     等价写法（不再是旧 .L 形状），四处已知消费点在 4a 收敛后如实读取 grapheme，
+     status 从曾经的 unknown（"清单可能过期，需要人工核实"）恢复为可判定的 pass
+     （"消费点确实按预期读取 grapheme"），line 指向各自的真实代码行，不再是 null。
+     这是 H2 明确要求的效果：这四条与 newPatterns 那 4 条真判不了的不同，本来就是
+     可判的，留成 unknown 是错的。 */
+  const expectMigrated = (id, file, line) => {
     const f = lConsumerFindings.find(x => x.findingId === 'l-field-consumer:' + id);
     assert(f, `应有 l-field-consumer:${id}`);
     assert.equal(f.source.file, file);
-    assert.equal(f.source.line, null, `l-field-consumer:${id} 的旧 .L 模式已 4a 收敛不再匹配，line 应为 null`);
-    assert.equal(f.status, 'unknown', '四处已在 4a 步完成 L→grapheme 收敛，旧模式不再匹配，现状应为 unknown（清单过期，非遗漏）');
+    assert.equal(f.source.line, line, `l-field-consumer:${id} 应精确定位到 grapheme 消费点所在行`);
+    assert.equal(f.status, 'pass', '四处已在 4a 步完成 L→grapheme 收敛，按新 pattern 应判 pass（消费点确实读取 grapheme）');
+    assert.equal(f.details.consumesGrapheme, true);
   };
-  expectStale('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js');
-  expectStale('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js');
-  expectStale('games-flash-display', 'frontend/src/shared/games.js');
-  expectStale('check-data-schema-gate', 'tools/validation/check_data.js');
-  console.log('PASS migration_audit（H-3 验证 + 4a 收敛后回归）：「L 字段消费点」四条全局发现均已从 fail 转为 unknown（旧 .L 模式经 4a 收敛后不再匹配，清单过期属预期，非遗漏）');
+  expectMigrated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 46);
+  expectMigrated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 49);
+  expectMigrated('games-flash-display', 'frontend/src/shared/games.js', 1154);
+  expectMigrated('check-data-schema-gate', 'tools/validation/check_data.js', 83);
+  console.log('PASS migration_audit（H-3 验证 + H2 回归）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass（pattern 改指向 grapheme，精确定位到各自代码行）');
 }
 
 // ============================================================================
@@ -460,10 +476,11 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     'DATA-PATTERN-02': { pass: 0, fail: 13, 'not-applicable': 0, unknown: 0 },
     'DATA-RESERVED-01': { pass: 35, fail: 5, 'not-applicable': 0, unknown: 0 },
     'DATA-RESERVED-02': { pass: 23, fail: 1, 'not-applicable': 0, unknown: 0 },
-    /* 2026-09-09 里程碑 2 第 4a 步「L → grapheme 收敛」后更新：四周 w{1..4}:l-field-present
-       从 fail 转 pass（SOUNDS 条目不再是"只有 L 没有 grapheme"）；四条 l-field-consumer
-       从 fail 转 unknown（硬编码的旧 .L 正则不再匹配已改成 .grapheme 的代码，见 §280 附近注释）。 */
-    'DATA-SOUNDS-01': { pass: 4, fail: 0, 'not-applicable': 0, unknown: 4 },
+    /* 2026-09-09 里程碑 2 收口批 H2 后更新：四周 w{1..4}:l-field-present 早先已从
+       fail 转 pass（SOUNDS 条目不再是"只有 L 没有 grapheme"）；四条 l-field-consumer
+       本批把 pattern 改指向 grapheme 等价写法后，从 unknown 恢复为 pass（消费点确实
+       按预期读取 grapheme，见 §287 附近 expectMigrated 断言）。8 条全部 pass。 */
+    'DATA-SOUNDS-01': { pass: 8, fail: 0, 'not-applicable': 0, unknown: 0 },
     'DATA-WALL-01': { pass: 2, fail: 2, 'not-applicable': 0, unknown: 4 }
   };
   const actualByRule = {};

@@ -19,6 +19,21 @@ W5 真实数据还不存在，所以这里用合成周数据文件（不依赖�
       "全部完整解析"必须同时列出 b+a+t 和 b+at，人复核时才有机会从中挑出正确的
       b+a+t，而不是被工具唯一给出的 b+at 误导直接采纳。
 
+      ⚠️（L3，2026-09-09 里程碑 2 收口批）如实拆开这条 fixture 到底证明了什么、
+      没证明什么，两半可信度不对称：
+        · **可证伪、也确实被断言了**："allCandidates（全部完整解析）会把 b+a+t 与
+          b+at 一起列出来"——test_dry_run_reports_all_five_statuses 断言了
+          'b+a+t' 与 'b+at' 都出现在报告里；test_write_only_touches_resolved_words
+          断言了写回后源码里出现 `segments:["b","at"]`。这两条是机器可验证、真的
+          会因为代码退化而转红的断言。
+        · **不可证伪，只存在于注释与合成数据的 zh 文案里**："b+a+t 才是这个词的
+          目标读法，b+at 不是"——这件事本身没有独立真相源可比对（不像 rain/aid
+          那样能靠 test_grapheme_semantics.js 的明确断言核对），只是这份合成周
+          数据在 zh 字段里写死的教学设定（见下方 W.bat 的注释），没有任何断言会
+          因为"工具改成把 b+a+t 当成目标读法"而转红或转绿——这半只是叙事，不是
+          机器判据。写这段是为了不让"这条 fixture 证明了工具会犯错"被过度解读成
+          "这条 fixture 能机械判定哪个解是对的"。
+
 同时验证写回（--write）：resolved 的词被写进 W 声明的 segments 字段（且带"候选/需
 人工复核"的行内注释——写回的字段本身也不能让人误以为是权威答案），tie/unknown 的词
 不被写回；写回是"合成一份完整周数据文件到临时目录、跑一遍 CLI、读回文件核对 diff"，
@@ -118,7 +133,7 @@ class GenSegmentsTests(unittest.TestCase):
         m_rain = re.search(r"rain:\{[^{}]*\}", after)
         self.assertIsNotNone(m_rain, '写回后应仍能找到 rain 的完整声明块')
         self.assertIn("segments:[\"r\",\"ai\",\"n\"]", m_rain.group(0))
-        self.assertIn('gen_segments 候选', m_rain.group(0), '写回的 segments 字段本身也要带"候选/需人工复核"的行内注释，不只是终端输出提醒')
+        self.assertIn('@gen-segments-unreviewed', m_rain.group(0), '写回的 segments 字段本身也要带"候选/需人工复核"的行内注释，不只是终端输出提醒')
 
         m_aid = re.search(r"aid:\{[^{}]*\}", after)
         self.assertIsNotNone(m_aid)
@@ -132,7 +147,7 @@ class GenSegmentsTests(unittest.TestCase):
         m_bat = re.search(r"bat:\{[^{}]*\}", after)
         self.assertIsNotNone(m_bat, '写回后应仍能找到 bat 的完整声明块')
         self.assertIn('segments:["b","at"]', m_bat.group(0), 'bat 应被写回工具建议的 b+at——这是"字位数最少"启发式给出的错误答案，证明工具确实会犯这种错')
-        self.assertIn('gen_segments 候选', m_bat.group(0), 'bat 的写回同样要带"候选/需人工复核"注释，提醒复核者这条建议本身就是本 fixture 证明过的错误案例')
+        self.assertIn('@gen-segments-unreviewed', m_bat.group(0), 'bat 的写回同样要带"候选/需人工复核"注释，提醒复核者这条建议本身就是本 fixture 证明过的错误案例')
 
         # tie（pqr）与 unknown（zap）不应被写回：源码里不应新增 segments 字段
         m_pqr = re.search(r"pqr:\{[^{}]*\}", after)

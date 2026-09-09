@@ -309,6 +309,16 @@ assertThrows(() => normalizeIdList('satipn', {}), e => assert.equal(e.code, 'id-
 assertThrows(() => normalizeIdList('satipn', { legacy: false }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList {legacy:false} 时字符串被拒');
 // options 传了别的键但没有 legacy：同上（不能靠"传了 options 对象"这件事本身放行）。
 assertThrows(() => normalizeIdList('satipn', { foo: true }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList options 无 legacy 键时字符串被拒');
+// L1（预筛 low：「只覆盖了 undefined/{}/{legacy:false}/{foo:true}，没覆盖 truthy-非-true」）
+// ——graphemes.js:343 现状已用 `options.legacy !== true` 严格判等，不是宽松的
+// `if (options && options.legacy)`，预筛核实过当前实现没有洞。这里纯粹是补测试：
+// 把这条"严格等于 true"的契约用三种 truthy-但-不是-true 的值钉住，将来有人手滑把
+// 判据改成宽松真值检查（`options.legacy` 而不是 `options.legacy === true`），这几条
+// 断言会立刻转红——不加的话现有断言全绿，改动不会被发现。
+assertThrows(() => normalizeIdList('satipn', { legacy: 'true' }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList {legacy:\'true\'}（字符串 "true"，truthy 但不是布尔 true）应仍被拒');
+assertThrows(() => normalizeIdList('satipn', { legacy: 1 }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList {legacy:1}（数字 1，truthy 但不是布尔 true）应仍被拒');
+assertThrows(() => normalizeIdList('satipn', { legacy: [] }), e => assert.equal(e.code, 'id-list-legacy-string-rejected'), 'normalizeIdList {legacy:[]}（空数组，truthy 但不是布尔 true）应仍被拒');
+console.log('PASS graphemes（L1）：normalizeIdList 对 legacy:\'true\'/1/[] 三种 truthy-非-true 值仍严格拒绝，锁住 "=== true" 而非宽松真值判据');
 // 数组输入：在两种 options 下行为完全一致，不受 legacy 影响。
 for (const opts of [undefined, {}, { legacy: true }, { legacy: false }]) {
   assert.deepEqual(normalizeIdList(['r', 'ai', 'n'], opts), ['r', 'ai', 'n'], 'normalizeIdList 数组入口在 options=' + JSON.stringify(opts) + ' 下行为一致（原样保留）');
@@ -323,6 +333,14 @@ for (const opts of [undefined, {}, { legacy: true }, { legacy: false }]) {
 assertThrows(() => normalizeIdList(123), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList 非字符串非数组');
 assertThrows(() => normalizeIdList(123, { legacy: true }), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList 非字符串非数组，legacy:true 也不改变这条');
 assertThrows(() => normalizeIdList([1, 2, 3]), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList 数组含非字符串元素');
+// L1 补注（预筛 low）：`new String('ab')` 是装箱的 String 对象，`typeof` 结果是
+// 'object' 不是 'string'，落进的是 id-list-invalid（"非字符串非数组"分支），不是
+// id-list-legacy-string-rejected——与上方"两个错误码的分工"说明（前者管字符串输入、
+// 后者管非字符串非数组或数组元素非法）字面上略有出入：装箱字符串在语义上"看起来
+// 是个字符串"，但判据是 typeof，所以按"非字符串"处理。这不是 bug（本仓与调用方
+// 从不构造装箱 String 对象，真出现多半是笔误），只是把这条边界情况用测试钉住、
+// 加这行注释说明，不改判据本身。
+assertThrows(() => normalizeIdList(new String('ab')), e => assert.equal(e.code, 'id-list-invalid'), 'normalizeIdList(new String(\'ab\'))：装箱 String 对象 typeof 是 object，落进 id-list-invalid 而非 legacy 错误码（见上方注释）');
 console.log('PASS graphemes: normalizeIdList(value, {legacy}) 签名收口 —— legacy 展开 / 默认拒绝字符串 / 数组两种 options 下行为一致 / 非法输入');
 
 // ---- ID 字符集与编码：引号 / 尖括号 / & / 非法 ID 四类失败 fixture ----

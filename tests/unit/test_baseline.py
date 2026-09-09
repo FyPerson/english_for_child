@@ -307,9 +307,27 @@ class ReadOnlyBehaviourTests(unittest.TestCase):
         subprocess.run([sys.executable, 'tools/build_lessons.py'], cwd=ROOT, check=True)
         checked = subprocess.run([sys.executable, 'tools/baseline.py', '--check'], cwd=ROOT,
                                  capture_output=True, text=True, encoding='utf-8')
-        # 退出码不参与判定，但要确认它真的跑起来了——不能因为命令根本没执行而空过。
-        self.assertIn('baseline', (checked.stdout or '') + (checked.stderr or ''),
-                      '--check 似乎没有真正执行：stdout/stderr 里找不到 baseline 相关输出')
+        # 退出码不参与"是否相符"的判定，但要确认它真的跑起来了、而且是真的执行了
+        # --check 逻辑（不是参数解析失败打印 usage 就蒙混过关）。
+        #
+        # L4 修复（预筛 low）：改前只判 stdout+stderr 里含子串 'baseline'——这太弱了，
+        # 连参数解析失败时 argparse 打印的 usage 行（`usage: baseline.py [-h] ...`）
+        # 都含 'baseline'（脚本文件名本身），根本测不出"--check 逻辑真的跑了"。
+        # 改成两条更有区分度的判据：
+        #   ① 退出码必须 ∈ {0, 1}——0 是 tools/baseline.py:260 的"BASELINE OK"分支，
+        #      1 是 tools/baseline.py:258 的"BASELINE MISMATCH"分支（SystemExit(str)
+        #      的默认退出码是 1）；argparse 自身的用法错误退出码是 2，不在这个集合里，
+        #      能把"参数解析失败"这类情况排除掉。
+        #   ② 输出必须含 'BASELINE OK' 或 'BASELINE MISMATCH' 这两个具体标志串之一
+        #      （分别对应 tools/baseline.py:260 / :258 的实际打印文案），不是宽松地
+        #      找 'baseline' 这个子串。
+        output = (checked.stdout or '') + (checked.stderr or '')
+        self.assertIn(checked.returncode, (0, 1),
+                      f'--check 的退出码应是 0（BASELINE OK）或 1（BASELINE MISMATCH），'
+                      f'实际 {checked.returncode}——可能是参数解析失败（usage 错误码 2），说明 --check 逻辑没有真正执行')
+        self.assertTrue('BASELINE OK' in output or 'BASELINE MISMATCH' in output,
+                      f'--check 似乎没有真正执行 --check 逻辑：输出里既没有 "BASELINE OK" 也没有 '
+                      f'"BASELINE MISMATCH" 这两个具体标志串：{output[:300]!r}')
         self.assertEqual((baseline.FIXTURE.read_bytes(), os.stat(baseline.FIXTURE).st_mtime_ns), before)
 
     def test_force_without_create_is_an_error_in_both_entrypoints(self):
