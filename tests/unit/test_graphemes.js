@@ -19,7 +19,7 @@ function assertThrows(fn, check, label) {
   return caught;
 }
 
-// ---- 基础字位表：单字母词、同长度多个 grapheme ----
+// ---- 基础字位表：单字母词 ----
 // 注意：这里刻意不放 'ai'——如果同一张表里同时有单字母 a/i 和双字母 ai，
 // 'rain' 会真的产生 r-a-i-n / r-ai-n 两个完整解，这正是 abc 例子的同构情形
 // （见下面「全局多解失败」一节），不是 bug；双字母词单测另用不含单字母 a/i 的
@@ -35,9 +35,11 @@ const RAIN_TABLE = {
 
 assert.deepEqual(segmentWord('cat', BASE), ['c', 'a', 't'], '单字母词');
 assert.deepEqual(segmentWord('rain', RAIN_TABLE), ['r', 'ai', 'n'], '双字母词 rain -> r/ai/n（一块积木不是一个字母）');
-assert.deepEqual(segmentWord('sit', BASE), ['s', 'i', 't'], '同长度的多个 grapheme（s/i/t 均长度 1，互不混淆）');
+// 注意：这条只是验证 s/i/t 三个长度都是 1 的不同 grapheme 互不混淆，不是"同一位置
+// 多个等长候选"那条 fixture——真正覆盖"同长度的多个 grapheme"这条的是下面的 OO_TABLE。
+assert.deepEqual(segmentWord('sit', BASE), ['s', 'i', 't'], '多个长度相同但互不相同的 grapheme（s/i/t）互不混淆');
 assert.deepEqual(segmentWord('RAIN', RAIN_TABLE), ['r', 'ai', 'n'], '大小写：word 先 toLowerCase 再匹配');
-console.log('PASS graphemes: 单字母词 / 双字母词 / 同长度多 grapheme / 大小写');
+console.log('PASS graphemes: 单字母词 / 双字母词 / 多个同长度互异 grapheme / 大小写');
 
 // ---- 附带发现：同一张表里若单字母 a/i 与双字母 ai 共存，rain 会真的多解 ----
 // 不是本实现的缺陷——这与方案 §3.2 的 abc 例子（a/ab/bc/c）是同一种"可分解成
@@ -129,6 +131,58 @@ assertThrows(() => segmentWord('x', TRIPLE_TABLE), e => {
 }, '三解及以上，同一分歧位置三个可完成候选');
 console.log('PASS graphemes: 三解及以上，同一分歧位置三个可完成候选');
 
+// ---- M-2：三解及以上的非退化用例（TRIPLE_TABLE 词长 1、候选全同长、分歧点在词首，
+// 三个维度都退化；这里补一条三个候选长度互不相同、且都能各自延伸到完整解析的） ----
+const TRIPLE_NONDEGENERATE_TABLE = {
+  a: { grapheme: 'a', type: 'v' }, ab: { grapheme: 'ab', type: 'v' }, abc: { grapheme: 'abc', type: 'v' },
+  b: { grapheme: 'b', type: 'c' }, bc: { grapheme: 'bc', type: 'c' }, c: { grapheme: 'c', type: 'c' },
+  d: { grapheme: 'd', type: 'c' }, cd: { grapheme: 'cd', type: 'c' }
+};
+assertThrows(() => segmentWord('abcd', TRIPLE_NONDEGENERATE_TABLE), e => {
+  assert.equal(e.code, 'segment-ambiguous');
+  assert.equal(e.offset, 0);
+  assert.deepEqual(e.candidates, ['a', 'ab', 'abc']); // 三个不同长度的候选，总解数 >= 3
+}, '三解及以上（非退化）：不同长度候选，分歧点仍在词首但总解数与候选构造不再退化');
+console.log('PASS graphemes: 三解及以上（非退化：三个不同长度候选）');
+
+// ---- 候选必须"能延伸到完整解析"，不能只看局部是否匹配得上（方案 §3.2：
+// 这个限定不可省；删掉 candidateIdsAt/computeCount3 里的 count3[target] > 0 判断，
+// 下面两条会变红——见报告里"改坏副本"的验证记录） ----
+// 正例：ab 在 pos0 匹配得上，但消费后剩下的 'c' 在这张表里没有任何 grapheme 能
+// 匹配（没有独立的 'c'，也没有以 c 开头的），是死路，不算真候选；唯一解是 a+bc。
+const DEADEND_POSITIVE_TABLE = {
+  a: { grapheme: 'a', type: 'v' }, ab: { grapheme: 'ab', type: 'v' }, bc: { grapheme: 'bc', type: 'c' }
+};
+assert.deepEqual(segmentWord('abc', DEADEND_POSITIVE_TABLE), ['a', 'bc'], '候选必须能延伸到完整解析（正例）：ab 匹配得上但后续走不通，不算歧义，不抛错');
+
+// 负例：abc 在 pos0 匹配得上，但消费后剩下的 'd' 在这张表里走不通（没有独立的
+// 'd'、也没有以 d 开头的 grapheme），是死路；candidates 必须恰好是 ['a','ab']，
+// 'abc' 不能混进去。
+const DEADEND_NEGATIVE_TABLE = {
+  a: { grapheme: 'a', type: 'v' }, ab: { grapheme: 'ab', type: 'v' }, abc: { grapheme: 'abc', type: 'v' },
+  b: { grapheme: 'b', type: 'c' }, bc: { grapheme: 'bc', type: 'c' }, cd: { grapheme: 'cd', type: 'c' }
+};
+assertThrows(() => segmentWord('abcd', DEADEND_NEGATIVE_TABLE), e => {
+  assert.equal(e.code, 'segment-ambiguous');
+  assert.equal(e.offset, 0);
+  assert.deepEqual(e.candidates, ['a', 'ab']); // abc 是死路（表里没有 'd'，'d' 之后走不通），必须被排除在 candidates 之外
+}, '候选必须能延伸到完整解析（负例）：abc 匹配得上但后续走不通，candidates 里不能出现它');
+console.log('PASS graphemes: 候选必须能延伸到完整解析（正例不误报歧义 + 负例 candidates 排除死路）');
+
+// ---- M-1：candidates 排序"长度优先于 ID 码点"必须有可区分的用例——现有四个歧义
+// 用例的期望值在纯码点排序下也恰好成立，删掉 sortCandidates 的长度分支单测仍会
+// 全绿；这里 zz 的 grapheme 是 'a'（长度 1），ab 的 grapheme 是 'ab'（长度 2），
+// 纯按 ID 码点排序会给 ['ab','zz']，长度优先则是 ['zz','ab']，两者不同。 ----
+const LEN_FIRST_TABLE = {
+  zz: { grapheme: 'a', type: 'v' }, ab: { grapheme: 'ab', type: 'v' },
+  bc: { grapheme: 'bc', type: 'c' }, c: { grapheme: 'c', type: 'c' }
+};
+assertThrows(() => segmentWord('abc', LEN_FIRST_TABLE), e => {
+  assert.equal(e.code, 'segment-ambiguous');
+  assert.deepEqual(e.candidates, ['zz', 'ab'], 'candidates 必须按 grapheme 长度升序排列在先，ID 码点序在后');
+}, 'sortCandidates 长度优先于 ID 码点（zz 的 grapheme 更短，排在 ab 前面而不是按字母序排在后面）');
+console.log('PASS graphemes: candidates 排序长度优先于 ID 码点（可区分用例）');
+
 // ---- explicitSegments 四类非法输入 ----
 assertThrows(() => segmentWord('cat', BASE, []), e => assert.equal(e.code, 'explicit-segments-invalid'), 'explicitSegments 空数组');
 assertThrows(() => segmentWord('cat', BASE, 'cat'), e => assert.equal(e.code, 'explicit-segments-invalid'), 'explicitSegments 非数组（字符串）');
@@ -155,9 +209,10 @@ assertThrows(() => segmentWord(123, BASE), e => assert.equal(e.code, 'word-inval
 assertThrows(() => segmentWord('cat', ['s', 'a', 't']), e => assert.equal(e.code, 'sounds-invalid'), 'sounds 非普通映射（数组）');
 assertThrows(() => segmentWord('cat', 'not-an-object'), e => assert.equal(e.code, 'sounds-invalid'), 'sounds 非普通映射（字符串）');
 assertThrows(() => segmentWord('cat', null), e => assert.equal(e.code, 'sounds-invalid'), 'sounds 非普通映射（null）');
-// Map 的原型不是 Object.prototype，被归入"原型链"这一类而不是"非普通映射"——
-// 两者用同一条 assertSoundsShape 判断，只是细分成两个可区分的错误码。
-assertThrows(() => segmentWord('cat', new Map([['s', BASE.s]])), e => assert.equal(e.code, 'sounds-prototype-chain'), 'sounds 原型非 Object.prototype（Map）');
+// Map 不是普通对象——Object.prototype.toString.call(new Map()) 是 '[object Map]'，
+// 在第一道品牌标签判据就被拒绝，落进 sounds-invalid（不是 sounds-prototype-chain：
+// Map 的原型链上并没有"挂着可枚举数据"，它就是类型本身不对）。
+assertThrows(() => segmentWord('cat', new Map([['s', BASE.s]])), e => assert.equal(e.code, 'sounds-invalid'), 'sounds 非普通映射（Map，品牌标签判据）');
 assertThrows(() => segmentWord('cat', Object.assign({}, BASE, { bad: { grapheme: '', type: 'c' } })),
   e => { assert.equal(e.code, 'grapheme-invalid'); assert.equal(e.id, 'bad'); }, 'grapheme 空字符串');
 assertThrows(() => segmentWord('cat', Object.assign({}, BASE, { bad: { grapheme: 5, type: 'c' } })),
@@ -169,6 +224,20 @@ assertThrows(() => segmentWord('cat', Object.assign({}, BASE, { bad: { grapheme:
   assertThrows(() => segmentWord('a', polluted), e => assert.equal(e.code, 'sounds-prototype-chain'), '原型链键（sounds 原型上挂着数据）');
 })();
 console.log('PASS graphemes: 输入 schema 四类非法（word / sounds / grapheme / 原型链）');
+
+// ---- assertSoundsShape 的判据是"沿原型链逐层查有没有可枚举数据"，不是"只看直接原型"----
+// Object.create(null)：没有原型链可走，必须放行。
+assert.deepEqual(segmentWord('a', Object.create(null, { a: { value: { grapheme: 'a', type: 'v' }, enumerable: true } })), ['a'], 'Object.create(null) 是合法的普通映射，必须放行');
+// 两层原型链：直接原型是空的（Object.prototype 风格），但祖先原型上真的挂着数据——
+// 判据必须沿整条链查，不能只看 Object.getPrototypeOf(sounds) 这一层就放行。
+(() => {
+  const grandparent = { ghost: { grapheme: 'gh', type: 'c' } };
+  const parent = Object.create(grandparent); // parent 自己没有自有可枚举键
+  const sounds = Object.create(parent);
+  sounds.a = { grapheme: 'a', type: 'v' };
+  assertThrows(() => segmentWord('a', sounds), e => assert.equal(e.code, 'sounds-prototype-chain'), '原型链上更深一层（祖先）挂着数据，也必须被拒绝，不能只查直接原型');
+})();
+console.log('PASS graphemes: assertSoundsShape 沿整条原型链判断（Object.create(null) 放行 / 深层祖先数据仍拒绝）');
 
 // ---- sounds 只读自有键、不走原型链：即便 hasOwnProperty 被同名字位 ID 覆盖也不崩溃 ----
 // 'hasOwnProperty' 本身也是一个合法的 SOUNDS 键名（只是巧合地与 Object.prototype 上的方法同名）。
@@ -192,6 +261,14 @@ assertThrows(() => surfaceOf(['r', 'zzz'], RAIN_TABLE), e => assert.equal(e.code
 assertThrows(() => graphemeLabel('zzz', RAIN_TABLE), e => assert.equal(e.code, 'unknown-id'), 'graphemeLabel 未知 ID');
 assertThrows(() => soundType('zzz', RAIN_TABLE), e => assert.equal(e.code, 'unknown-id'), 'soundType 未知 ID');
 console.log('PASS graphemes: surfaceOf / graphemeLabel / soundType 正例与未知 ID 统一错误');
+
+// ---- M-3：soundType 对"ID 已知但 type 字段本身非法"要报独立错误码 ----
+// "遇到未知 ID 一律抛同一种结构化错误"这条统一契约管的是"ID 找不到"；ID 存在但
+// type 字段坏了是另一类数据 schema 错误，不能和 unknown-id 混在一起，否则跟
+// check_data.js 那边 SOUNDS schema 报错的口径对不上。
+const BAD_TYPE_TABLE = Object.assign({}, RAIN_TABLE, { weird: { grapheme: 'w', type: 'x' } });
+assertThrows(() => soundType('weird', BAD_TYPE_TABLE), e => assert.equal(e.code, 'sound-type-invalid'), 'soundType 对已知 ID 但 type 非法报 sound-type-invalid（不是 unknown-id）');
+console.log('PASS graphemes: soundType 的 type 字段非法用独立错误码，不与 unknown-id 混用');
 
 // ---- normalizeIdList 两种入口 ----
 assert.deepEqual(normalizeIdList('satipn'), ['s', 'a', 't', 'i', 'p', 'n'], 'normalizeIdList 字符串入口（旧单字符 schema 展开）');
@@ -231,5 +308,46 @@ assert.equal(
 assertThrows(() => encodeIdListAttribute(['bad id']), e => assert.equal(e.code, 'invalid-id-format'), 'encodeIdListAttribute 拒绝非法 ID');
 assertThrows(() => encodeIdListAttribute('not-array'), e => assert.equal(e.code, 'id-list-invalid'), 'encodeIdListAttribute 拒绝非数组');
 console.log('PASS graphemes: 数组型 data-* 用 JSON 编码，不用逗号拼接');
+
+// ---- C-1 回归 + M-4 模块形态："同一份实现同时供浏览器与 Node 使用"的真实证据 ----
+// tools/build_lessons.py 的 expand() 只做逐字文本拼接（不套 IIFE），@include 进
+// 模板的文件本质就是被整段塞进一个 <script> 标签。这里直接把源码丢进一个全新的
+// vm context 跑，context 里没有 module/exports，模拟浏览器侧"函数变成全局"的
+// 真实效果，而不是只满足于"require 的不是拷贝"这种较弱的证据。
+(() => {
+  const vm = require('node:vm');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const srcPath = path.join(__dirname, '..', '..', 'frontend', 'src', 'shared', 'graphemes.js');
+  const src = fs.readFileSync(srcPath, 'utf8');
+  const ctx = vm.createContext({}); // 没有 module，模拟浏览器全局环境
+  assert.equal(typeof ctx.module, 'undefined', '新建的 vm context 本来就没有 module（确认这是个干净的对照环境）');
+  new vm.Script(src, { filename: 'graphemes.js (vm, no module)' }).runInContext(ctx);
+  assert.equal(typeof ctx.segmentWord, 'function', '模拟浏览器同构环境下 segmentWord 成为全局函数（文件末尾的导出守卫容忍没有 module）');
+  assert.equal(typeof ctx.surfaceOf, 'function', '同上，surfaceOf 也成为全局函数');
+
+  // C-1 核心回归：跨 realm 的普通对象（在这个全新 vm context 里造的字面量，原型
+  // 是那个 context 自己的 Object.prototype，与宿主 Object.prototype 不是同一个
+  // 对象）必须能正常通过宿主 require 出来的 segmentWord，不再被误判为
+  // sounds-prototype-chain。
+  const crossRealmSounds = vm.runInContext(
+    '({c:{grapheme:"c",type:"c"}, a:{grapheme:"a",type:"v"}, t:{grapheme:"t",type:"c"}})',
+    ctx
+  );
+  assert.notEqual(Object.getPrototypeOf(crossRealmSounds), Object.prototype, '造出来的确实是跨 realm 对象（原型不是宿主 Object.prototype，验证测试本身没有失效）');
+  assert.deepEqual(segmentWord('cat', crossRealmSounds), ['c', 'a', 't'], 'C-1 回归：跨 realm 普通对象不再被误判为 sounds-prototype-chain');
+
+  // M-4：同一份源码在"浏览器同构"环境下跑出的 segmentWord，对同一输入给出与
+  // Node 侧 require 版本完全一致的结果——证明两边确实是同一份实现，不是两份拷贝。
+  // 注意：ctx.segmentWord 返回的数组是那个 vm context 自己的 Array，[[Prototype]]
+  // 与宿主 Array.prototype 不是同一个对象；assert/strict 的 deepEqual 按 === 比较
+  // 原型，会把内容相同的跨 realm 数组误判为不等，所以先转成宿主数组只比较内容。
+  assert.deepEqual(
+    Array.from(ctx.segmentWord('cat', crossRealmSounds)),
+    segmentWord('cat', crossRealmSounds),
+    'vm 同构环境跑出的 segmentWord 与 Node require 版本结果一致（同一份源码）'
+  );
+})();
+console.log('PASS graphemes: C-1 回归（跨 realm 普通对象不再被误判）+ M-4 模块形态（浏览器同构环境证据）');
 
 console.log('PASS graphemes contract: all fixtures green');

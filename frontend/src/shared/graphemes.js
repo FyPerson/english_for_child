@@ -24,18 +24,32 @@ function GraphemeError(code, message, details) {
 
 /* sounds 必须是普通映射：不是 null/数组/基础类型，且原型链上不得携带额外数据
  * （方案 §3.2「输入 schema 先验」——只读自有键、不走原型链）。
- * 拆成两条独立判断，好让"非普通映射"与"原型链键"两类非法输入各自有可区分的错误码。 */
+ * 拆成两条独立判断，好让"非普通映射"与"原型链键"两类非法输入各自有可区分的错误码。
+ *
+ * 判据必须 realm 无关（S2 critical 修复）：真实 SOUNDS 唯一的加载通道
+ * tools/validation/load_data.js 用 `vm.runInNewContext` 取值，得到的对象原型是
+ * *那个 vm realm 的* Object.prototype，与宿主 `Object.prototype` 不是同一个对象——
+ * `proto !== Object.prototype` 这种按引用比较的写法会把全部真实数据都判成非法。
+ * 改用两段 realm 无关的判据：
+ *   1) `Object.prototype.toString.call(sounds)` 品牌标签判"是不是普通对象"——
+ *      这是 spec 定义的通用算法，不看原型链是不是同一个对象，跨 realm 也成立；
+ *      `Object.create(null)` 的标签同样是 '[object Object]'，会正确通过。
+ *   2) 沿原型链逐层检查"是否真的挂着可枚举数据"（`Object.keys(p).length > 0`）。
+ *      `Object.prototype`（包括任何 realm 自己的 Object.prototype）本身没有自有
+ *      可枚举属性，这一条天然跨 realm 成立；只有像 `Object.create({ghost:...})`
+ *      这种原型上真被塞了数据的情况才会命中。 */
 function assertSoundsShape(sounds) {
-  if (typeof sounds !== 'object' || sounds === null || Array.isArray(sounds)) {
+  if (Object.prototype.toString.call(sounds) !== '[object Object]') {
     throw GraphemeError('sounds-invalid', 'sounds 必须是普通映射对象', { value: sounds });
   }
-  var proto = Object.getPrototypeOf(sounds);
-  if (proto !== Object.prototype && proto !== null) {
-    throw GraphemeError(
-      'sounds-prototype-chain',
-      'sounds 的原型链上不得携带额外数据，请使用普通对象字面量或 Object.create(null)',
-      { value: sounds }
-    );
+  for (var p = Object.getPrototypeOf(sounds); p !== null; p = Object.getPrototypeOf(p)) {
+    if (Object.keys(p).length > 0) {
+      throw GraphemeError(
+        'sounds-prototype-chain',
+        'sounds 的原型链上不得携带额外数据，请使用普通对象字面量或 Object.create(null)',
+        { value: sounds }
+      );
+    }
   }
 }
 
@@ -274,11 +288,15 @@ function graphemeLabel(id, sounds) {
   return resolveSoundEntry(sounds, id).grapheme;
 }
 
-/* soundType(id, sounds) -> 'c' | 'v'：字位 ID → 辅音/元音分类。 */
+/* soundType(id, sounds) -> 'c' | 'v'：字位 ID → 辅音/元音分类。
+ * 注意："遇到未知 ID 一律抛同一种结构化错误"这条统一契约管的是"ID 找不到"这一种
+ * 情形（resolveSoundEntry 已经处理）；ID 存在但 `type` 字段本身不合法是另一类数据
+ * 错误（该条目 schema 坏了，不是 ID 不存在），用独立的 'sound-type-invalid' 错误码，
+ * 好和 check_data.js 那边 SOUNDS schema 报错的口径对得上（S2 medium M-3）。 */
 function soundType(id, sounds) {
   var entry = resolveSoundEntry(sounds, id);
   if (entry.type !== 'c' && entry.type !== 'v') {
-    throw GraphemeError('unknown-id', '字位 ID 的 type 字段非法：' + id, { id: id });
+    throw GraphemeError('sound-type-invalid', '字位 ID 的 type 字段非法：' + id, { id: id });
   }
   return entry.type;
 }
