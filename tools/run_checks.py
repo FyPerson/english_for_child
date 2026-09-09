@@ -64,6 +64,8 @@ def build_jobs(temp, quick, skip_baseline, reproducible_fn=reproducible):
             ('build boundaries', [sys.executable, 'tests/unit/test_build.py']),
             ('run_checks contract', [sys.executable, 'tests/unit/test_run_checks.py']),
             ('graphemes contract', ['node', 'tests/unit/test_graphemes.js']),
+            ('word coloring contract', ['node', 'tests/unit/test_word_coloring.js']),
+            ('render smoke', ['node', 'tests/unit/test_render_smoke.js']),
             ('word consumers contract', ['node', 'tests/unit/test_word_consumers.js']),
             ('migration diff contract', ['node', 'tests/unit/test_migration_diff.js']),
             ('grapheme semantics contract', ['node', 'tests/unit/test_grapheme_semantics.js']),

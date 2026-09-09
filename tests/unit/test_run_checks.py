@@ -16,6 +16,7 @@ QUICK_NAMES_WITH_BASELINE = ['build', 'reproducible build', 'reproducible build:
                              'archive inventory contract', 'theme palette contract', 'gen segments contract',
                              'check_data unreviewed marker gate',
                              'directory layout', 'build boundaries', 'run_checks contract', 'graphemes contract',
+                             'word coloring contract', 'render smoke',
                              'word consumers contract', 'migration diff contract', 'grapheme semantics contract',
                              'migration audit contract', 'grapheme migration contract', 'assessment contract', 'media coverage']
 
@@ -26,6 +27,7 @@ POST_BASELINE_NAMES = ['size budget', 'baseline contract', 'size budget contract
                         'archive inventory contract', 'theme palette contract', 'gen segments contract',
                         'check_data unreviewed marker gate',
                         'directory layout', 'build boundaries', 'run_checks contract', 'graphemes contract',
+                        'word coloring contract', 'render smoke',
                         'word consumers contract', 'migration diff contract', 'grapheme semantics contract',
                         'migration audit contract', 'grapheme migration contract', 'assessment contract', 'media coverage']
 

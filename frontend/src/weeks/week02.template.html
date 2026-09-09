@@ -1351,7 +1351,6 @@ function derivedTrophies(){
 /* ==================================================================
    RENDER — blocks
    ================================================================== */
-const vowels = 'aeiou';
 <!-- @include shared/graphemes.js -->
 <!-- @include shared/render-blocks.js -->
 function renderDots(cur){
@@ -1410,8 +1409,8 @@ function renderHome(){
           const cls = `tile ${soundType(c,SOUNDS)==='v'?'tile--v':'tile--c'} ${lit?'tile--wallon':'tile--walloff'}`;
           const lab = `${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${label}`}${lit?'（已点亮）':''}`;
           return canHear
-            ? `<button class="${cls}" data-sayph="${c}" aria-label="${lab}">${escapeHtmlText(label)}</button>`
-            : `<div class="${cls}" role="img" aria-label="${lab}">${escapeHtmlText(label)}</div>`;
+            ? `<button class="${cls}" data-sayph="${escapeHtmlAttribute(c)}" aria-label="${escapeHtmlAttribute(lab)}">${escapeHtmlText(label)}</button>`
+            : `<div class="${cls}" role="img" aria-label="${escapeHtmlAttribute(lab)}">${escapeHtmlText(label)}</div>`;
         }).join('')}
         <span style="font-size:28px;color:var(--ink-3);margin:0 6px">→</span>
         <button class="tile tile--c" data-say="cat" style="width:auto;padding:0 22px;font-size:34px">cat</button>
@@ -1560,7 +1559,7 @@ function renderWall(){
         const d = W[w] || {zh:'',art:null};
         const hint = WALL_HINT[w];
         const lit = trophies.has(w);
-        return `<button class="wcard wcard--wall ${lit?'':'wcard--trophy-off'}" data-say="${w}"${hint && hint.say ? ` data-phrase="${hint.en}"` : ''}>
+        return `<button class="wcard wcard--wall ${lit?'':'wcard--trophy-off'}" data-say="${escapeHtmlAttribute(w)}"${hint && hint.say ? ` data-phrase="${escapeHtmlAttribute(hint.en)}"` : ''}>
           <div class="wcard__art wcard__art--lg">${hasIll(d.art)
             ? illHTML(d.art,112)
             : `<div style="font-family:var(--en);font-size:36px;font-weight:700">${colorStrictWord(w, wordColorCtx())}</div>`}</div>
@@ -1742,7 +1741,7 @@ function initWordForge(){
       const d = W[word] || {};
       clearPicture(false);
       result.innerHTML = hasIll(d.art)
-        ? `<div class="wordforge__picture" data-wf-picture data-wf-picture-word="${word}">${illHTML(d.art,104)}<span class="wordforge__picture-label"><b>${colorStrictWord(word, wordColorCtx())}</b><small>${d.zh || ''}</small></span></div>`
+        ? `<div class="wordforge__picture" data-wf-picture data-wf-picture-word="${escapeHtmlAttribute(word)}">${illHTML(d.art,104)}<span class="wordforge__picture-label"><b>${colorStrictWord(word, wordColorCtx())}</b><small>${d.zh || ''}</small></span></div>`
         : `<b>${colorStrictWord(word, wordColorCtx())}</b>　${d.zh || ''}`;
       pictureTimer = setTimeout(()=>clearPicture(true), 1500);
     }

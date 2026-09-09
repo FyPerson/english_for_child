@@ -303,7 +303,12 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
      check-data-schema-gate 两处的代码形状再次发生了真实变化（不是清单过期）——
      tileHTML 改成一律收 ID、check_data.js 的 SOUNDS 字段齐全检查改走共享
      validateSoundsSchema，pattern 与行号都要同步更新；另外两处（forms-join /
-     flash-display）内容不变，只是行号随文件里其他改动漂移。 */
+     flash-display）内容不变，只是行号随文件里其他改动漂移。
+     2026-09-09 里程碑 2 第 4b 步收口批（M2 属性转义扫尾）三次更新：games-flash-display
+     的 flash 卡面展示改走 escapeHtmlText(s.grapheme)（M2 顺带发现的文本转义缺口，
+     不是 pattern 过期），pattern 与行号一起改；其余三处只是行号随本批新增的注释/
+     escapeHtmlAttribute 调用漂移。这正是 L5 点名的耦合——migration_audit.js 的
+     pattern/行号与被审计文件的具体写法绑死，每次改被扫描文件都要连带同步这两处。 */
   const expectMigrated = (id, file, line) => {
     const f = lConsumerFindings.find(x => x.findingId === 'l-field-consumer:' + id);
     assert(f, `应有 l-field-consumer:${id}`);
@@ -312,10 +317,10 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     assert.equal(f.status, 'pass', '四处已在 4a 步完成 L→grapheme 收敛，按新 pattern 应判 pass（消费点确实读取 grapheme）');
     assert.equal(f.details.consumesGrapheme, true);
   };
-  expectMigrated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 68);
-  expectMigrated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 71);
-  expectMigrated('games-flash-display', 'frontend/src/shared/games.js', 1172);
-  expectMigrated('check-data-schema-gate', 'tools/validation/check_data.js', 88);
+  expectMigrated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 81);
+  expectMigrated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 84);
+  expectMigrated('games-flash-display', 'frontend/src/shared/games.js', 1196);
+  expectMigrated('check-data-schema-gate', 'tools/validation/check_data.js', 93);
   console.log('PASS migration_audit（H-3 验证 + H2 回归 + 4b 二次更新）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass（pattern 随 4b 消费者兼容层改动同步更新，精确定位到各自代码行）');
 }
 

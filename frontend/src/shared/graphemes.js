@@ -416,25 +416,78 @@ function normalizeWord(word) {
 }
 
 /* colorizeToken(word, ctx) -> string：单个"词"token（不含空白/标点）的字位着色，
- * strict 与 plain 两条路径共用。ctx.segmentsOf 的返回值按契约（方案 §3.2）不得被
- * 就地修改：这里只读，交给 segmentWord 自己 slice。 */
+ * strict/lenient/plain 三条路径共用。ctx.segmentsOf 的返回值按契约（方案 §3.2）不得被
+ * 就地修改：这里只读，交给 segmentWord 自己 slice。
+ *
+ * 显示文字取原字符不是 grapheme 标签（里程碑 2 第 4b 步收口 critical 2 修复）：
+ * graphemeLabel(id, sounds) 返回的是 SOUNDS[id].grapheme，数据里这个字段恒小写
+ * （grapheme 是查表键的规范化形式，不是展示原文）。原先直接拼 graphemeLabel 的结果，
+ * 会把 "Nat"/"I see Nat." 这类首字母大写的词/句着色成全小写，且遇到分不出的词走
+ * 降级分支时反而保住原样，同一页面大小写混杂。
+ * 正确做法：分词只用来定位「切几刀、切多长、每一段是不是元音」，展示文字改成按每个
+ * ID 的 grapheme 长度，在*原始* word 字符串上依次切片取出来的原文（保留大小写）。
+ * segmentWord 内部对大小写做规范化匹配（'Sat' 与 'sat' 分词结果相同），
+ * 所以「按长度切原串」在字符数上总能对齐；这里仍然显式断言切片总长度等于原词长度，
+ * 断言失败说明实现出了错（比如 grapheme 长度与规范化长度不一致的非 ASCII 情形），
+ * 直接抛出而不是静默吞掉——错误的大小写比抛错更难被发现。 */
 function colorizeToken(word, ctx) {
   var normalized = normalizeWord(word);
   var explicit = ctx.segmentsOf(normalized);
   var ids = segmentWord(word, ctx.sounds, explicit);
-  return ids.map(function (id) {
-    var text = escapeHtmlText(graphemeLabel(id, ctx.sounds));
+  var pos = 0;
+  var out = ids.map(function (id) {
+    var len = graphemeLabel(id, ctx.sounds).length;
+    var original = word.slice(pos, pos + len);
+    pos += len;
+    var text = escapeHtmlText(original);
     return soundType(id, ctx.sounds) === 'v' ? '<span class="v word-vowel">' + text + '</span>' : text;
   }).join('');
+  if (pos !== word.length) {
+    throw GraphemeError('colorize-length-mismatch', '着色切片总长度与原词长度不一致：' + word, { word: word, pos: pos });
+  }
+  return out;
 }
 
-/* colorStrictWord(word, ctx) -> string：单个词（词卡/tile/G2 积木态）。分不出来是
- * 数据错误，直接把 segmentWord 的结构化错误原样抛出，不在这里吞（方案 §3.3）。 */
+/* colorStrictWord(word, ctx) -> string：单个「可解码词」（词卡/tile/G2 积木态/
+ * wordforge 词族/exam 保留测词等——这些位置的词按数据设计恒由本周已教字位组成）。
+ * 分不出来是数据错误，直接把 segmentWord 的结构化错误原样抛出，不在这里吞
+ * （方案 §3.3）。**判据**：这个位置的词是不是保证由本周已教字位（SOUNDS 的键）
+ * 组成——是，才能用这条；不是，用下面的 colorLenientWord。 */
 function colorStrictWord(word, ctx) {
   if (typeof word !== 'string') {
     throw GraphemeError('word-invalid', 'word 必须是字符串', { value: word });
   }
   return colorizeToken(word, ctx);
+}
+
+/* DEGRADABLE_ERROR_CODES：colorLenientWord 与 colorPlainText 共用的降级判据白名单
+ * （M1 修复）。只有"这个词/片段本身分不出来"（segment-unknown/segment-ambiguous）
+ * 才是「该降级」的情形；sounds-invalid/sound-type-invalid/内部实现的 TypeError 等
+ * 是数据坏了或代码本身有 bug，裸 catch 会把这些也吞成"看起来正常的降级输出"，制造
+ * 假象（2026-09-09 核实 critical 2 时真实踩过：ctx 构造错导致 TypeError，被裸 catch
+ * 吞成"大小写全部保持"的假降级，险些据此驳回一条真 critical）。白名单外一律重抛。 */
+var DEGRADABLE_ERROR_CODES = { 'segment-unknown': true, 'segment-ambiguous': true };
+
+/* colorLenientWord(word, ctx) -> string：单个"不保证可解码的词"（里程碑 2 第 4b 步
+ * 收口 critical 1 新增）。用于 SOUNDS[id].demo「放进单词里听」的展示性举例、G1
+ * 干扰词/目标词反馈等——这些词是刻意选来展示某个音在真实单词里的样子，或用来训练
+ * 耳朵辨音，本周字位表根本不保证能拼出它们（比如第一周只教 s/a 时 demo 里就有
+ * sun/apple/snake）。分得出就像 colorStrictWord 一样着色；分不出（未知片段/歧义）
+ * 按方案 §3.3「降级要换形态」原样转义输出，不抛——这是"举例词"的本质，不是数据错误。
+ * 与 colorPlainText 的降级分支共享同一条白名单错误码判据（见该函数与 M1 的说明）：
+ * 只吞 segment-unknown/segment-ambiguous，其余错误（数据形状错、内部缺陷）原样抛出。 */
+function colorLenientWord(word, ctx) {
+  if (typeof word !== 'string') {
+    throw GraphemeError('word-invalid', 'word 必须是字符串', { value: word });
+  }
+  try {
+    return colorizeToken(word, ctx);
+  } catch (e) {
+    if (e && DEGRADABLE_ERROR_CODES[e.code]) {
+      return escapeHtmlText(word);
+    }
+    throw e;
+  }
 }
 
 /* colorPlainText(text, ctx) -> string：含空格标点的整句（书名、书页正文）。
@@ -444,7 +497,16 @@ function colorStrictWord(word, ctx) {
  * 一律降级为原样输出（转义后）——句子里出现的专有名词、语气词等不认识的片段，
  * 换的是渲染方式，不是删掉着色能力（方案 §3.3「降级要换形态」）。非词的每一段
  * （空格、标点）必须 HTML 转义后再拼回，不能假设分隔符天然安全。
- * 禁止对整句做严格分词——这正是本函数与 colorStrictWord 分开存在的原因。 */
+ * 禁止对整句做严格分词——这正是本函数与 colorStrictWord 分开存在的原因。
+ *
+ * WORD_TOKEN_PATTERN 支持/不支持的边界（里程碑 2 第 4b 步收口 M3）：
+ * 支持——纯字母词（大小写混合）、被空格/标点隔开的多个词。
+ * 不支持——词内撇号缩写（don't/Nat's）与连字符复合词会被从撇号/连字符处切开，
+ * 撇号/连字符本身与后半截各自当独立"非词"/"词"处理（比如 "don't" 会切成
+ * "don" + "'" + "t"，"t" 会被单独尝试着色）。四周现有数据只含句点/逗号/引号，
+ * 不撞到这条边界，但这是数据面的定时炸弹——W5 起若数据出现缩写或连字符词，
+ * 必须先扩这条正则（比如 `/([A-Za-z]+(?:['’-][A-Za-z]+)*)/`，允许词内单个
+ * 撇号/连字符再接字母），并补对应 fixture，不能假设未来数据仍然不撞。 */
 var WORD_TOKEN_PATTERN = /([A-Za-z]+)/;
 function colorPlainText(text, ctx) {
   if (typeof text !== 'string') {
@@ -460,7 +522,8 @@ function colorPlainText(text, ctx) {
     try {
       out += colorizeToken(part, ctx);
     } catch (e) {
-      out += escapeHtmlText(part); // 降级：不能分的词原样输出（转义后）
+      if (!e || !DEGRADABLE_ERROR_CODES[e.code]) throw e; // 数据坏/代码 bug：不降级，原样抛出
+      out += escapeHtmlText(part); // 降级：分不出的词原样输出（转义后）
     }
   }
   return out;
@@ -509,6 +572,15 @@ function validateSoundsSchema(sounds, options) {
     issue('sounds-invalid', null, 'sounds 必须是普通映射对象');
     return issues;
   }
+  /* L2 修复（2026-09-09 里程碑 2 第 4b 步收口）：与 assertSoundsShape 同一条判据，
+   * 原型链上不得携带额外可枚举数据——本函数此前只做了 toString 品牌检查，缺这一层，
+   * 与文档宣称的"共享判据"（同 segmentWord 内部 assertSoundsTable 的严格程度）不一致。 */
+  for (var p = Object.getPrototypeOf(sounds); p !== null; p = Object.getPrototypeOf(p)) {
+    if (Object.keys(p).length > 0) {
+      issue('sounds-prototype-chain', null, 'sounds 的原型链上不得携带额外数据，请使用普通对象字面量或 Object.create(null)');
+      break;
+    }
+  }
   var ids = Object.keys(sounds);
   ids.forEach(function (id) {
     var entry = sounds[id];
@@ -553,6 +625,7 @@ if (typeof module !== 'undefined' && module.exports) {
     encodeIdListAttribute: encodeIdListAttribute,
     normalizeWord: normalizeWord,
     colorStrictWord: colorStrictWord,
+    colorLenientWord: colorLenientWord,
     colorPlainText: colorPlainText,
     colorRichText: colorRichText,
     validateSoundsSchema: validateSoundsSchema

@@ -1287,7 +1287,6 @@ function derivedTrophies(){
 /* ==================================================================
    RENDER — blocks
    ================================================================== */
-const vowels = 'aeiou';
 <!-- @include shared/graphemes.js -->
 <!-- @include shared/render-blocks.js -->
 function renderDots(cur){
@@ -1339,8 +1338,16 @@ function renderHome(){
       <div class="tiles-demo">
         ${normalizeIdList('satipn', {legacy:true}).map(c=>{
           const lit = dayDone(FIRST_TEACH_DAY[c]);   // 积木点亮墙：不存状态，现算首教日是否已完成
+          const canHear = hasPhoneme(c);
           const label = graphemeLabel(c, SOUNDS);
-          return `<button class="tile ${soundType(c,SOUNDS)==='v'?'tile--v':'tile--c'} ${lit?'tile--wallon':'tile--walloff'}" data-sayph="${c}" aria-label="听 ${SOUNDS[c].ipa} 的发音${lit?'（已点亮）':''}">${escapeHtmlText(label)}</button>`;
+          // L7（里程碑 2 第 4b 步收口，四模板同改时补齐）：与 week02-04 hero 积木拉齐——
+          // 降级不是"删掉属性"，是"换一种元素"：没有录音的积木不能仍然是 button，
+          // 否则可聚焦、可点击却没有任何反应，对读屏和触屏都是误导（codex H-1，同款判据）。
+          const cls = `tile ${soundType(c,SOUNDS)==='v'?'tile--v':'tile--c'} ${lit?'tile--wallon':'tile--walloff'}`;
+          const lab = `${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${label}`}${lit?'（已点亮）':''}`;
+          return canHear
+            ? `<button class="${cls}" data-sayph="${escapeHtmlAttribute(c)}" aria-label="${escapeHtmlAttribute(lab)}">${escapeHtmlText(label)}</button>`
+            : `<div class="${cls}" role="img" aria-label="${escapeHtmlAttribute(lab)}">${escapeHtmlText(label)}</div>`;
         }).join('')}
         <span style="font-size:28px;color:var(--ink-3);margin:0 6px">→</span>
         <button class="tile tile--c" data-say="sat" style="width:auto;padding:0 22px;font-size:34px">sat</button>
@@ -1483,7 +1490,7 @@ function renderWall(){
         const d = W[w] || {zh:'',art:null};
         const hint = WALL_HINT[w];
         const lit = trophies.has(w);
-        return `<button class="wcard wcard--wall ${lit?'':'wcard--trophy-off'}" data-say="${w}"${hint && hint.say ? ` data-phrase="${hint.en}"` : ''}>
+        return `<button class="wcard wcard--wall ${lit?'':'wcard--trophy-off'}" data-say="${escapeHtmlAttribute(w)}"${hint && hint.say ? ` data-phrase="${escapeHtmlAttribute(hint.en)}"` : ''}>
           <div class="wcard__art wcard__art--lg">${d.art?illHTML(d.art,112):`<div style="font-family:var(--en);font-size:36px;font-weight:700">${colorStrictWord(w, wordColorCtx())}</div>`}</div>
           <div class="wcard__w">${colorStrictWord(w, wordColorCtx())}</div>
           ${hint

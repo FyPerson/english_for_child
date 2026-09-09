@@ -59,10 +59,14 @@ const L_FIELD_CONSUMER_SPECS = [
      - check-data-schema-gate：4b 把 check_data.js 内联的 `s.grapheme && s.ipa` 真值
        检查抽成共享校验器 validateSoundsSchema（graphemes.js 导出，外审 medium 落点），
        pattern 相应改指向新的调用形状——检测的是"check_data.js 是否已改走共享校验器"
-       而不是"是否还保留内联真值检查"。 */
+       而不是"是否还保留内联真值检查"。
+     2026-09-09 里程碑 2 第 4b 步收口批（M2 属性转义扫尾）三次更新：games-flash-display
+     的 flash 卡面展示改走 escapeHtmlText(s.grapheme) 而不是裸插值——M2 发现文本节点
+     这里同样没转义（同一批修复 sight/initialpick 等处的裸文本插值），pattern 相应
+     改指向新的调用形状，不是清单过期。 */
   { id: 'render-blocks-tileHTML', file: 'frontend/src/shared/render-blocks.js', pattern: /tileHTML\(f,\s*'tile--lg',\s*true\)/, label: 'tileHTML(f, ...) 传字位 ID，内部经 graphemeLabel 取字形' },
   { id: 'render-blocks-forms-join', file: 'frontend/src/shared/render-blocks.js', pattern: /forms\.map\(f\s*=>\s*SOUNDS\[f\]\.grapheme\)\.join/, label: 'forms.map(f=>SOUNDS[f].grapheme).join(\' 和 \')' },
-  { id: 'games-flash-display', file: 'frontend/src/shared/games.js', pattern: /\$\{s\.grapheme\}/, label: 'flash 卡面显示 s.grapheme' },
+  { id: 'games-flash-display', file: 'frontend/src/shared/games.js', pattern: /escapeHtmlText\(s\.grapheme\)/, label: 'flash 卡面显示 escapeHtmlText(s.grapheme)' },
   { id: 'check-data-schema-gate', file: 'tools/validation/check_data.js', pattern: /validateSoundsSchema\(SOUNDS,\s*\{requireTeachingFields:\s*true\}\)/, label: 'SOUNDS 条目字段齐全门槛改走共享 validateSoundsSchema（4b 步并入）' }
 ];
 

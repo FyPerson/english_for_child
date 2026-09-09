@@ -187,6 +187,11 @@ const EXCLUDED_ENTRIES = [
   { file: 'tests/unit/test_migration_audit.js', patternId: 'dot-access', count: 1, reason: '合成测试数据里访问 .L 字段核对适配层行为' },
   { file: 'tests/unit/test_migration_audit.js', patternId: 'key-bare', count: 9, reason: '合成测试数据的对象字面量 L: 值' },
   { file: 'tests/unit/test_migration_audit.js', patternId: 'destructure', count: 7, reason: '同上，key-bare 正则同时命中的对象字面量场景' },
+  // test_word_coloring.js（里程碑 2 第 4b 步收口批新增）：validateSoundsSchema 的
+  // legacy-l-field 反例断言故意构造 { L: 's' } 这个合成对象字面量，用来验证"仍有
+  // 遗留 L 字段"这条 issue 码；不是生产代码里的残留读取。
+  { file: 'tests/unit/test_word_coloring.js', patternId: 'key-bare', count: 1, reason: 'validateSoundsSchema legacy-l-field 反例的合成对象字面量 L: 值' },
+  { file: 'tests/unit/test_word_coloring.js', patternId: 'destructure', count: 1, reason: '同上，key-bare 正则同时命中的对象字面量场景' },
   // tools/legacy/w2data.py：历史归档，整段存着迁移前的旧 JS 数据层字符串（`L:'c'`
   // 等）。不参与构建、不被任何运行路径引用，故不改；但从它复制代码到现役文件时
   // 必须自己把 L 换成 grapheme，这条排除就是为了让这件事有据可查。

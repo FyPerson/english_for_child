@@ -84,7 +84,12 @@ for (const p of BOOK.pages) ok(typeof p.line === 'string' && p.zh && p.art, `小
  * 原先分散在这里的内联真值检查与 sounds_grapheme_adapter.js 的冲突检测两处，同一份
  * SOUNDS 经不同入口会得到不同严格程度的结论。现在两处共用一份判据，check_data.js
  * 只按 id 分组把 issue 转回原有的逐键 ok() 报告粒度，不改变对外可见的失败信息颗粒度。 */
-const soundsIssuesByKey = {};
+// L2 修复（里程碑 2 第 4b 步收口）：用 Object.create(null) 不用 {}——issue.id 来自
+// SOUNDS 的键，理论上可以是任何字符串（isValidGraphemeId 的校验本身也是这条判据要
+// 覆盖的对象之一，不能假设它已经过滤过）；用普通对象字面量时 `__proto__` 这个键
+// 不会变成自有属性，而是被当成设置原型链的特殊语法，那一条 issue 会被静默吞掉，
+// 不会出现在任何一个 SOUNDS 键的报告里。
+const soundsIssuesByKey = Object.create(null);
 for (const issue of validateSoundsSchema(SOUNDS, {requireTeachingFields: true})) {
   (soundsIssuesByKey[issue.id] = soundsIssuesByKey[issue.id] || []).push(issue);
 }
@@ -92,7 +97,11 @@ for (const k of Object.keys(SOUNDS)) {
   const issues = soundsIssuesByKey[k] || [];
   const teaching = issues.filter(i => i.code === 'teaching-field-missing');
   const schema = issues.filter(i => i.code !== 'teaching-field-missing');
-  ok(schema.length === 0, `SOUNDS.${k} 缺 grapheme/ipa/type（${schema.map(i => i.message).join('；')}）`);
+  // L3 修复（里程碑 2 第 4b 步收口）：这句原文只提"缺 grapheme/ipa/type"，但 schema
+  // 分组里还混着 sound-id-invalid（ID 字符集不合法，不是"缺"什么）与 legacy-l-field
+  // （多了一个该删的遗留字段，同样不是"缺"）——标题误导排障方向，改成不预设问题
+  // 性质的中性措辞，具体问题交给后面拼接的 issue.message 说清楚。
+  ok(schema.length === 0, `SOUNDS.${k} schema 不合法（${schema.map(i => i.message).join('；')}）`);
   ok(teaching.length === 0, `SOUNDS.${k} 缺教学字段（mem/cue/challenge/try/pass/how/warn/demo）（${teaching.map(i => i.message).join('；')}）`);
 }
 

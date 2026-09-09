@@ -1,3 +1,15 @@
+/* surfaceOfSafe(slots) -> string|null：G4/G5 长按确认守卫专用（里程碑 2 第 4b 步收口
+ * H1 修复）。surfaceOf 现在对非法 ID（含 slots 里的 null——长按计时期间已撤回/清空/
+ * 换槽数时的正常态）按设计原样抛错；这条守卫历史上一直是"状态对不上就悄悄放弃这次
+ * 确认"的语义（原实现是 slots.join('')，null 会被拼成字符串 "null"，天然不等于
+ * myWord/mySpelled，从不抛），长按回调抛异常会把整条事件处理链炸掉，而不是放弃这次
+ * 确认——这正是本函数存在的原因：把"取不出合法表面串"这件事变回一次不匹配，
+ * 不是一次异常。 */
+function surfaceOfSafe(slots){
+  try{ return surfaceOf(slots, SOUNDS); }
+  catch(e){ return null; }
+}
+
 function initG2(){
   document.querySelectorAll('[data-g2]').forEach(root=>{
     const words = root.dataset.g2.split(',');
@@ -170,7 +182,7 @@ function initG3(){
     function doorHTML(w, cls, disabled, showArt){
       const d = W[w] || {zh:'', art:null};
       const art = (showArt && hasIll(d.art)) ? illHTML(d.art, 56) : '';
-      return `<button class="pairbtn ${cls||''}" data-g3-door="${w}" ${disabled?'disabled':''}>
+      return `<button class="pairbtn ${cls||''}" data-g3-door="${escapeHtmlAttribute(w)}" ${disabled?'disabled':''}>
         ${art}
         <span class="pairbtn__w">${colorStrictWord(w, wordColorCtx())}</span>
         <span class="wcard__zh">${d.zh}</span>
@@ -364,7 +376,7 @@ function initG4(){
       const rows = G4_WORDS.map(w=>{
         const confirmed = !!(state.games.confirms[w] && state.games.confirms[w].g4);
         const active = w === word;
-        return `<button class="btn ${active?'':'btn--ghost'}" style="padding:8px 16px;font-size:14px" data-g4-order="${w}">${confirmed?ART.tick+' ':''}${colorStrictWord(w, wordColorCtx())}</button>`;
+        return `<button class="btn ${active?'':'btn--ghost'}" style="padding:8px 16px;font-size:14px" data-g4-order="${escapeHtmlAttribute(w)}">${confirmed?ART.tick+' ':''}${colorStrictWord(w, wordColorCtx())}</button>`;
       }).join('');
       orders.innerHTML = rows + (correctWords.size >= 3
         ? `<p class="g1__progress" style="width:100%;color:var(--ok)">今天的建议量完成啦，还想玩可以继续</p>`
@@ -382,7 +394,7 @@ function initG4(){
         // 积木同时带 data-sayph（走既有全局委托听音素，G2 同款惯例）与本游戏
         // 自己的 data-g4-tile/data-g4-letter（入槽逻辑），互不冲突。
         const canHear = hasPhoneme(c);
-        return `<button class="tile ${cls}" ${canHear?`data-sayph="${c}"`:''} data-g4-tile="${i}" data-g4-letter="${c}" ${used?'disabled':''} aria-label="${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${label}`}">${escapeHtmlText(label)}</button>`;
+        return `<button class="tile ${cls}" ${canHear?`data-sayph="${escapeHtmlAttribute(c)}"`:''} data-g4-tile="${i}" data-g4-letter="${escapeHtmlAttribute(c)}" ${used?'disabled':''} aria-label="${canHear?`听 ${escapeHtmlAttribute(SOUNDS[c].ipa)} 的发音`:`字母 ${escapeHtmlAttribute(label)}`}">${escapeHtmlText(label)}</button>`;
       });
       return groupedRackHTML(RACK_LETTERS, tiles);
     }
@@ -493,7 +505,7 @@ function initG4(){
          仅 word===myWord 的值比对拦不住陈旧回调（G2 cancelG2LongPress 同款模式） */
       cancelG4LongPress();
       root._g4Cancel = bindLongPress(body.querySelector('.g4__confirm'), ()=>{
-        if(word !== myWord || uiState !== 'feedback' || surfaceOf(slots, SOUNDS) !== myWord) return;   // 状态级三要素复核
+        if(word !== myWord || uiState !== 'feedback' || surfaceOfSafe(slots) !== myWord) return;   // 状态级三要素复核（H1：surfaceOfSafe 吞掉 slots 含 null 时的抛错，恢复"不匹配即放弃"语义）
         confirmWord(myWord, 'g4');
         renderOrders();
         renderConfirmFeedback();   // 切到"已确认+撤销"视图，不是简单文案替换
@@ -630,7 +642,7 @@ function initG5(){
         const cls = soundType(c, SOUNDS) === 'v' ? 'tile--v' : 'tile--c';
         const label = graphemeLabel(c, SOUNDS);
         const canHear = hasPhoneme(c);
-        return `<button class="tile ${cls}" ${canHear?`data-sayph="${c}"`:''} data-g5-tile="${i}" data-g5-letter="${c}" ${used?'disabled':''} aria-label="${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${label}`}">${escapeHtmlText(label)}</button>`;
+        return `<button class="tile ${cls}" ${canHear?`data-sayph="${escapeHtmlAttribute(c)}"`:''} data-g5-tile="${i}" data-g5-letter="${escapeHtmlAttribute(c)}" ${used?'disabled':''} aria-label="${canHear?`听 ${escapeHtmlAttribute(SOUNDS[c].ipa)} 的发音`:`字母 ${escapeHtmlAttribute(label)}`}">${escapeHtmlText(label)}</button>`;
       });
       return groupedRackHTML(RACK_LETTERS, tiles);
     }
@@ -704,7 +716,7 @@ function initG5(){
       if(full && isRealWord && !(state.games.confirms[spelled] && state.games.confirms[spelled].g5)){
         const mySpelled = spelled;
         bindLongPress(body.querySelector('.g5__confirm'), ()=>{
-          if(surfaceOf(slots, SOUNDS) !== mySpelled) return;   // 长按期间已经撤回/清空/换槽数，不落到别的词上
+          if(surfaceOfSafe(slots) !== mySpelled) return;   // 长按期间已经撤回/清空/换槽数，不落到别的词上（H1：同 G4，surfaceOfSafe 吞掉 slots 含 null 时的抛错）
           confirmWord(mySpelled, 'g5');
           render();
         }, 1000);
@@ -814,7 +826,7 @@ function initInitialPick(){
       return `<div class="initialpick__choices">${letters.map(ch=>{
         const cls = ch === opts.right ? ' initialpick__letter--right'
           : ch === opts.wrong ? ' initialpick__letter--wrong' : '';
-        return `<button class="initialpick__letter${cls}" data-initial-letter="${ch}" aria-label="选择首字母 ${ch}" ${opts.disabled?'disabled':''}>${ch}</button>`;
+        return `<button class="initialpick__letter${cls}" data-initial-letter="${escapeHtmlAttribute(ch)}" aria-label="选择首字母 ${escapeHtmlAttribute(ch)}" ${opts.disabled?'disabled':''}>${escapeHtmlText(ch)}</button>`;
       }).join('')}</div>`;
     }
     function feedbackHTML(word){
@@ -928,6 +940,13 @@ function initInitialPick(){
       const letter = e.target.closest('[data-initial-letter]');
       if(letter && uiState === 'waiting'){
         const picked = letter.dataset.initialLetter;
+        // M4（里程碑 2 第 4b 步收口，未动，留给第 7 步）：current.charAt(0) 取的是
+        // 首"字符"不是首"字位"——letters（data-letters，即 b.letters）目前四周数据
+        // 全是单字符字母（s/t/p/n/g/c 这类），charAt(0) 恰好与首字位重合所以现在测
+        // 不出问题；一旦第 7 步词表首音变成多字母字位（sh/ch/ai 这类），这里就该改成
+        // 用 graphemesOf(current)[0] 取首字位 ID 再比对 letters 里对应的字位 ID，
+        // 而不是继续裸比较首字符——现在字符级比较必错（比如 shop 用 charAt(0) 只
+        // 拿到 's'，永远匹配不上代表 'sh' 这个字位的选项）。
         picked === current.charAt(0) ? renderRight() : renderWrong(picked);
         return;
       }
@@ -980,8 +999,13 @@ function initG1(){
       return `<span class="g1__target-letter${vowelClass}">${escapeHtmlText(graphemeLabel(roundKey, SOUNDS))}</span>`;
     }
     function meaningChip(word){
+      // G1 的 pos/neg 词表是"听目标音在真词里的样子"用的示范/干扰词，不受限于本周
+      // 已教字位——第一周 s/a 两轮的 neg 就有 dog/fish/milk/book/tree 这类词
+      // （实测核实：W1 G1 pos/neg 共 15 个词里 15 个都对不上 W1 当时的 SOUNDS 表）。
+      // 与 sound 块的 demo 词同一判据（②「不保证可解码的词」），走 colorLenientWord，
+      // 不能用 colorStrictWord——否则答对后展示反馈就会重复 critical 1 的白屏。
       const d = W[word] || {zh:'', art:null};
-      return `<div class="g1__meaning">${hasIll(d.art)?illHTML(d.art,56):''}<div><b class="en">${colorStrictWord(word, wordColorCtx())}</b>　${d.zh}</div></div>`;
+      return `<div class="g1__meaning">${hasIll(d.art)?illHTML(d.art,56):''}<div><b class="en">${colorLenientWord(word, wordColorCtx())}</b>　${d.zh}</div></div>`;
     }
     function progressLine(){ return `<p class="g1__progress">第 ${qi+1} / ${queue.length} 题　对 ${correct}</p>`; }
     function restartBtn(){ return `<button class="btn btn--ghost" data-g1-act="restart">重新开始这一轮</button>`; }
@@ -1166,11 +1190,11 @@ function initFlash(){
       const it = items[i];
       if(it.k === 'w'){
         face.innerHTML = `<span class="en">${colorStrictWord(it.v, wordColorCtx())}</span>`;
-        tip.innerHTML = `孩子读出来之后，点这里核对 → <button class="btn btn--ghost" style="padding:6px 14px;font-size:13px" data-say="${it.v}">${ART.spk} 听一下</button>`;
+        tip.innerHTML = `孩子读出来之后，点这里核对 → <button class="btn btn--ghost" style="padding:6px 14px;font-size:13px" data-say="${escapeHtmlAttribute(it.v)}">${ART.spk} 听一下</button>`;
       }else{
         const s = SOUNDS[it.k];
-        face.innerHTML = `<span class="${s.type==='v'?'v':''}">${s.grapheme}</span>`;
-        tip.innerHTML = `<b>${s.ipa}</b>　${s.mem}　<button class="btn btn--ghost" style="padding:6px 14px;font-size:13px" data-sayph="${it.k}">${ART.spk} 听一下</button>`;
+        face.innerHTML = `<span class="${s.type==='v'?'v':''}">${escapeHtmlText(s.grapheme)}</span>`;
+        tip.innerHTML = `<b>${escapeHtmlText(s.ipa)}</b>　${escapeHtmlText(s.mem)}　<button class="btn btn--ghost" style="padding:6px 14px;font-size:13px" data-sayph="${escapeHtmlAttribute(it.k)}">${ART.spk} 听一下</button>`;
       }
       meta.textContent = `${i+1} / ${items.length}`;
     }

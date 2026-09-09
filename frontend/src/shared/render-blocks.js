@@ -1,6 +1,19 @@
-/* ---- 字位着色/展示的消费者兼容层（里程碑 2 第 4b 步）----
- * colorWord 已拆分为 colorStrictWord/colorPlainText（graphemes.js 导出，方案
- * §3.3）：42 个原 colorWord 调用点已逐个改走其中一条，分类清单见收口报告。
+/* ---- 字位着色/展示的消费者兼容层（里程碑 2 第 4b 步，第 4b 步收口批复核修正）----
+ * colorWord 已拆分为 colorStrictWord/colorLenientWord/colorPlainText（graphemes.js
+ * 导出，方案 §3.3）：42 个原 colorWord 调用点已逐个改走其中一条。
+ *
+ * 三档判据（不是"单个词 vs 整句"——那条判据漏了「单个词但不保证可解码」这一类，
+ * 正是 demo 词白屏的根因）：
+ *   ① colorStrictWord——可解码词：这个位置的词按数据设计恒由本周已教字位（SOUNDS
+ *      的键）组成（词卡/tile/G2 积木态/wordforge 词族/G3-G5 摆词游戏/exam 保留测
+ *      词等）。分不出来就是数据错误，原样抛出，不吞。
+ *   ② colorLenientWord——不保证可解码的词：这个位置的词是刻意选来"展示/训练耳朵"
+ *      的举例，不受限于本周已教字位（SOUNDS[b.s].demo「放进单词里听」的示范词、
+ *      G1 干扰词/目标词听后反馈）。分得出就着色，分不出就原样输出，不抛。
+ *   ③ colorPlainText——整句：先按分隔符切分再逐词尝试，同③的降级语义（不抛）。
+ * 每个调用点必须一眼看得出自己走哪档：demo 走 ②，其余 39 个原走 ①的调用点经
+ * 逐一核实（对照四周真实数据跑过 segmentWord）均满足①的判据，继续用 colorStrictWord；
+ * G1 反馈用词（games.js meaningChip）改走②，详见该处注释。
  * explicitSegmentsFor/wordColorCtx/graphemesOf 是三个游戏 + 模板共用的桥接层，
  * 把"从 W[word].segments 取显式消歧"这件事收在一处，不让每个调用点各自实现一遍
  * （方案 §3.2 ctx 契约：「着色器先用唯一的 normalizeWord 得到查表键再调用」）。 */
@@ -28,7 +41,7 @@ function tileHTML(id, cls, live){
   // live 时积木是发音按钮（真人录音）。默认纯 div——button 不能嵌 button，
   // 日卡这类本身就是按钮的容器里必须用 div。
   // 只有真人录音在的音才做成发音按钮；没录音的积木保持静态，不做点了没反应的哑巴按钮（铁律 8）
-  if(live && SOUNDS[id] && hasPhoneme(id)) return `<button class="tile ${t} ${cls||''}" data-sayph="${id}" aria-label="听 ${SOUNDS[id].ipa} 的发音">${label}</button>`;
+  if(live && SOUNDS[id] && hasPhoneme(id)) return `<button class="tile ${t} ${cls||''}" data-sayph="${escapeHtmlAttribute(id)}" aria-label="听 ${escapeHtmlAttribute(SOUNDS[id].ipa)} 的发音">${label}</button>`;
   return `<div class="tile ${t} ${cls||''}">${label}</div>`;
 }
 function artHTML(key, size){
@@ -80,7 +93,7 @@ function blockHTML(b, ctx){
           <div class="soundlab__practice">
             <span class="lablabel"><span class="lablabel__n">1</span>跟我做</span>
             ${hasPhoneme(b.s)
-              ? `<button class="btn btn--ghost soundlab__listen" data-sayph="${b.s}">${ART.spk} 先听一遍 <span class="en">${s.ipa}</span></button>`
+              ? `<button class="btn btn--ghost soundlab__listen" data-sayph="${escapeHtmlAttribute(b.s)}">${ART.spk} 先听一遍 <span class="en">${s.ipa}</span></button>`
               : `<p class="lead" style="font-size:13.5px;margin:0;color:var(--ink-2)"><b>这个音还没有真人录音。</b>请按下面的口令亲自示范——<b>不要用手机上的合成语音代替</b>，它会读成字母名或者多带一个元音尾巴。</p>`}
             <p class="soundlab__cue">${s.cue}</p>
             <div class="experiment">
@@ -107,9 +120,9 @@ function blockHTML(b, ctx){
         <div class="sound__examples">
           <p class="lead" style="margin-bottom:10px"><strong>放进单词里听</strong>（${hasPhoneme(b.s) ? '单词点开就读；单个音的示范用上面的真人录音' : '单词点开就读；单个音请你按上面的口令亲自示范，页面不用合成语音冒充'}）：</p>
           <div class="wordrow">
-            ${s.demo.map(([w,zh])=>`<button class="wordchip" data-say="${w}">
+            ${s.demo.map(([w,zh])=>`<button class="wordchip" data-say="${escapeHtmlAttribute(w)}">
               <span class="spk">${ART.spk}</span>
-              <span class="wordchip__w en">${colorStrictWord(w, wordColorCtx())}</span>
+              <span class="wordchip__w en">${colorLenientWord(w, wordColorCtx())}</span>
               <span class="wordchip__zh">${zh}</span></button>`).join('')}
           </div>
         </div>
@@ -123,7 +136,7 @@ function blockHTML(b, ctx){
     const id = 'g2' + (ctx.uid++);
     // E5：导航条改由 initG2 每次 draw() 动态生成（首词禁 prev、末词换"完成"），
     // 这里只留一个挂载点。
-    return `<div class="blender" id="${id}" data-g2="${b.words.join(',')}">
+    return `<div class="blender" id="${id}" data-g2="${escapeHtmlAttribute(b.words.join(','))}">
       <div class="g2__nav" data-nav></div>
       <div data-body></div>
     </div>`;
@@ -133,7 +146,7 @@ function blockHTML(b, ctx){
     return `<div class="wcards">
       ${b.items.map(w=>{
         const d = W[w] || {zh:'',art:null};
-        return `<button class="wcard" data-say="${w}">
+        return `<button class="wcard" data-say="${escapeHtmlAttribute(w)}">
           <div class="wcard__art">${hasIll(d.art)
             ? illHTML(d.art,72)
             : `<div style="font-family:var(--en);font-size:30px;font-weight:700;color:var(--ink-3)">${colorStrictWord(w, wordColorCtx())}</div>`}</div>
@@ -146,8 +159,8 @@ function blockHTML(b, ctx){
   case 'sight':
     return `<div>
       <div class="wcards" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr))">
-        ${b.items.map(([w,zh])=>`<button class="wcard" data-say="${w}" style="border-color:var(--accent-line);background:var(--accent-soft)">
-          <div class="wcard__w" style="font-size:30px;margin-top:8px">${w}</div>
+        ${b.items.map(([w,zh])=>`<button class="wcard" data-say="${escapeHtmlAttribute(w)}" style="border-color:var(--accent-line);background:var(--accent-soft)">
+          <div class="wcard__w" style="font-size:30px;margin-top:8px">${escapeHtmlText(w)}</div>
           <div class="wcard__zh">${zh}</div>
           <div style="font-size:11px;color:var(--accent);font-weight:700">直接记，不拼</div>
         </button>`).join('')}
@@ -156,7 +169,7 @@ function blockHTML(b, ctx){
 
   case 'sentences':
     return `<div style="display:flex;flex-direction:column;gap:10px">
-      ${b.items.map(([en,zh])=>`<button class="checkitem" data-say="${en}" style="align-items:center">
+      ${b.items.map(([en,zh])=>`<button class="checkitem" data-say="${escapeHtmlAttribute(en)}" style="align-items:center">
         <span class="spk">${ART.spk}</span>
         <span class="checkitem__t"><span class="en" style="font-size:21px;font-weight:700">${colorPlainText(en, wordColorCtx())}</span><small>${zh}</small></span>
       </button>`).join('')}
@@ -171,10 +184,16 @@ function blockHTML(b, ctx){
           <div class="wordforge__family-title">固定词尾 <b>${colorStrictWord(f.tail, wordColorCtx())}</b>，点一块头积木</div>
           <div class="wordforge__equation-rows">
             ${f.heads.map(head=>{
+              // M4（里程碑 2 第 4b 步收口，未动）：head+f.tail 是字符级拼接、head 是
+              // 字符级 charAt 语义的裸首字母，不是字位 ID 拼接——多字母声母头（如
+              // 'sh'+'op'）在当前四周数据里不出现，故此处仍按现状工作；一旦 head
+              // 变成多字母字位（第 7 步 wordforge 若接入 sh/ch 类词族），这里与下面
+              // swap 分支的 head/word 拼接、aria-label 文案都要同步改成按字位 ID 拼接，
+              // 不能继续假设"一个 head 就是一个字符"。留给第 7 步统一处理，本批不改。
               const word = head + f.tail;
               const zh = (W[word] || {}).zh || '';
               return `<div class="wordforge__equation-choice">
-                <span class="wordforge__equation"><button class="wordforge__brick wordforge__head-button" data-wf-word="${word}" aria-label="点击 ${head}，听 ${word}">${head}${ART.spk}</button><span class="wordforge__plus">＋</span><span class="wordforge__brick wordforge__brick--tail">${colorStrictWord(f.tail, wordColorCtx())}</span><span class="wordforge__equation-arrow">→</span><span class="wordforge__equation-word">${colorStrictWord(word, wordColorCtx())}</span></span>
+                <span class="wordforge__equation"><button class="wordforge__brick wordforge__head-button" data-wf-word="${escapeHtmlAttribute(word)}" aria-label="点击 ${escapeHtmlAttribute(head)}，听 ${escapeHtmlAttribute(word)}">${escapeHtmlText(head)}${ART.spk}</button><span class="wordforge__plus">＋</span><span class="wordforge__brick wordforge__brick--tail">${colorStrictWord(f.tail, wordColorCtx())}</span><span class="wordforge__equation-arrow">→</span><span class="wordforge__equation-word">${colorStrictWord(word, wordColorCtx())}</span></span>
                 <span class="wordforge__equation-meta"><small>${zh}</small></span>
               </div>`;
             }).join('')}
@@ -183,6 +202,9 @@ function blockHTML(b, ctx){
       }).join('');
     }else{
       cards = b.pairs.map(([from,word])=>{
+        // M4（同上，未动，留给第 7 步）：from.slice(1) 与下面的 candidate.charAt(0)
+        // 同样是字符级切分，不是按字位 ID 拆分——多字母声母的换头词对（第 7 步才会
+        // 出现）会被切错位置。
         const tail = from.slice(1);
         return `<section class="wordforge__family wordforge__swap-family">
           <div class="wordforge__family-title">固定词尾 <b>${colorStrictWord(tail, wordColorCtx())}</b>，轮流点两个头</div>
@@ -191,7 +213,7 @@ function blockHTML(b, ctx){
               const head = candidate.charAt(0);
               const zh = (W[candidate] || {}).zh || '';
               return `<div class="wordforge__equation-choice">
-                <span class="wordforge__equation"><button class="wordforge__brick wordforge__head-button" data-wf-word="${candidate}" aria-label="点击 ${head}，听 ${candidate}">${head}${ART.spk}</button><span class="wordforge__plus">＋</span><span class="wordforge__brick wordforge__brick--tail">${colorStrictWord(tail, wordColorCtx())}</span><span class="wordforge__equation-arrow">→</span><span class="wordforge__equation-word">${colorStrictWord(candidate, wordColorCtx())}</span></span>
+                <span class="wordforge__equation"><button class="wordforge__brick wordforge__head-button" data-wf-word="${escapeHtmlAttribute(candidate)}" aria-label="点击 ${escapeHtmlAttribute(head)}，听 ${escapeHtmlAttribute(candidate)}">${escapeHtmlText(head)}${ART.spk}</button><span class="wordforge__plus">＋</span><span class="wordforge__brick wordforge__brick--tail">${colorStrictWord(tail, wordColorCtx())}</span><span class="wordforge__equation-arrow">→</span><span class="wordforge__equation-word">${colorStrictWord(candidate, wordColorCtx())}</span></span>
                 <span class="wordforge__equation-meta"><small>${zh}</small></span>
               </div>`;
             }).join('')}
@@ -217,7 +239,7 @@ function blockHTML(b, ctx){
       const inG3 = G3_PAIRS.some(gp => gp[0]===p[0] && gp[1]===p[1]);
       if(inG3){
         const id = 'g3' + (ctx.uid++);
-        return `<div class="blender" id="${id}" data-g3-pair="${p.join(',')}">
+        return `<div class="blender" id="${id}" data-g3-pair="${escapeHtmlAttribute(p.join(','))}">
           <div data-g3-body></div>
         </div>`;
       }
@@ -263,7 +285,7 @@ function blockHTML(b, ctx){
     // G6：recKey 从 block 数据读（规格 §4.6 点1），不从 uid/DOM 顺序推；
     // 非 timed 组或无 recKey 的 timed 组一律不出纪录行。
     const id = 'fl' + (ctx.uid++);
-    return `<div class="flash" id="${id}" data-items='${JSON.stringify(b.items)}' data-timed="${b.timed?1:0}" data-reckey="${b.recKey||''}">
+    return `<div class="flash" id="${id}" data-items="${escapeHtmlAttribute(JSON.stringify(b.items))}" data-timed="${b.timed?1:0}" data-reckey="${escapeHtmlAttribute(b.recKey||'')}">
       <div class="flash__face" data-face></div>
       <div class="flash__metarow">
         <div class="flash__meta" data-meta></div>
@@ -303,7 +325,7 @@ function blockHTML(b, ctx){
 
   case 'initialpick':{
     const id = 'initialpick' + (ctx.uid++);
-    return `<div class="initialpick" id="${id}" data-initialpick data-words="${b.words.join(',')}" data-letters="${b.letters.join(',')}">
+    return `<div class="initialpick" id="${id}" data-initialpick data-words="${escapeHtmlAttribute(b.words.join(','))}" data-letters="${escapeHtmlAttribute(b.letters.join(','))}">
       <div class="initialpick__body" data-initialpick-body aria-live="polite"></div>
     </div>`;
   }
@@ -318,7 +340,7 @@ function blockHTML(b, ctx){
     return `<div class="g1wrap" id="${id}">
       ${rounds.map(rk=>{
         const theme = G1_THEME[rk];
-        return `<div class="g1card g1card--${rk}" data-g1-round="${rk}">
+        return `<div class="g1card g1card--${escapeHtmlAttribute(rk)}" data-g1-round="${escapeHtmlAttribute(rk)}">
           <div class="g1card__hd">
             ${hasIll(theme.icon)?`<span class="g1card__ico">${illHTML(theme.icon,40)}</span>`:''}
             <span class="g1card__ttl">${theme.title}</span>
