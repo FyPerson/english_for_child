@@ -331,7 +331,12 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
      不是消费点代码形状变化。
      2026-09-10 外审第二批（B-M2：③「未教字母」检查接入 word_consumers.js 共享抽取器）
      七次更新：check_data.js 顶部新增一行 require('./word_consumers')，
-     check-data-schema-gate 单纯因这一行插入而再 +1 行（104→105）；pattern 本身未变。 */
+     check-data-schema-gate 单纯因这一行插入而再 +1 行（104→105）；pattern 本身未变。
+     2026-09-10 外审第三批（T3-2：四模板一致性，新增 bookArtHTML/celebrateNatHeroHTML/
+     printBookArtHTML 三个共享函数）八次更新：render-blocks.js 在 tileHTML 之后、
+     wallTileLitState 之后新增了这三个函数（+26 行），render-blocks-tileHTML/
+     render-blocks-forms-join 两处单纯因插入位置在它们之前而整体下移 +26 行
+     （113→139、116→142）；pattern 本身未变，不是消费点代码形状变化。 */
   const expectMigrated = (id, file, line) => {
     const f = lConsumerFindings.find(x => x.findingId === 'l-field-consumer:' + id);
     assert(f, `应有 l-field-consumer:${id}`);
@@ -340,8 +345,8 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     assert.equal(f.status, 'pass', '四处已在 4a 步完成 L→grapheme 收敛，按新 pattern 应判 pass（消费点确实读取 grapheme）');
     assert.equal(f.details.consumesGrapheme, true);
   };
-  expectMigrated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 113);
-  expectMigrated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 116);
+  expectMigrated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 139);
+  expectMigrated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 142);
   expectMigrated('games-flash-display', 'frontend/src/shared/games.js', 1209);
   expectMigrated('check-data-schema-gate', 'tools/validation/check_data.js', 105);
   console.log('PASS migration_audit（H-3 验证 + H2 回归 + 4b 二次更新）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass（pattern 随 4b 消费者兼容层改动同步更新，精确定位到各自代码行）');

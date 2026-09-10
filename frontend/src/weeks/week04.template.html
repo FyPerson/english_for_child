@@ -926,9 +926,7 @@ function illHTML(key, size){
   if(ART[key]) return `<div style="width:${s}px;height:${s}px">${ART[key]}</div>`;
   return '';
 }
-const bookArt = key => BOOK_IMG[key]
-  ? `<img src="${BOOK_IMG[key]}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block">`
-  : (ART[key] || '');   // 图和图标都没有时给空串，别把 undefined 渲染出去
+const bookArt = key => bookArtHTML(key); // T3-2：收敛到共享函数（懒引用——bookArtHTML 定义在后面 @include shared/render-blocks.js 所在的另一个 <script> 标签里，此处若直接 `= bookArtHTML` 会在这个更早的 <script> 执行到这一行时就去读取尚未存在的绑定而抛 ReferenceError，包一层箭头函数延迟到真正调用 bookArt(...) 时才解析）
 /* ---------- Nat 绘本插图 END ---------- */
 
 
@@ -1161,7 +1159,10 @@ function runAudioStage(playFn, onEnded){
 <script>
 /* ==================================================================
    PHONEME AUDIO — 十八段真人示范音（c 与 k 共用 /k/）：前两周十二段原样继承，第三周
-   g o u l f b 六段 2026-09-03 注入。由 tools/build_phonemes.py 从 assets/phonemes/ 注入，
+   g o u l f b 六段 2026-09-03 注入。本周（第四周，巩固周）不教新字位，这十八段
+   全部是前三周原样继承，本周未新增任何一段（T3-6 核实：week04.data.js 与前三周
+   共用同一份 frontend/src/media/week04/phoneme_audio.js 内容，逐条比对一致）。
+   由 tools/build_phonemes.py 从 assets/phonemes/ 注入，
    勿手改；缺音时查不到就没有听音按钮（规范铁律 8）。除 /b/ 外十七段剪自 Freesound 用户
    margo_heston 的「English Phonemes」音包（CC BY-NC 4.0）；/b/ 该音包没有，取自 TESSA /
    The Open University 的 Teaching with Phonics Audio A1（CC BY-NC-SA 4.0）第六次独立示范，
@@ -1217,7 +1218,11 @@ const Phone = (()=>{
 
 
 /* ==================================================================
-   BOOK — 第三本自主阅读小书
+   T3-6：本条改前写"第三本自主阅读小书"，与本周实际数据不符——按 week04.data.js
+   实测更正：
+   BOOK — 三本复读集合（BOOK.title="Three Little Books"，18 页 = 前三周三本小书
+   各 6 页原样拼接），本周不教新书，只是把前三本合在一起给孩子复读巩固，不是
+   新写的第三本。
    ================================================================== */
 
 
@@ -1238,20 +1243,26 @@ const Phone = (()=>{
 const ANSWER_WINDOW_MS = 4000;
 
 /* ==================================================================
-   G3 两扇门 —— 第三天三组最小对立词，全部由页面播放录音。三组都是"只差中间
-   一块红积木"：hot/hut、cot/cut、not/nut 全是 ɑ↔ʌ，本周的关键训练。
+   T3-6（外审 low，2026-09-10 按 week04.data.js 实测重写）：本段改前是第三周的
+   题组说明（hot/hut 这类 g 订单游戏描述），与本周（巩固周）实际数据不符——按
+   week04.data.js 实测重写为本周真实形态。
+   G3 两扇门 —— 巩固周复用前三周的最小对立词，全部由页面播放录音，共 4 组：
+   sat/sit（第一周 a↔i）、hot/hut、cot/cut、not/nut（第三周 ɑ↔ʌ 三组）。不是本周
+   新教内容，是把前三周分散教过的对立音放在一起集中复训。
    ================================================================== */
 
 
 /* ==================================================================
-   G4 点单游戏 —— 八张订单全是 g 开头或 g 结尾的词，重点听词尾的塞音。每个词都没有
-   重复字母，积木架每个字母只放一块（10 块，按元音 / 辅音分组渲染）。
+   G4 点单游戏 —— 六张订单（cat/dog/pig/bed/cup/bag）取自前三周已教词表的复习组合，
+   不是本周新词，也不按某个字母开头/结尾筛选；本周不教新字位，积木架仍是十九块
+   按元音 / 辅音分组渲染的累计集合，不新增任何一块。
    ================================================================== */
 
 
 /* ==================================================================
    G5 造词工坊 —— 真词白名单：三周学过的、且不含重复字母（积木架每字母一块）
-   的真词，累计 111 个。保留词绝不在内，另有 Guard.isReserved 前置兜底。
+   的真词，累计 31 个（实测按 week04.data.js G5_WHITELIST，本条改前误写 111，
+   已按 T3-6 更正）。保留词绝不在内，另有 Guard.isReserved 前置兜底。
    ================================================================== */
 
 
@@ -1312,7 +1323,7 @@ function showCelebration(bodyHTML){
 }
 function celebrateNat(){
   // 主角图还没就位时只放彩带，不渲染 src="" 的破图（规范 §5.3）
-  const hero = CELEBRATE_NAT ? `<img class="celebrate-nat" src="${CELEBRATE_NAT}" alt="" decoding="async">` : '';
+  const hero = celebrateNatHeroHTML(); // T3-2：收敛到共享函数
   showCelebration(confettiHTML() + hero);
 }
 function celebrateConfetti(){ showCelebration(confettiHTML()); }
@@ -1399,7 +1410,14 @@ function renderHome(){
       <p class="hero__lede">这周<b>不教新音</b>。把学过的十九块积木重新拼一拼，复读前三本小书，让孩子先读、再核对。第七天留下第一份<b>十词解码基线</b>和月测阅读记录，决定怎样进入下一阶段。</p>
       <div class="tiles-demo">
         ${assertIdList(META.wallLetters, SOUNDS).map(c=>{
-          const lit = true;   // 积木点亮墙：不存状态，现算首教日是否已完成
+          // 四模板一致性（外审 T3-1，2026-09-10）：改前 week04 硬编码 const lit = true
+          // （本周不教新音，newPatterns 恒为空数组，理论上确实"全部恒点亮"）；但这与
+          // 前三份模板各自维护一套逻辑，一旦以后巩固周的语义有变化（比如新增补漏教学），
+          // 这里不会自动跟着共享函数走。改用与前三份模板一致的共享函数
+          // wallTileLitState（frontend/src/shared/render-blocks.js），
+          // newPatterns:[] 时该函数对每个字位都会走"不是本周新教字位"分支，结果与
+          // 硬编码 true 完全等价，只是不再各自维护一份判断逻辑。
+          const lit = wallTileLitState(c);
           const canHear = hasPhoneme(c);
           const label = graphemeLabel(c, SOUNDS);
           // 降级不是"删掉属性"，是"换一种元素"：没有录音的积木不能仍然是 button，
@@ -1726,7 +1744,7 @@ function printBook(){
         <div class="pb-zh">我自己复读的三本英文书</div>
       </div>
       ${BOOK.pages.map(pg=>`<div class="pb-page">
-        ${BOOK_IMG[pg.art] ? `<img class="pb-art" src="${escapeHtmlAttribute(BOOK_IMG[pg.art])}" alt="">` : ''}
+        ${printBookArtHTML(pg.art)}
         <div class="pb-line">${colorPlainText(pg.line, wordColorCtx())}</div>
         <div class="pb-zh">${escapeHtmlText(pg.zh)}</div>
       </div>`).join('')}

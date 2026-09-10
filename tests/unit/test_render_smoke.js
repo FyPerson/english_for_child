@@ -148,7 +148,9 @@ function makeSandbox() {
     Audio: function Audio() { return { play() { return Promise.resolve(); }, pause() { } }; },
     navigator: { language: 'en-US' },
     __renderResults: [],
-    __wallLitStateResults: []
+    __wallLitStateResults: [],
+    __allLitResults: [],
+    __mediaGuardResults: []
   };
   sandbox.window = sandbox;
   sandbox.window.matchMedia = () => ({ matches: false, addListener() { }, addEventListener() { } });
@@ -273,9 +275,6 @@ function wallLitStateForWeek(templatePath) {
   const seenCases = new Set();
   let checkedTemplates = 0;
   for (const name of templates) {
-    // week04 的 hero 墙硬编码 `const lit = true;`（消化周，全无新字位），不经过
-    // wallTileLitState，本用例不适用，跳过（同头注释"三份模板"的范围声明）。
-    if (name === 'week04.template.html') continue;
     const templatePath = path.join(SRC, 'weeks', name);
     const results = wallLitStateForWeek(templatePath);
     assert(results.length > 0, `${name}：wallLitState 探测未产生任何结果，检查 WALL_LIT_STATE_HARNESS 是否与该周数据结构不匹配`);
@@ -298,6 +297,132 @@ function wallLitStateForWeek(templatePath) {
   assert.deepEqual([...seenCases].sort(), ['historical', 'thisWeekHasFirstTeachDay', 'thisWeekMissingFirstTeachDay'],
     `首页积木墙点亮态三态用例未能覆盖全部三态，实际覆盖：${[...seenCases].sort().join(',')}`);
   console.log(`PASS wall lit state：${checkedTemplates} 份模板均覆盖三态（历史字位恒点亮/本周字位按 dayDone 现算/本周字位缺 FIRST_TEACH_DAY 时不点亮），共验证 ${seenCases.size} 类场景`);
+}
+
+/* T3-1（外审 medium，2026-09-10）：week04.template.html 改前硬编码 `const lit = true`，
+ * 理由是"本周不教新音，newPatterns 恒空数组，逻辑上确实全部恒点亮"——现在四份模板
+ * 统一调用共享函数 wallTileLitState，这里专门证明"newPatterns 为空时，经共享函数
+ * 算出来的结果确实与硬编码 true 等价"，不是断言"看起来应该对"就当它对。 */
+const ALL_LIT_WHEN_NO_NEW_PATTERNS_HARNESS = `
+;(function(){
+  var results = [];
+  if (META.newPatterns.length === 0) {
+    var wallIds = assertIdList(META.wallLetters, SOUNDS);
+    results.push({
+      count: wallIds.length,
+      allLit: wallIds.every(function(id){ return wallTileLitState(id) === true; })
+    });
+  }
+  __allLitResults.push.apply(__allLitResults, results);
+})();
+`;
+
+function allLitForWeek(templatePath) {
+  const expanded = expand(fs.readFileSync(templatePath, 'utf8'), []);
+  const scriptCode = extractScripts(expanded) + '\n' + ALL_LIT_WHEN_NO_NEW_PATTERNS_HARNESS;
+  const sandbox = makeSandbox();
+  const script = new vm.Script(scriptCode, { filename: templatePath });
+  script.runInContext(sandbox);
+  return sandbox.__allLitResults;
+}
+
+{
+  let checkedEmptyNewPatternsTemplates = 0;
+  for (const name of templates) {
+    const templatePath = path.join(SRC, 'weeks', name);
+    const results = allLitForWeek(templatePath);
+    if (results.length === 0) continue; // 本周 newPatterns 非空，不适用本用例
+    assert.equal(results.length, 1, `${name}：ALL_LIT_WHEN_NO_NEW_PATTERNS_HARNESS 应恰好产生一条结果`);
+    const { count, allLit } = results[0];
+    assert(count > 0, `${name}：wallLetters 不应为空，检查 fixture`);
+    assert.equal(allLit, true, `${name}：newPatterns 为空时，wallLetters 全部 ${count} 块经 wallTileLitState 都应点亮，实际有未点亮的`);
+    checkedEmptyNewPatternsTemplates++;
+  }
+  assert.equal(checkedEmptyNewPatternsTemplates, 1,
+    `预期恰好 1 份模板（week04）的 newPatterns 为空，实际 ${checkedEmptyNewPatternsTemplates} 份——` +
+    '如果这个数字变了，说明有其他周也变成了巩固周形态，需要重新核对这条用例是否还覆盖到位');
+  console.log(`PASS wall lit state（T3-1）：newPatterns 为空的 ${checkedEmptyNewPatternsTemplates} 份模板（week04），wallLetters 经共享函数结果全亮，与改前硬编码 true 等价`);
+
+  /* T3-1 接线验证（补）：上面两道用例（wallLitStateForWeek/allLitForWeek）都是直接
+   * 调用共享函数 wallTileLitState 本身，不经过模板 hero 里那句 `const lit = ...`——
+   * 就算某份模板悄悄改回硬编码 `true`/`false`、完全不再调用共享函数，上面两道用例
+   * 也不会变红（它们测的是共享函数自己对不对，不是模板有没有真的接上它）。这里补一条
+   * 源码级断言，直接检查四份模板的 hero 渲染代码里那一行确实写的是
+   * `wallTileLitState(c)` 调用，不是硬编码字面量——防止"函数本身是对的，但某份模板
+   * 没真的接上它"这种回归。 */
+  for (const name of templates) {
+    const source = fs.readFileSync(path.join(SRC, 'weeks', name), 'utf8');
+    assert(/const lit = wallTileLitState\(c\);/.test(source),
+      `${name}：hero 积木墙渲染应调用共享函数 wallTileLitState(c)，不是硬编码字面量或各自维护一份判断表达式`);
+  }
+  console.log(`PASS wall lit state（T3-1 接线验证）：${templates.length} 份模板的 hero 渲染均源码级确认调用了共享函数 wallTileLitState(c)`);
+}
+
+/* T3-2（外审 medium，2026-09-10）：week01 改前的三处素材守卫（bookArt 直接回退
+ * ART[key]、celebrateNat 无条件输出、printBook 无条件输出 BOOK_IMG[pg.art]）缺图
+ * 键时会把 undefined 或空 src 渲染进 DOM——补渲染冒烟：分别调 bookArtHTML/
+ * celebrateNatHeroHTML/printBookArtHTML 传一个必然不存在的键，断言结果里不出现
+ * "undefined" 字面量、也不出现空 src（src=""）。四份模板现在共用同一个实现，
+ * 这里跑一遍就覆盖全部四份。 */
+const MEDIA_GUARD_HARNESS = `
+;(function(){
+  var results = [];
+  var MISSING_KEY = '__definitely_missing_key_for_test__';
+  results.push({ name: 'bookArtHTML', html: bookArtHTML(MISSING_KEY) });
+  results.push({ name: 'printBookArtHTML', html: printBookArtHTML(MISSING_KEY) });
+  // CELEBRATE_NAT 是 const，四周现役数据里恒非空，这里不去改它（改不了，也不该改
+  // 真实数据模拟"缺图"）——celebrateNatHeroHTML() 用真实 CELEBRATE_NAT 值调一次，
+  // 只断言正常路径不出现 undefined/空 src；"CELEBRATE_NAT 为空"这一支的分辨力见
+  // 下方独立的 CELEBRATE_NAT_EMPTY_GUARD_CHECK（只加载 render-blocks.js 本身，
+  // 在隔离作用域里自己声明一个空 CELEBRATE_NAT，不依赖四周任何一份真实数据）。
+  results.push({ name: 'celebrateNatHeroHTML', html: celebrateNatHeroHTML() });
+  __mediaGuardResults.push.apply(__mediaGuardResults, results);
+})();
+`;
+
+function mediaGuardForWeek(templatePath) {
+  const expanded = expand(fs.readFileSync(templatePath, 'utf8'), []);
+  const scriptCode = extractScripts(expanded) + '\n' + MEDIA_GUARD_HARNESS;
+  const sandbox = makeSandbox();
+  const script = new vm.Script(scriptCode, { filename: templatePath });
+  script.runInContext(sandbox);
+  return sandbox.__mediaGuardResults;
+}
+
+{
+  let checked = 0;
+  for (const name of templates) {
+    const templatePath = path.join(SRC, 'weeks', name);
+    const results = mediaGuardForWeek(templatePath);
+    assert.equal(results.length, 3, `${name}：MEDIA_GUARD_HARNESS 应产生 3 条结果（bookArtHTML/printBookArtHTML/celebrateNatHeroHTML）`);
+    for (const r of results) {
+      assert.equal(typeof r.html, 'string', `${name}：${r.name} 应返回字符串（可以是空串），实际 ${typeof r.html}`);
+      assert(!r.html.includes('undefined'), `${name}：${r.name} 不应把字面量 "undefined" 渲染进 DOM，实际：${r.html}`);
+      assert(!/\ssrc=["']["']/.test(r.html), `${name}：${r.name} 不应渲染空 src 的 <img>，实际：${r.html}`);
+    }
+    checked++;
+  }
+  assert.equal(checked, templates.length, '素材守卫渲染冒烟应覆盖全部模板');
+  console.log(`PASS media guard（T3-2）：${checked} 份模板的 bookArtHTML/printBookArtHTML 缺图键、celebrateNatHeroHTML 正常路径均不渲染 undefined 或空 src`);
+}
+
+/* CELEBRATE_NAT 为空时 celebrateNatHeroHTML() 应返回空串——四周现役数据的
+ * CELEBRATE_NAT 恒非空（const，不能在上面的沙箱里临时改成空串来测这一支），这里
+ * 单独起一个隔离的 vm 作用域，只加载 frontend/src/shared/render-blocks.js 需要
+ * 的最小依赖（escapeHtmlAttribute 供其他函数用，这里用不到）+ 自己声明一个空
+ * CELEBRATE_NAT，直接证明这一支分支本身确实会被走到、且确实返回空串，不是永远
+ * 走不到的死代码。 */
+{
+  const renderBlocksSrc = fs.readFileSync(path.join(SRC, 'shared', 'render-blocks.js'), 'utf8');
+  const sandbox = { console, __result: undefined };
+  vm.createContext(sandbox);
+  const script = new vm.Script(
+    "const CELEBRATE_NAT = '';\n" + renderBlocksSrc + "\n__result = celebrateNatHeroHTML();",
+    { filename: 'render-blocks.js (isolated CELEBRATE_NAT empty check)' }
+  );
+  script.runInContext(sandbox);
+  assert.equal(sandbox.__result, '', `celebrateNatHeroHTML() 应在 CELEBRATE_NAT 为空时返回空串，实际：${JSON.stringify(sandbox.__result)}`);
+  console.log('PASS media guard（T3-2 隔离验证）：CELEBRATE_NAT 为空时 celebrateNatHeroHTML() 确实返回空串（不是死代码）');
 }
 
 /* ============================================================================

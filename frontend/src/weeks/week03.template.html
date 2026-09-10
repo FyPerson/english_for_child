@@ -11,8 +11,13 @@
 - 换周规则见 docs/声音积木周课件设计规范_20260831_v1.0.md；教学内容按 docs/声音积木六年课程方案 §5.3 第 3 周行。
 - 周主题背景色换成蓝灰色系（每周换一次底色是刻意设计）。元音红 / 辅音青 / 琥珀 accent / 完成绿
   四个教学语义色跨周冻结，未跟着换。
-- 本周新增 g、o、u、l、f、b 六块字母积木，累计十九块；五块红积木到齐。真人孤立音与助记插画
-  尚未就位：听音入口按铁律 8 降级为家长口令示范，插画按 hasIll 守卫降级为"单词 + 中文"。
+- 本周新增 g、o、u、l、f、b 六块字母积木，累计十九块；五块红积木到齐。
+  真人孤立音（T3-6，外审 low，2026-09-10 按 week03.data.js 实测更新）：19 个字位已全部
+  有真人示范音——18 个直接收录（frontend/src/media/week03/phoneme_audio.js），k 通过
+  audioKey 复用 c 的录音（同一个声音两件外套），铁律 8 的口令示范降级已不再触发。
+  助记插画仍只有 6 个字位（g/o/u/l/f/b 六个新字位）真正注入（phoneme_ill.js），其余
+  13 个沿用旧周继承下来的字位仍按 hasIll 守卫降级为"单词 + 中文"——这一条降级仍然
+  是真实现状，不是已解决问题。
 -->
 <title>声音积木 第三周 · 十九块积木</title>
 
@@ -937,9 +942,7 @@ function illHTML(key, size){
   if(ART[key]) return `<div style="width:${s}px;height:${s}px">${ART[key]}</div>`;
   return '';
 }
-const bookArt = key => BOOK_IMG[key]
-  ? `<img src="${BOOK_IMG[key]}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block">`
-  : (ART[key] || '');   // 图和图标都没有时给空串，别把 undefined 渲染出去
+const bookArt = key => bookArtHTML(key); // T3-2：收敛到共享函数（懒引用——bookArtHTML 定义在后面 @include shared/render-blocks.js 所在的另一个 <script> 标签里，此处若直接 `= bookArtHTML` 会在这个更早的 <script> 执行到这一行时就去读取尚未存在的绑定而抛 ReferenceError，包一层箭头函数延迟到真正调用 bookArt(...) 时才解析）
 /* ---------- Nat 绘本插图 END ---------- */
 
 
@@ -1323,7 +1326,7 @@ function showCelebration(bodyHTML){
 }
 function celebrateNat(){
   // 主角图还没就位时只放彩带，不渲染 src="" 的破图（规范 §5.3）
-  const hero = CELEBRATE_NAT ? `<img class="celebrate-nat" src="${CELEBRATE_NAT}" alt="" decoding="async">` : '';
+  const hero = celebrateNatHeroHTML(); // T3-2：收敛到共享函数
   showCelebration(confettiHTML() + hero);
 }
 function celebrateConfetti(){ showCelebration(confettiHTML()); }
@@ -1787,7 +1790,7 @@ function printBook(){
         <div class="pb-zh">我自己读完的第三本英文书</div>
       </div>
       ${BOOK.pages.map(pg=>`<div class="pb-page">
-        ${BOOK_IMG[pg.art] ? `<img class="pb-art" src="${escapeHtmlAttribute(BOOK_IMG[pg.art])}" alt="">` : ''}
+        ${printBookArtHTML(pg.art)}
         <div class="pb-line">${colorPlainText(pg.line, wordColorCtx())}</div>
         <div class="pb-zh">${escapeHtmlText(pg.zh)}</div>
       </div>`).join('')}

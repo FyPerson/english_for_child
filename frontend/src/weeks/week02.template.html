@@ -929,9 +929,7 @@ function illHTML(key, size){
   if(ART[key]) return `<div style="width:${s}px;height:${s}px">${ART[key]}</div>`;
   return '';
 }
-const bookArt = key => BOOK_IMG[key]
-  ? `<img src="${BOOK_IMG[key]}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block">`
-  : (ART[key] || '');   // 图和图标都没有时给空串，别把 undefined 渲染出去
+const bookArt = key => bookArtHTML(key); // T3-2：收敛到共享函数（懒引用——bookArtHTML 定义在后面 @include shared/render-blocks.js 所在的另一个 <script> 标签里，此处若直接 `= bookArtHTML` 会在这个更早的 <script> 执行到这一行时就去读取尚未存在的绑定而抛 ReferenceError，包一层箭头函数延迟到真正调用 bookArt(...) 时才解析）
 /* ---------- Nat 绘本插图 END ---------- */
 
 
@@ -1314,7 +1312,7 @@ function showCelebration(bodyHTML){
 }
 function celebrateNat(){
   // 主角图还没就位时只放彩带，不渲染 src="" 的破图（规范 §5.3）
-  const hero = CELEBRATE_NAT ? `<img class="celebrate-nat" src="${CELEBRATE_NAT}" alt="" decoding="async">` : '';
+  const hero = celebrateNatHeroHTML(); // T3-2：收敛到共享函数
   showCelebration(confettiHTML() + hero);
 }
 function celebrateConfetti(){ showCelebration(confettiHTML()); }
@@ -1625,7 +1623,7 @@ function renderDay(n){
   </div>`;
 
   renderDots(n);
-  initG2(); initG3(); initG4(); initG5(); initFlash(); initBook(); initG1(); initWordForge();
+  initG2(); initG3(); initG4(); initG5(); initFlash(); initBook(); initG1(); initInitialPick(); initWordForge();
   updateFinish(n);
   // 展开第一个未完成的步骤
   const firstOpen = document.querySelector('.step');
@@ -1776,7 +1774,7 @@ function printBook(){
         <div class="pb-zh">我自己读完的第二本英文书</div>
       </div>
       ${BOOK.pages.map(pg=>`<div class="pb-page">
-        ${BOOK_IMG[pg.art] ? `<img class="pb-art" src="${escapeHtmlAttribute(BOOK_IMG[pg.art])}" alt="">` : ''}
+        ${printBookArtHTML(pg.art)}
         <div class="pb-line">${colorPlainText(pg.line, wordColorCtx())}</div>
         <div class="pb-zh">${escapeHtmlText(pg.zh)}</div>
       </div>`).join('')}

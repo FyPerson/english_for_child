@@ -879,9 +879,7 @@ function illHTML(key, size){
   if(ART[key]) return `<div style="width:${s}px;height:${s}px">${ART[key]}</div>`;
   return '';
 }
-const bookArt = key => BOOK_IMG[key]
-  ? `<img src="${BOOK_IMG[key]}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block">`
-  : ART[key];
+const bookArt = key => bookArtHTML(key); // T3-2：收敛到共享函数（懒引用——bookArtHTML 定义在后面 @include shared/render-blocks.js 所在的另一个 <script> 标签里，此处若直接 `= bookArtHTML` 会在这个更早的 <script> 执行到这一行时就去读取尚未存在的绑定而抛 ReferenceError，包一层箭头函数延迟到真正调用 bookArt(...) 时才解析）
 /* ---------- Nat 绘本插图 END ---------- */
 
 
@@ -1121,10 +1119,15 @@ function runAudioStage(playFn, onEnded){
 const Phone = (()=>{
   const cache = {};
   return { say(k){
-    const src = PHONEME_AUDIO[k]; if(!src) return false;
+    // T3-3（外审 medium，2026-09-10，四模板一致性）：改前直接用原始字位 k 查
+    // PHONEME_AUDIO 与缓存——week02-04 早已对齐成先 ak = phAudioKey(k) 再查询/
+    // 缓存（一音多形，如 c/k 共用同一段录音），这里补齐，重试参数仍保留原始 k
+    // （Phone.say(k) 递归调用要按调用方传入的原始键重试，不是按录音键）。
+    const ak = phAudioKey(k);                       // 一音多形走同一段录音
+    const src = PHONEME_AUDIO[ak]; if(!src) return false;
     AudioBus.stopForPhone();                // R-9 变体：断单词/TTS，音素间叠音保留（D3，预筛M4）
-    let a = cache[k];
-    if(!a){ a = new Audio(src); a.preload = 'auto'; cache[k] = a; }
+    let a = cache[ak];                              // 缓存也按录音键，两个字母共用一个 Audio
+    if(!a){ a = new Audio(src); a.preload = 'auto'; cache[ak] = a; }
     const generation = AudioBus.generation();
     const failed = () => {
       if(AudioBus.generation() !== generation) return;
@@ -1252,7 +1255,7 @@ function showCelebration(bodyHTML){
   document.addEventListener('click', activeCelebrationDismissClick, {capture:true, once:true});
   setTimeout(()=>{ if(activeCelebration === el) dismissCelebration(); }, 2000);
 }
-function celebrateNat(){ showCelebration(confettiHTML() + `<img class="celebrate-nat" src="${CELEBRATE_NAT}" alt="" decoding="async">`); }
+function celebrateNat(){ showCelebration(confettiHTML() + celebrateNatHeroHTML()); } // T3-2：收敛到共享函数
 function celebrateConfetti(){ showCelebration(confettiHTML()); }
 
 function onNewRecord(recKey){ celebrateNat(); }
@@ -1536,7 +1539,7 @@ function renderDay(n){
       <button class="backlink" data-goto="0">${ART.arrowL} 返回本周总览</button>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span class="pill pill--c">${d.wd}</span>
-        ${d.sounds.length?`<span class="pill">今日音 ${d.sounds.map(s=>escapeHtmlText(SOUNDS[s].ipa)).join(' ')}</span>`:''}
+        ${d.sounds.length?`<span class="pill">今日音 ${[...new Set(d.sounds.map(s=>escapeHtmlText(SOUNDS[s].ipa)))].join(' ')}</span>`:''}
         <span class="pill ${d.rest?'pill--a':''}">${d.rest?'休息日':'共 '+total+' 分钟'}</span>
       </div>
       <h1>${d.title}</h1>
@@ -1554,7 +1557,7 @@ function renderDay(n){
   </div>`;
 
   renderDots(n);
-  initG2(); initG3(); initG4(); initG5(); initFlash(); initBook(); initG1(); initInitialPick();
+  initG2(); initG3(); initG4(); initG5(); initFlash(); initBook(); initG1(); initInitialPick(); initWordForge();
   updateFinish(n);
   // 展开第一个未完成的步骤
   const firstOpen = document.querySelector('.step');
@@ -1649,6 +1652,56 @@ function updateFinish(n){
    →已确认态（撤销）。词表逐词推进，过完即结束，不强制全确认。
    ================================================================== */
 <!-- @include shared/games.js -->
+
+/* T3-5（外审 medium，2026-09-10，四模板一致性）：week01 数据本身没有 wordforge 块，
+ * 改前也就没定义 initWordForge、初始化调用全集里自然也没接线（漏接线本身是安全的，
+ * 因为没有对应 DOM 元素）。但"按周数据有没有这个块决定接不接线"是一种隐性风险——
+ * 换成"四份模板统一调全集，函数体自己按 querySelectorAll 判断有没有匹配元素、
+ * 没有就是空操作"，与 week04 两个块都没有却两个都调、已验证空调用安全是同一个
+ * 判断依据。函数体与 week02/03/04 逐字一致（复制自 week02.template.html）。 */
+function initWordForge(){
+  document.querySelectorAll('[data-wordforge]').forEach(root=>{
+    const result = root.querySelector('[data-wf-result]');
+    const initialHint = result.textContent;
+    let playToken = 0, pictureTimer = null;
+    function beginSequence(){
+      playToken++;
+      return playToken;
+    }
+    function showStageFailure(retry, token){
+      if(token !== playToken) return;
+      showAudioFailure({ retry(){ if(token === playToken) retry(); } });
+    }
+    function playWord(word){
+      const token = beginSequence();
+      WordAudio.play(word).then(r=>{
+        if(token !== playToken) return;
+        if(r.status === 'failed') showStageFailure(()=>playWord(word), token);
+      });
+    }
+    function clearPicture(restoreHint=true){
+      if(pictureTimer){ clearTimeout(pictureTimer); pictureTimer = null; }
+      if(restoreHint) result.textContent = initialHint;
+    }
+    function showWordPicture(word){
+      const d = W[word] || {};
+      clearPicture(false);
+      result.innerHTML = hasIll(d.art)
+        ? `<div class="wordforge__picture" data-wf-picture data-wf-picture-word="${escapeHtmlAttribute(word)}">${illHTML(d.art,104)}<span class="wordforge__picture-label"><b>${colorStrictWord(word, wordColorCtx())}</b><small>${d.zh || ''}</small></span></div>`
+        : `<b>${colorStrictWord(word, wordColorCtx())}</b>　${d.zh || ''}`;
+      pictureTimer = setTimeout(()=>clearPicture(true), 1500);
+    }
+
+    root.addEventListener('click', e=>{
+      const choice = e.target.closest('[data-wf-word]');
+      if(!choice || !root.contains(choice)) return;
+      const word = choice.dataset.wfWord;
+      showWordPicture(word);
+      playWord(word);
+    });
+  });
+}
+
 function printBook(){
   if(!document.querySelector('.printbook')){
     const el = document.createElement('div');
@@ -1660,7 +1713,7 @@ function printBook(){
         <div class="pb-zh">我自己读完的第一本英文书</div>
       </div>
       ${BOOK.pages.map(pg=>`<div class="pb-page">
-        <img class="pb-art" src="${escapeHtmlAttribute(BOOK_IMG[pg.art])}" alt="">
+        ${printBookArtHTML(pg.art)}
         <div class="pb-line">${colorPlainText(pg.line, wordColorCtx())}</div>
         <div class="pb-zh">${escapeHtmlText(pg.zh)}</div>
       </div>`).join('')}

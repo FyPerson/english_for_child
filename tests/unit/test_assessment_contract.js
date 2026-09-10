@@ -135,7 +135,9 @@ function weeklyFixture(week) {
       week, assessmentMode: 'weekly', teachingMode: 'phoneme', consolidation: false,
       bookMode: 'new', externalReading: false, wallLetters: 'satipnckehrmdgoulfb'.split('')
     },
-    SOUNDS: Object.fromEntries('satipnckehrmdgoulfb'.split('').map(c => [c, {grapheme: c}])),
+    // W5 阻塞第三条：CVC 判据改按字位 type（'c'/'v'）判，不再是字符级正则——
+    // 合成 fixture 补上 type 字段（单字母 ID，元音字母对应 'v'，其余 'c'）。
+    SOUNDS: Object.fromEntries('satipnckehrmdgoulfb'.split('').map(c => [c, {grapheme: c, type: 'aeiou'.includes(c) ? 'v' : 'c'}])),
     RESERVED: ['hem', 'ram', 'rid', 'dam', 'kid'],
     W: {hem: {zh: '边'}, ram: {zh: '公羊'}, rid: {zh: '摆脱'}, dam: {zh: '水坝'}, kid: {zh: '小孩'}},
     FIRST_TEACH_DAY: {}, BOOK: {pages: []}, WALL_HINT: {},
@@ -303,6 +305,75 @@ console.log(`PASS weekly 失败例：2 个禁止块类型（${WEEKLY_FORBIDDEN_B
     assert.deepEqual(errors, [], `真实 W${week} 数据应通过 weekly 契约，实际：` + JSON.stringify(errors));
   }
   console.log('PASS weekly 逐周回归：真实 W1/W2/W3 数据（loadData 直接加载 data.js）均通过 weekly 契约');
+}
+
+// ============================================================================
+// W5 阻塞第三条（外审，2026-09-10）：CVC 判据改按字位 ID（segmentWord + soundType），
+// 不再是字符级正则。合成 SOUNDS 含 'ai'（双字母字位，与 r/a/i/n 单字母字位共存），
+// 覆盖：rain（写了 segments）通过 / rains（4 字位）失败 / sat（单字母 CVC）通过 /
+// at（2 字位）失败 / ai 未教时 rain 因分词退化成 4 个单字母字位而失败。
+// ============================================================================
+{
+  const withAi = () => {
+    const d = structuredClone(w5);
+    d.SOUNDS.ai = {grapheme: 'ai', type: 'v'};
+    delete d.W.kid; // 腾出一个 RESERVED 槽位给测试词，避免和基线词冲突
+    d.RESERVED = d.RESERVED.slice(0, 4);
+    return d;
+  };
+
+  {
+    const d = withAi();
+    d.RESERVED.push('rain');
+    d.W.rain = {zh: '雨', segments: ['r', 'ai', 'n']};
+    const errors = validateAssessment(d);
+    assert.deepEqual(errors, [], 'rain（三个字位 r/ai/n，写了 segments）应通过 CVC 检查，实际：' + JSON.stringify(errors));
+    console.log('PASS W5 阻塞第三条正例：rain（写了 segments，r-ai-n 恰好 C-V-C）通过');
+  }
+
+  {
+    const d = withAi();
+    d.RESERVED.push('rains');
+    d.W.rains = {zh: '雨（复数，合成测试词）', segments: ['r', 'ai', 'n', 's']};
+    const errors = validateAssessment(d);
+    assert(errors.includes('周检词不是三个字位：rains（实际 4 个）'),
+      'rains（四个字位）应报"不是三个字位"，实际：' + JSON.stringify(errors));
+    console.log('PASS W5 阻塞第三条反例①：rains（四个字位）报"不是三个字位"');
+  }
+
+  {
+    const d = withAi();
+    d.RESERVED.push('sat');
+    d.W.sat = {zh: '坐下了（合成测试词）'};
+    const errors = validateAssessment(d);
+    assert.deepEqual(errors, [], 'sat（单字母字位 s-a-t，天然 C-V-C）应通过，实际：' + JSON.stringify(errors));
+    console.log('PASS W5 阻塞第三条正例：sat（单字母字位，天然 C-V-C）通过');
+  }
+
+  {
+    const d = withAi();
+    d.RESERVED.push('at');
+    d.W.at = {zh: '在（合成测试词）'};
+    const errors = validateAssessment(d);
+    assert(errors.includes('周检词不是三个字位：at（实际 2 个）'),
+      'at（两个字位）应报"不是三个字位"，实际：' + JSON.stringify(errors));
+    console.log('PASS W5 阻塞第三条反例②：at（两个字位）报"不是三个字位"');
+  }
+
+  {
+    // 'ai' 未教（不加进 SOUNDS）：'rain' 只能靠 r/a/i/n 四个单字母字位分词，
+    // 退化成四个字位而不是三个——用来证明"ai 未教"这个前提条件确实改变了
+    // 分词结果本身（不是恒真式），且新判据依然按字位数正确拦下。
+    const d = structuredClone(w5);
+    delete d.W.kid;
+    d.RESERVED = d.RESERVED.slice(0, 4);
+    d.RESERVED.push('rain');
+    d.W.rain = {zh: '雨（未教 ai 时的合成测试词）'};
+    const errors = validateAssessment(d);
+    assert(errors.includes('周检词不是三个字位：rain（实际 4 个）'),
+      '未教 ai 时，rain 应退化成四个字位并报"不是三个字位"，实际：' + JSON.stringify(errors));
+    console.log('PASS W5 阻塞第三条：ai 未教时 rain 退化成 4 个单字母字位，报"不是三个字位"');
+  }
 }
 
 // ============================================================================

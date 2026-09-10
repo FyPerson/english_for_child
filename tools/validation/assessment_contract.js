@@ -136,13 +136,28 @@ function validateWeekly(d, ctx) {
     owner.add(w);
   });
 
-  d.RESERVED.forEach(word => {
-    if (!/^[^aeiou][aeiou][^aeiou]$/.test(normalize(word)) || [...normalize(word)].some(c => !taught.has(c))) {
-      fail(`周检词不是已教 CVC：${word}`);
-    }
-  });
-
-  const { segmentWord } = require('../../frontend/src/shared/graphemes');
+  /* W5 阻塞第三条（外审，2026-09-10）：改前的 CVC 判据是纯字符级正则
+   * `/^[^aeiou][aeiou][^aeiou]$/` + 逐字符成员检查——`rain` 这类三个字位、四个
+   * 字符的词必然被误判成"不是 CVC"，因为正则要求字符串本身恰好三个字符。改为
+   * 用 segmentWord 先把词分成字位 ID 数组（与 check_data.js 的 idsForWord 同一
+   * 口径：优先读 d.W[word].segments 做显式消歧），判据改成三条都按 ID 判：
+   *   ① 恰好 3 个字位（不是 3 个字符）；
+   *   ② 形态是 辅音-元音-辅音（用 SOUNDS[id].type 的 'c'/'v' 字段判，不是拿
+   *     grapheme 里的字母去猜——四周 data.js 与 graphemes.js 的 SOUNDS schema
+   *     本来就要求每条有合法 type 字段，不需要"字母是否在 aeiou 里"这条过渡
+   *     规则兜底）；
+   *   ③ 每个字位 ID 都在已教字位集合（taught，即 Object.keys(d.SOUNDS)）里——
+   *     这一条在当前实现下实际上恒真：segmentWord 只能从传入的 adaptedSounds
+   *     表里挑字位，adaptedSounds 与 taught 同源于 d.SOUNDS，任何返回的 ID
+   *     必然已经是 taught 的成员；真正的"含未教字位"情形会在 segmentWord 内部
+   *     就找不到可行解析而抛 segment-unknown（归到下面的"分词失败"分支）。
+   *     保留这条显式检查是为了防御未来 adaptedSounds 的键空间与 taught 出现
+   *     分歧（比如某次重构给 adaptedSounds 派生出 taught 里没有的别名键），不是
+   *     当前就会失败的判据——如实说明，不假装它现在能独立抓到什么。
+   * adaptedSounds 的构造挪到这条检查之前（本来在下面单独的"三个字位"检查那里），
+   * 两条检查（原来是"字符级 CVC" + "字位数"两处独立判断）合并成一处，不再各自
+   * 维护一份分词/取值逻辑。分词失败时 fail(...) 报出、带错误码，不让异常冒泡。 */
+  const { segmentWord, soundType } = require('../../frontend/src/shared/graphemes');
   const { withGraphemeFallback } = require('./sounds_grapheme_adapter');
   let adaptedSounds;
   try {
@@ -151,11 +166,28 @@ function validateWeekly(d, ctx) {
     adaptedSounds = d.SOUNDS || {};
   }
   d.RESERVED.forEach(word => {
+    const normalized = normalize(word);
+    const wEntry = d.W && Object.prototype.hasOwnProperty.call(d.W, normalized) ? d.W[normalized] : undefined;
+    const explicitSegments = wEntry && Array.isArray(wEntry.segments) ? wEntry.segments : undefined;
+    let ids;
     try {
-      const ids = segmentWord(word, adaptedSounds);
-      if (ids.length !== 3) fail(`周检词不是三个字位：${word}（实际 ${ids.length} 个）`);
+      ids = segmentWord(normalized, adaptedSounds, explicitSegments);
     } catch (e) {
-      fail(`周检词分词失败：${word}（${e.message || e}）`);
+      fail(`周检词分词失败：${word}（${e.code || 'error'}）：${e.message || e}`);
+      return;
+    }
+    if (ids.length !== 3) { fail(`周检词不是三个字位：${word}（实际 ${ids.length} 个）`); return; }
+    const untaught = ids.filter(id => !taught.has(id));
+    if (untaught.length) { fail(`周检词含未教字位：${word}（[${untaught.join(',')}]）`); return; }
+    let types;
+    try {
+      types = ids.map(id => soundType(id, adaptedSounds));
+    } catch (e) {
+      fail(`周检词字位类型无法判定：${word}（${e.code || 'error'}）：${e.message || e}`);
+      return;
+    }
+    if (!(types[0] === 'c' && types[1] === 'v' && types[2] === 'c')) {
+      fail(`周检词不是已教 CVC：${word}（形态 ${types.join('-')}，字位 [${ids.join(',')}]）`);
     }
   });
 

@@ -23,13 +23,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / 'tests' / 'fixtures' / 'week02-data.js'
 
-SOUNDS_AI_ENTRY = """  ai:{grapheme:'ai', ipa:'/eɪ/', type:'v', art:'rain', mem:'下雨的声音 ai-ai-ai',
+SOUNDS_AI_ENTRY = """  ai:{grapheme:'ai', ipa:'/eɪ/', type:'v', art:'aiSoundMnemonic', mem:'下雨的声音 ai-ai-ai',
      cue:'两个字母粘在一起读一个音：<span class="en">ai</span>。',
      challenge:'合体挑战', try:'先说 a，再说 i，然后把它们粘起来只发一个音。',
      pass:'听起来是一个完整的音，不是两个断开的音。',
      how:'嘴型从 a 平滑滑向 i，中间不停顿。',
      warn:'不要读成两个分开的音节。',
-     demo:[['rain','雨']], displayOnWall:false},
+     demo:[['paid','付过款']], displayOnWall:false},
 """
 
 
@@ -81,30 +81,25 @@ class ReservedSegmentCountTests(unittest.TestCase):
 
     def test_rain_with_explicit_segments_passes(self):
         # 正例：'rain' 三个字位（r/ai/n）、四个字符，写了 explicit segments 消歧，
-        # check_data.js ②「周检词字位数」这条检查本身应该通过——这正是 T5 要修的
-        # 场景：旧的按字符数判会把它误判成"不是三个字母"。
+        # 应该完整通过——check_data.js ②「周检词字位数」这条检查本身（T5 已修）与
+        # assessment_contract.js 的 CVC 判据（W5 阻塞第三条已修，改按字位 ID 判，
+        # 不再是字符级正则）现在应该给出一致的结论，整体退出码为 0。
         #
-        # ⚠️ 范围说明：这里不断言整个 CLI 的退出码为 0。tools/validation/
-        # assessment_contract.js（⑩「第四周起的测评隔离与巩固周契约」调用的
-        # validateAssessment）有一条**独立于本次 T5 改动**的 CVC 判据
-        # （`/^[^aeiou][aeiou][^aeiou]$/` 逐字符正则），同样判不出双字母元音的
-        # CVC——这正是 docs/里程碑2实施方案 §2.2 表格里已经记录、待后续处理的
-        # 已知缺口，不是 T5 要修的 check_data.js:165 那一处，也不在本批任务范围内。
-        # 断言范围收窄为：check_data.js 自己的 ② 检查不再报"字位数不对"，同时
-        # 如实断言 assessment_contract.js 那条已知的、范围外的 CVC 判据仍会命中
-        # （证明本次改动没有意外把它也修好或修坏，边界清楚）。
+        # 收紧记录：上一批（T5）这里断言过"check_data.js ② 不报错，但 assessment_
+        # contract.js 的独立字符级 CVC 判据仍会命中"，把这条已知缺口的口子留开了。
+        # 现在 assessment_contract.js 那条判据已经在本批修复（同样改用 segmentWord
+        # + soundType 按字位 ID 判），口子已关上，这里改回要求整体通过。
         raw = base_fixture_with_ai_sound()
         raw = swap_reserved_kid_for(raw, 'rain', "rain:{zh:'雨',art:null,segments:['r','ai','n']}")
         target = Path(self.tmpdir.name) / 'week02-data-rain-with-segments.js'
         target.write_text(raw, encoding='utf-8')
 
         result = run_check_data(target)
-        self.assertNotIn('必须是三个字位', result.stdout, '不应报"必须是三个字位"这条失败——rain 恰好是三个字位，check_data.js ② 本身的判据应该放行')
-        self.assertNotIn('"rain" 无法按字位分词', result.stdout, '写了正确 segments 时不应报分词失败')
-        # 如实记录范围外的已知缺口（不是本次断言的重点，只是不隐瞒它仍然存在）：
-        self.assertIn('周检词不是已教 CVC：rain', result.stdout,
-            'assessment_contract.js 的独立 CVC 判据是已知的、范围外的字符级正则缺口，'
-            '本次 T5 未涉及，如实记录其仍然存在，不隐瞒也不越权修复')
+        self.assertEqual(result.returncode, 0,
+            f'"rain"（三个字位，写了 segments）现在应该整体通过（check_data.js ② 与 '
+            f'assessment_contract.js 的 CVC 判据均已改按字位 ID 判）：{result.stdout[-1500:]}')
+        _, f = count_pass_fail(result.stdout)
+        self.assertEqual(f, 0)
 
     def test_rains_four_segments_fails(self):
         # 反例①：'rains' 是四个字位（r/ai/n/s），即便写了完整 segments 也不满足

@@ -67,6 +67,32 @@ function wallTileLitState(id){
   }
   return dayDone(FIRST_TEACH_DAY[id]);
 }
+/* T3-2（外审 medium，2026-09-10，四模板一致性）：week01 三处素材守卫改前直接
+ * 回退/无条件输出，与 week02-04 早已有的空串兜底/存在性判断不一致——照
+ * wallTileLitState 的方式抽成共享函数，四份模板统一调用，不再各自维护一份。
+ * 三处依赖的全局（BOOK_IMG/ART/CELEBRATE_NAT）均由 `@include media/weekNN/*.js`
+ * 在 `@include shared/render-blocks.js` 之前注入，函数体内直接引用即可。 */
+/* bookArtHTML(key) -> string：小书/词卡插图，优先用 BOOK_IMG 真实照片，没有就退回
+ * ART 里的手绘图标，两者都没有给空串——不把 undefined 渲染进 DOM（week01 改前
+ * 直接 `return ART[key]`，key 不在 ART 里时 `bookArt(key)` 返回 undefined，
+ * 拼进模板字符串会变成字面量 "undefined"）。 */
+function bookArtHTML(key){
+  if(BOOK_IMG[key]) return `<img src="${BOOK_IMG[key]}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;display:block">`;
+  return ART[key] || '';
+}
+/* celebrateNatHeroHTML() -> string：Nat 庆祝角色图，CELEBRATE_NAT 还没就位时只留
+ * 空串（配合彩带一起用），不渲染 src="" 的破图（week01 改前无条件输出
+ * `<img src="${CELEBRATE_NAT}">`，CELEBRATE_NAT 为空字符串时会渲染出一个没有
+ * 图片的破 <img> 标签）。 */
+function celebrateNatHeroHTML(){
+  return CELEBRATE_NAT ? `<img class="celebrate-nat" src="${CELEBRATE_NAT}" alt="" decoding="async">` : '';
+}
+/* printBookArtHTML(art) -> string：打印版小书每页插图，没有对应 BOOK_IMG 时不渲染
+ * <img>（week01 改前无条件渲染 `<img src="${BOOK_IMG[pg.art]}">`，缺图时 src 是
+ * 字面量 "undefined"）。 */
+function printBookArtHTML(art){
+  return BOOK_IMG[art] ? `<img class="pb-art" src="${escapeHtmlAttribute(BOOK_IMG[art])}" alt="">` : '';
+}
 function artHTML(key, size){
   return illHTML(key, size);
 }
