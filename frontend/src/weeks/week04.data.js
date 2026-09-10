@@ -1871,6 +1871,10 @@ const W = {
     "zh": "切",
     "art": "cut"
   },
+  "dab": {
+    "zh": "轻点",
+    "art": null
+  },
   "dan": {
     "zh": "丹",
     "art": "dan"
@@ -1899,6 +1903,14 @@ const W = {
     "zh": "青蛙",
     "art": "frog"
   },
+  "gab": {
+    "zh": "闲聊",
+    "art": null
+  },
+  "gal": {
+    "zh": "女孩（口语）",
+    "art": null
+  },
   "golf": {
     "zh": "高尔夫",
     "art": "golf"
@@ -1910,6 +1922,10 @@ const W = {
   "hot": {
     "zh": "热的",
     "art": "hot"
+  },
+  "hub": {
+    "zh": "中心",
+    "art": null
   },
   "hug": {
     "zh": "抱一抱",
@@ -1955,6 +1971,10 @@ const W = {
     "zh": "马克杯",
     "art": "mug"
   },
+  "nag": {
+    "zh": "唠叨",
+    "art": null
+  },
   "nap": {
     "zh": "打个盹",
     "art": "nap"
@@ -1966,6 +1986,10 @@ const W = {
   "nat": {
     "zh": "纳特",
     "art": "nat"
+  },
+  "nod": {
+    "zh": "点头",
+    "art": null
   },
   "not": {
     "zh": "不",
@@ -2015,6 +2039,14 @@ const W = {
     "zh": "跑了",
     "art": "ran"
   },
+  "rib": {
+    "zh": "肋骨",
+    "art": null
+  },
+  "rot": {
+    "zh": "腐烂",
+    "art": null
+  },
   "sad": {
     "zh": "难过",
     "art": "sad"
@@ -2034,6 +2066,14 @@ const W = {
   "sit": {
     "zh": "坐",
     "art": "natSit"
+  },
+  "sob": {
+    "zh": "抽泣",
+    "art": null
+  },
+  "sod": {
+    "zh": "草皮",
+    "art": null
   },
   "sun": {
     "zh": "太阳",

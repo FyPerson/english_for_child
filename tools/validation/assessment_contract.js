@@ -96,22 +96,25 @@ const WEEKLY_FORBIDDEN_BLOCKS = ['retest', 'probe'];
  * 所以底层先统一收集 textParts，两条路径各自在其上派生自己需要的形态，避免维护两份
  * 几乎相同的 visit() 遍历逻辑。
  *
- * `excludeDictionaryKeys`（可选，一个存归一化小写词的 Set；monthly 不传，逐字保留
- * 重构前行为，扫全部 `W`）控制"可见文本"里要不要把 `W` 排除掉。monthly（W4）的
- * RESERVED 系列词按 check_data.js:80 现状对 week>=4 豁免"必须在 W 里有释义"，实测也
- * 确实不在 W 里——包含 W 不会造成自我冲突。但 weekly（W1-W3）恰恰相反：
- * `DATA-RESERVED-01` 要求 RESERVED 词必须在 W 里有释义（上面 `周检词在 W 里没有释义`
- * 那段校验），若这里把这些词自己的释义条目也算进"可见文本"，会被误判"泄漏进教学
- * 内容"——那是一个词典查阅入口，不是练习/游戏，`weekly 列` 的"不泄漏进练习/游戏"
- * 语义上不包含它。
+ * `excludeDictionaryKeys`（可选，一个存归一化小写词的 Set）控制"可见文本"里要不要
+ * 把 `W` 的对应键排除掉。`DATA-RESERVED-01` 要求 RESERVED 系列词必须在 W 里有
+ * 释义，若把这些词自己的释义条目也算进"可见文本"，会被误判"泄漏进教学内容"——
+ * 那是一个词典查阅入口，不是练习/游戏，"不泄漏进练习/游戏"语义上不包含它。
  *
  * M2 修复（里程碑 2 第 5 步预筛）：与 `DATA-RESERVED-01` 真正打架的只有周检词自己
  * 那一条键（连同它的释义值），不是整个 `W`——若某个周检词恰好出现在**别的**词条的
  * zh/art/例句里，那仍然是一次真实泄漏，理应查出。所以这里只按键逐条跳过
  * `excludeDictionaryKeys` 命中的条目，其余词条照常纳入"可见文本"扫描，而不是
  * 像旧版 `includeDictionary:false` 那样把整个 `W` 都排除在外。
- * 所以 weekly 分支显式传 `{excludeDictionaryKeys: owner}`（RESERVED 词集合），
- * monthly 不传，维持原语义。 */
+ * weekly 分支显式传 `{excludeDictionaryKeys: owner}`（RESERVED 词集合）。
+ *
+ * 任务 2（2026-09-10）：monthly（W4）分支改前不传，理由是"W4 的 RESERVED 系列词
+ * 按 check_data.js 旧的 week>=4 豁免不在 W 里，包含 W 不会造成自我冲突"——这条
+ * 前提已被 P16（同批任务 1）推翻：check_data.js 删掉了那条豁免，W4 数据也已把
+ * RESERVED/RESERVED_RETEST 十词补进 W。monthly 现在与 weekly 传同样形状的
+ * `{excludeDictionaryKeys: new Set(owner.keys())}`（owner 是 RESERVED ∪
+ * RESERVED_RETEST ∪ PROBE_A ∪ PROBE_B ∪ GLOBAL_RESERVED 五个测评池的并集），
+ * 见下方 validateMonthlyW4 调用处。 */
 function collectTextParts(d, teachingBlocks, options) {
   const excludeDictionaryKeys = options && options.excludeDictionaryKeys;
   const textParts = [];
@@ -253,7 +256,16 @@ function validateMonthlyW4(d, ctx) {
   // W10/W20/W40 起 monthly 路径重新可达后，字位表若出现多字母字位，这份字符级
   // 判据会重现 weekly 路径已经修过的双向误判。
   [...d.RESERVED, ...d.RESERVED_RETEST].forEach(w => assertCvcByGraphemes(w, d, taught, fail, '周检/复测词'));
-  const textParts = collectTextParts(d, teachingBlocks);
+  /* 任务 2（2026-09-10）：与 validateWeekly 对齐，传 excludeDictionaryKeys。P16 删掉
+   * check_data.js:83 的 `week>=4` 豁免后，W4 的 RESERVED/RESERVED_RETEST 十词已经
+   * 补进 W（见 frontend/src/weeks/week04.data.js），不再是「本函数头注释所述的
+   * W4 实测不在 W 里」——继续不传会让这十词自己在 W 里的释义条目被当成"可见文本"
+   * 扫进 visible 集合，与 owner（= RESERVED ∪ RESERVED_RETEST ∪ PROBE_A ∪ PROBE_B ∪
+   * GLOBAL_RESERVED）比对时产生假阳性"测评词泄漏进教学内容"——是与 weekly 路径完全
+   * 相同的自相矛盾（M2 注释里已经讲过一次的道理，这里补第二次实例）。真出现在书页
+   * 正文等真实教学材料里时，泄漏检测仍然成立，因为那些引用不在 W 的键本身，
+   * excludeDictionaryKeys 只跳过按键匹配的 W 词条本身，不影响别处对它的引用。 */
+  const textParts = collectTextParts(d, teachingBlocks, { excludeDictionaryKeys: new Set(owner.keys()) });
   const visible = visibleWordSet(textParts);
   for (const w of owner.keys()) if (visible.has(w)) fail(`测评词泄漏进教学内容：${w}`);
   checkConsolidation(d, ctx.blocks, fail);

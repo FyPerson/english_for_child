@@ -1361,4 +1361,61 @@ function initBook(){
 }
 
 /* ---------- 打印小书：封面 + 六页 + 签名页。节点挂在 body 下、平时隐藏，
-   打印时用 body.pbmode 只显示它，普通 Ctrl+P 打印页面本身不受影响。 ---------- */
+   打印时用 body.pbmode 只显示它，普通 Ctrl+P 打印页面本身不受影响。这段逻辑本身
+   仍留在各模板里（printBook 依赖每份模板各自的 CELEBRATE_NAT/ART/BOOK_IMG 等
+   媒体常量拼版式，收敛成本高于收益，本批不动），下方 initWordForge 是另一件
+   独立的事——见其头注释。 ---------- */
+
+/* 轮 D L1（外审，2026-09-10）：initWordForge 四份模板逐字节一致（byte-for-byte
+ * diff 过 week01~04.template.html 各自的定义），收敛到这里。运行时依赖
+ * （W/WordAudio/showAudioFailure/hasIll/illHTML/colorStrictWord/wordColorCtx/
+ * escapeHtmlAttribute）全部在函数体内部延迟到事件回调触发时才解引用，不在
+ * initWordForge() 调用的那一刻立即读取——W 由各周 weeks/weekNN.data.js（第一个
+ * <script> 标签）声明，本文件通过 `@include shared/games.js` 挂在第二个
+ * <script> 标签里，两者按经典 script 语义共享同一个顶层词法环境（与 bookArt 的
+ * 懒引用、printBook 对 CELEBRATE_NAT 的引用是同一套跨 script 安全模式），不会
+ * 在 initWordForge 定义或调用的时刻抛 ReferenceError。四份模板原有的内联定义已
+ * 删除，改成读这一份共享实现——render smoke 测试的渲染冒烟与状态驱动交互测试
+ * 未改动断言口径，仍然通过即视为收敛未改变行为。 */
+function initWordForge(){
+  document.querySelectorAll('[data-wordforge]').forEach(root=>{
+    const result = root.querySelector('[data-wf-result]');
+    const initialHint = result.textContent;
+    let playToken = 0, pictureTimer = null;
+    function beginSequence(){
+      playToken++;
+      return playToken;
+    }
+    function showStageFailure(retry, token){
+      if(token !== playToken) return;
+      showAudioFailure({ retry(){ if(token === playToken) retry(); } });
+    }
+    function playWord(word){
+      const token = beginSequence();
+      WordAudio.play(word).then(r=>{
+        if(token !== playToken) return;
+        if(r.status === 'failed') showStageFailure(()=>playWord(word), token);
+      });
+    }
+    function clearPicture(restoreHint=true){
+      if(pictureTimer){ clearTimeout(pictureTimer); pictureTimer = null; }
+      if(restoreHint) result.textContent = initialHint;
+    }
+    function showWordPicture(word){
+      const d = W[word] || {};
+      clearPicture(false);
+      result.innerHTML = hasIll(d.art)
+        ? `<div class="wordforge__picture" data-wf-picture data-wf-picture-word="${escapeHtmlAttribute(word)}">${illHTML(d.art,104)}<span class="wordforge__picture-label"><b>${colorStrictWord(word, wordColorCtx())}</b><small>${d.zh || ''}</small></span></div>`
+        : `<b>${colorStrictWord(word, wordColorCtx())}</b>　${d.zh || ''}`;
+      pictureTimer = setTimeout(()=>clearPicture(true), 1500);
+    }
+
+    root.addEventListener('click', e=>{
+      const choice = e.target.closest('[data-wf-word]');
+      if(!choice || !root.contains(choice)) return;
+      const word = choice.dataset.wfWord;
+      showWordPicture(word);
+      playWord(word);
+    });
+  });
+}

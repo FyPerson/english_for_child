@@ -187,9 +187,14 @@ const EXCLUDED_ENTRIES = [
   // 核心逻辑而不是残留（L_FIELD_CONSUMER_SPECS 已在 H2 改指向 grapheme，不再需要
   // 排除；仅剩 l-field-present 这一处 dot-access）。
   { file: 'tools/validation/migration_audit.js', patternId: 'dot-access', count: 4, reason: 'DATA-SOUNDS-01 l-field-present 规则读取 entry.L 判定是否仍缺 grapheme，是规则本身，不是残留（M4 重计数：3→4，第 405 行 `typeof entry.L === \'string\' && entry.L.length > 0` 同一行两处 .L）' },
-  // test_migration_audit.js：为验证适配层三态兼容与冲突检测，故意构造带 L 字段的
-  // 合成 SOUNDS 常量（L_ONLY/BOTH/CONFLICTING_ALIAS 等），是测试数据。
-  { file: 'tests/unit/test_migration_audit.js', patternId: 'dot-access', count: 1, reason: '合成测试数据里访问 .L 字段核对适配层行为' },
+  // test_migration_audit.js：合成 SOUNDS 常量（L_ONLY/BOTH/CONFLICTING_ALIAS 等）
+  // 用的都是 `L: 'x'` 这种对象字面量写法（走 key-bare/destructure 两条 pattern，
+  // 见下两行），不是 `entry.L` 属性访问。这里原有一条 dot-access:1 的白名单项，
+  // 唯一命中来源实测是一段注释文字里的"旧 .L 形状"这四个字，不是真的属性访问代码——
+  // 轮 D L2（外审，2026-09-10）重写了那段注释（改成不含 ".L" 字样的措辞，见该文件
+  // expectMigrated 附近改动）后，这个文件的 dot-access 命中数如实降为 0，故删除
+  // 这条白名单项（不是"扫描逻辑坏了不加理由改数字"，是命中来源本就是巧合的注释
+  // 文本，如实反映现状）。
   { file: 'tests/unit/test_migration_audit.js', patternId: 'key-bare', count: 14, reason: '合成测试数据的对象字面量 L: 值（M4 重计数：9→14，L_ONLY/BOTH 两个合成常量各在一行内连写 r/ai/n 三个 L: 字面量，单行各命中 3 处，改前的行级判据只按行数记成 2）' },
   { file: 'tests/unit/test_migration_audit.js', patternId: 'destructure', count: 11, reason: '同上，key-bare 正则同时命中的对象字面量场景（M4 重计数：7→11，同一行多个 L: 的场景）' },
   // test_word_coloring.js（里程碑 2 第 4b 步收口批新增）：validateSoundsSchema 的

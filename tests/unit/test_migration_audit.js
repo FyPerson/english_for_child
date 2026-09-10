@@ -12,8 +12,12 @@ const assert = require('node:assert/strict');
 const {
   buildAudit, auditWeek, defaultWeekSources, sortFindings,
   findDuplicateFindingIds, validateAuditDocument,
-  WEEKLY_FORBIDDEN_CONSTANTS, WEEKLY_FORBIDDEN_BLOCKS
+  WEEKLY_FORBIDDEN_CONSTANTS, WEEKLY_FORBIDDEN_BLOCKS,
+  L_FIELD_CONSUMER_SPECS, lineOf
 } = require('../../tools/validation/migration_audit');
+const fs = require('node:fs');
+const path = require('node:path');
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const { withGraphemeFallback } = require('../../tools/validation/sounds_grapheme_adapter');
 const { collectWordConsumption } = require('../../tools/validation/word_consumers');
 
@@ -299,60 +303,38 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   const lConsumerFindings = realDoc.findings.filter(f => f.ruleId === 'DATA-SOUNDS-01' && f.findingId.startsWith('l-field-consumer:'));
   assert.equal(lConsumerFindings.length, 4, '「L 字段消费点」应精确对应方案 §3.1 影响面表点名的四处');
   assert(lConsumerFindings.every(f => f.week === null), 'L 字段消费点是代码事实，不挂在具体某一周');
-  /* 2026-09-09 里程碑 2 收口批 H2：L_FIELD_CONSUMER_SPECS 的正则已改指向 grapheme
-     等价写法（不再是旧 .L 形状），四处已知消费点在 4a 收敛后如实读取 grapheme，
-     status 从曾经的 unknown（"清单可能过期，需要人工核实"）恢复为可判定的 pass
-     （"消费点确实按预期读取 grapheme"），line 指向各自的真实代码行，不再是 null。
-     这是 H2 明确要求的效果：这四条与 newPatterns 那 4 条真判不了的不同，本来就是
-     可判的，留成 unknown 是错的。
-     2026-09-09 里程碑 2 第 4b 步（消费者兼容层）二次更新：render-blocks-tileHTML 与
-     check-data-schema-gate 两处的代码形状再次发生了真实变化（不是清单过期）——
-     tileHTML 改成一律收 ID、check_data.js 的 SOUNDS 字段齐全检查改走共享
-     validateSoundsSchema，pattern 与行号都要同步更新；另外两处（forms-join /
-     flash-display）内容不变，只是行号随文件里其他改动漂移。
-     2026-09-09 里程碑 2 第 4b 步收口批（M2 属性转义扫尾）三次更新：games-flash-display
-     的 flash 卡面展示改走 escapeHtmlText(s.grapheme)（M2 顺带发现的文本转义缺口，
-     不是 pattern 过期），pattern 与行号一起改；其余三处只是行号随本批新增的注释/
-     escapeHtmlAttribute 调用漂移。这正是 L5 点名的耦合——migration_audit.js 的
-     pattern/行号与被审计文件的具体写法绑死，每次改被扫描文件都要连带同步这两处。
-     2026-09-09 里程碑 2 收口批（外审 H1-L2 十条落实）四次更新：四处 pattern 本身
-     均未变，只是行号随本批新增内容漂移——render-blocks.js 在 case 'sound' 前新增了
-     一段"字段信任模型"说明注释（M2），tileHTML/forms-join 各 +9 行；games.js 的
-     flash 卡面渲染函数上方新增了 s.mem 转义决策注释（M2），games-flash-display
-     +13 行；check_data.js 新增了 H3（表级 schema 问题单独 ok()）与 L2（纯文本字段
-     禁止出现标签）两段代码，check-data-schema-gate +10 行。
-     2026-09-09 里程碑 2 第 7 步（数据迁移 + 启用 DATA-WALL-01）五次更新：check_data.js
-     顶部新增一行 require('./wall_order')（墙真相源模块），check-data-schema-gate
-     单纯因这一行插入而 +1 行（103→104）；pattern 本身未变，不是消费点代码形状变化。
-     2026-09-10 外审收口批（M1：首页积木墙点亮态共享化）六次更新：render-blocks.js 在
-     tileHTML 之后新增了共享函数 wallTileLitState（+23 行，供三份模板共用点亮态判定，
-     不再各自内联同一段表达式），render-blocks-tileHTML/render-blocks-forms-join 两处
-     单纯因插入位置在它们之前而整体下移 +23 行（90→113、93→116）；pattern 本身未变，
-     不是消费点代码形状变化。
-     2026-09-10 外审第二批（B-M2：③「未教字母」检查接入 word_consumers.js 共享抽取器）
-     七次更新：check_data.js 顶部新增一行 require('./word_consumers')，
-     check-data-schema-gate 单纯因这一行插入而再 +1 行（104→105）；pattern 本身未变。
-     2026-09-10 外审第三批（T3-2：四模板一致性，新增 bookArtHTML/celebrateNatHeroHTML/
-     printBookArtHTML 三个共享函数）八次更新：render-blocks.js 在 tileHTML 之后、
-     wallTileLitState 之后新增了这三个函数（+26 行），render-blocks-tileHTML/
-     render-blocks-forms-join 两处单纯因插入位置在它们之前而整体下移 +26 行
-     （113→139、116→142）；pattern 本身未变，不是消费点代码形状变化。
-     2026-09-10 外审第四批（H2：③ 豁免逻辑改写注释 +1 行）九次更新：check_data.js
-     的③附近头注释新增一行，check-data-schema-gate 单纯因这一行插入而再 +1 行
-     （105→106）；pattern 本身未变。 */
-  const expectMigrated = (id, file, line) => {
+  /* 轮 D L2（外审，2026-09-10）：改前这里对四处已知消费点各自钉死一个绝对行号，
+     每次被扫描文件（render-blocks.js/games.js/check_data.js）里其他与消费点本身
+     无关的改动（新增注释、插入一行 require、新增共享函数……）导致行号漂移，这份
+     断言就要跟着手工更新一次——上面这段沿革注释在删除前已经记录了九次这类"纯漂移"
+     更新，行号本身从不是这条测试真正关心的东西，真正关心的是"pattern 还能不能在
+     文件里找到、status 是不是 pass"。
+     改法：不再钉死行号，而是在测试运行时用 L_FIELD_CONSUMER_SPECS 里同一份 pattern
+     （migration_audit.js 导出，不在测试里另外重复维护一份规则，避免两处判据分叉）
+     对磁盘上的当前文件内容重新定位一次，得到"现在应该在哪一行"，再与 finding 报出的
+     source.line 比较是否一致——这样文件里其他内容的行数变化不会让断言变红，行号
+     退化为"两次计算是否互相印证"的诊断，不是硬编码基准。 */
+  const expectMigrated = id => {
+    const spec = L_FIELD_CONSUMER_SPECS.find(s => s.id === id);
+    assert(spec, `L_FIELD_CONSUMER_SPECS 里应有 id=${id} 的消费点定义`);
     const f = lConsumerFindings.find(x => x.findingId === 'l-field-consumer:' + id);
     assert(f, `应有 l-field-consumer:${id}`);
-    assert.equal(f.source.file, file);
-    assert.equal(f.source.line, line, `l-field-consumer:${id} 应精确定位到 grapheme 消费点所在行`);
+    assert.equal(f.source.file, spec.file);
     assert.equal(f.status, 'pass', '四处已在 4a 步完成 L→grapheme 收敛，按新 pattern 应判 pass（消费点确实读取 grapheme）');
     assert.equal(f.details.consumesGrapheme, true);
+    // 稳定定位：用同一份 pattern 现读磁盘文件重新算一次期望行号，不用绝对行号快照。
+    const raw = fs.readFileSync(path.join(REPO_ROOT, spec.file), 'utf8');
+    const m = spec.pattern.exec(raw);
+    assert(m, `spec.pattern（${spec.id}）应该能在 ${spec.file} 里现算匹配到，否则 auditWeek 本身也不该判 pass`);
+    const expectedLine = lineOf(raw, m.index);
+    assert.equal(f.source.line, expectedLine,
+      `l-field-consumer:${id} 报出的行号（${f.source.line}）应与用同一份 pattern 现算的行号（${expectedLine}）一致`);
   };
-  expectMigrated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 139);
-  expectMigrated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 142);
-  expectMigrated('games-flash-display', 'frontend/src/shared/games.js', 1209);
-  expectMigrated('check-data-schema-gate', 'tools/validation/check_data.js', 106);
-  console.log('PASS migration_audit（H-3 验证 + H2 回归 + 4b 二次更新）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass（pattern 随 4b 消费者兼容层改动同步更新，精确定位到各自代码行）');
+  expectMigrated('render-blocks-tileHTML');
+  expectMigrated('render-blocks-forms-join');
+  expectMigrated('games-flash-display');
+  expectMigrated('check-data-schema-gate');
+  console.log('PASS migration_audit（H-3 验证 + H2 回归 + 4b 二次更新 + 轮 D L2 去硬编码行号）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass，行号改按同一份 pattern 现算校验，不再随无关改动漂移');
 }
 
 // ============================================================================
@@ -519,7 +501,11 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
        legacy-html-fallback 1 条 fail（load_data.js 的 HTML 兜底按方案 §3.8 延后到
        第 8 步处置，本步不动）。 */
     'DATA-PATTERN-02': { pass: 12, fail: 1, 'not-applicable': 0, unknown: 0 },
-    'DATA-RESERVED-01': { pass: 35, fail: 5, 'not-applicable': 0, unknown: 0 },
+    /* P16（主会话裁定，2026-09-10）后更新：check_data.js 删掉了 `META.week >= 4 ||
+       W[w]` 那条豁免，frontend/src/weeks/week04.data.js 同步把 RESERVED 五词
+       （dab/nag/nod/rot/sob）补进 W——原先 5 条 w4:definition:* fail 全部转 pass，
+       40 条全部 pass，不再有 fail。 */
+    'DATA-RESERVED-01': { pass: 40, fail: 0, 'not-applicable': 0, unknown: 0 },
     /* 2026-09-09 里程碑 2 第 5 步 P8：W1 周检词 spit（4 字位）换成 pit（3 字位）后，
        segment-count 24 条全部 pass，不再有 fail。 */
     'DATA-RESERVED-02': { pass: 24, fail: 0, 'not-applicable': 0, unknown: 0 },
@@ -567,12 +553,9 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     'DATA-ASSESS-01/w4:forbidden:PROBE_A',
     'DATA-ASSESS-01/w4:forbidden:PROBE_B',
     'DATA-ASSESS-01/w4:forbidden:RESERVED_RETEST',
-    'DATA-PATTERN-02/legacy-html-fallback',
-    'DATA-RESERVED-01/w4:definition:dab',
-    'DATA-RESERVED-01/w4:definition:nag',
-    'DATA-RESERVED-01/w4:definition:nod',
-    'DATA-RESERVED-01/w4:definition:rot',
-    'DATA-RESERVED-01/w4:definition:sob'
+    'DATA-PATTERN-02/legacy-html-fallback'
+    // P16（2026-09-10）后：原来的 5 条 DATA-RESERVED-01/w4:definition:{dab,nag,nod,
+    // rot,sob} fail 已随 W4 数据补齐 W 释义转为 pass，不再出现在这份 fail 清单里。
   ].sort();
   const actualFailIds = realDoc.findings.filter(f => f.status === 'fail').map(f => f.ruleId + '/' + f.findingId).sort();
   assert.deepEqual(actualFailIds, REAL_FAIL_FINDING_IDS,

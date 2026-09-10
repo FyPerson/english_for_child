@@ -291,7 +291,16 @@ function auditWeek(box, raw, file) {
   const isValidWEntry = entry => !!entry && typeof entry === 'object' && !Array.isArray(entry)
     && typeof entry.zh === 'string' && entry.zh.length > 0;
 
+  /* P16（主会话裁定，2026-09-10）：check_data.js 那条 `META.week >= 4 || W[w]` 豁免
+   * 已被删除（见 check_data.js 对应位置的 P16 注释；W4 数据也已把 RESERVED/
+   * RESERVED_RETEST 十词补进 W）——这是与上面 DATA-RESERVED-02 段落（L4）同一种
+   * "check_data.js 现状豁免" 后来被删除的情形，同样按那段的处置口径：不删
+   * `currentlyExempted`/`note` 这两个字段（保持 details 形状稳定，下游按字段取值
+   * 而非按字段存在与否判断），只把取值来源从"week >= 4"改成常量 false，并同步
+   * 更新措辞——不能让 note 继续说"现状还豁免着""待删除"这些已经不成立的话。 */
   RESERVED.forEach(word => {
+    const currentlyExempted = false;
+    const exemptedNote = null;
     const originalKey = wKeysByLower.get(word.toLowerCase());
     const hasOwnKey = originalKey !== undefined && Object.prototype.hasOwnProperty.call(W, originalKey);
     const entry = hasOwnKey ? W[originalKey] : undefined;
@@ -305,8 +314,8 @@ function auditWeek(box, raw, file) {
       details: {
         word: word, hasDefinition: hasDefinition,
         hasOwnKey: hasOwnKey, schemaValid: hasOwnKey ? isValidWEntry(entry) : null,
-        currentlyExempted: week >= 4,
-        note: week >= 4 ? 'check_data.js:79 现状对 week>=4 豁免"RESERVED 必须在 W 里"，该豁免正是规则 #1 状态列标注"待删除"的对象；本发现如实报告事实，不代表当前校验器会拦下' : null
+        currentlyExempted: currentlyExempted,
+        note: exemptedNote
       }
     });
   });
@@ -613,7 +622,12 @@ module.exports = {
   SCHEMA_VERSION,
   WEEKLY_FORBIDDEN_CONSTANTS, WEEKLY_FORBIDDEN_BLOCKS, LEGACY_ARRAY_FIELDS,
   auditWeek, buildAudit, defaultWeekSources,
-  sortFindings, findDuplicateFindingIds, checkFindingIdUniqueness, validateAuditDocument
+  sortFindings, findDuplicateFindingIds, checkFindingIdUniqueness, validateAuditDocument,
+  // 轮 D L2（外审，2026-09-10）导出：供 test_migration_audit.js 的 expectMigrated
+  // 用同一份清单 + 同一个定位函数现算"当前应该在哪一行"，不再在测试里另外硬编码
+  // 一份绝对行号快照（那份快照与被扫描文件的任何无关改动都会漂移，历史上已经
+  // 因为不相关的改动被迫更新了九次，见该测试文件对应位置的沿革注释）。
+  L_FIELD_CONSUMER_SPECS, lineOf
 };
 
 if (require.main === module) main();

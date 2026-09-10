@@ -1684,48 +1684,9 @@ function updateFinish(n){
    词族积木工坊 / 换头造词机：两种模式都用可反复点击的算式行。点击只播放
    当前单词并短暂弹出配图，不留完成态、不计数、不写成绩或 confirms。
    ================================================================== */
-function initWordForge(){
-  document.querySelectorAll('[data-wordforge]').forEach(root=>{
-    const result = root.querySelector('[data-wf-result]');
-    const initialHint = result.textContent;
-    let playToken = 0, pictureTimer = null;
-    function beginSequence(){
-      playToken++;
-      return playToken;
-    }
-    function showStageFailure(retry, token){
-      if(token !== playToken) return;
-      showAudioFailure({ retry(){ if(token === playToken) retry(); } });
-    }
-    function playWord(word){
-      const token = beginSequence();
-      WordAudio.play(word).then(r=>{
-        if(token !== playToken) return;
-        if(r.status === 'failed') showStageFailure(()=>playWord(word), token);
-      });
-    }
-    function clearPicture(restoreHint=true){
-      if(pictureTimer){ clearTimeout(pictureTimer); pictureTimer = null; }
-      if(restoreHint) result.textContent = initialHint;
-    }
-    function showWordPicture(word){
-      const d = W[word] || {};
-      clearPicture(false);
-      result.innerHTML = hasIll(d.art)
-        ? `<div class="wordforge__picture" data-wf-picture data-wf-picture-word="${escapeHtmlAttribute(word)}">${illHTML(d.art,104)}<span class="wordforge__picture-label"><b>${colorStrictWord(word, wordColorCtx())}</b><small>${d.zh || ''}</small></span></div>`
-        : `<b>${colorStrictWord(word, wordColorCtx())}</b>　${d.zh || ''}`;
-      pictureTimer = setTimeout(()=>clearPicture(true), 1500);
-    }
-
-    root.addEventListener('click', e=>{
-      const choice = e.target.closest('[data-wf-word]');
-      if(!choice || !root.contains(choice)) return;
-      const word = choice.dataset.wfWord;
-      showWordPicture(word);
-      playWord(word);
-    });
-  });
-}
+/* 轮 D L1（外审，2026-09-10）：四份模板逐字节一致，已收敛到共享实现
+   frontend/src/shared/games.js 的 initWordForge（随 shared/games.js 的
+   @include 一并引入，调用点不变）。 */
 
 /* ==================================================================
    G2 积木合体（blend 替换，v1.3 §4.2）：每词一屏——积木态（点字母听音素）

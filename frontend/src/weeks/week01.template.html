@@ -1659,48 +1659,9 @@ function updateFinish(n){
  * 换成"四份模板统一调全集，函数体自己按 querySelectorAll 判断有没有匹配元素、
  * 没有就是空操作"，与 week04 两个块都没有却两个都调、已验证空调用安全是同一个
  * 判断依据。函数体与 week02/03/04 逐字一致（复制自 week02.template.html）。 */
-function initWordForge(){
-  document.querySelectorAll('[data-wordforge]').forEach(root=>{
-    const result = root.querySelector('[data-wf-result]');
-    const initialHint = result.textContent;
-    let playToken = 0, pictureTimer = null;
-    function beginSequence(){
-      playToken++;
-      return playToken;
-    }
-    function showStageFailure(retry, token){
-      if(token !== playToken) return;
-      showAudioFailure({ retry(){ if(token === playToken) retry(); } });
-    }
-    function playWord(word){
-      const token = beginSequence();
-      WordAudio.play(word).then(r=>{
-        if(token !== playToken) return;
-        if(r.status === 'failed') showStageFailure(()=>playWord(word), token);
-      });
-    }
-    function clearPicture(restoreHint=true){
-      if(pictureTimer){ clearTimeout(pictureTimer); pictureTimer = null; }
-      if(restoreHint) result.textContent = initialHint;
-    }
-    function showWordPicture(word){
-      const d = W[word] || {};
-      clearPicture(false);
-      result.innerHTML = hasIll(d.art)
-        ? `<div class="wordforge__picture" data-wf-picture data-wf-picture-word="${escapeHtmlAttribute(word)}">${illHTML(d.art,104)}<span class="wordforge__picture-label"><b>${colorStrictWord(word, wordColorCtx())}</b><small>${d.zh || ''}</small></span></div>`
-        : `<b>${colorStrictWord(word, wordColorCtx())}</b>　${d.zh || ''}`;
-      pictureTimer = setTimeout(()=>clearPicture(true), 1500);
-    }
-
-    root.addEventListener('click', e=>{
-      const choice = e.target.closest('[data-wf-word]');
-      if(!choice || !root.contains(choice)) return;
-      const word = choice.dataset.wfWord;
-      showWordPicture(word);
-      playWord(word);
-    });
-  });
-}
+/* 轮 D L1（外审，2026-09-10）：四份模板逐字节一致，已收敛到共享实现
+   frontend/src/shared/games.js 的 initWordForge（随 shared/games.js 的
+   @include 一并引入，调用点不变）。 */
 
 function printBook(){
   if(!document.querySelector('.printbook')){

@@ -80,7 +80,16 @@ console.log(`第 ${META.week} 周 · 累计 ${TAUGHT.size} 音 · 教学词 ${wa
 head('① 引用完整性');
 for (const w of usedWords) ok(W[w] || SIGHT.has(w.toLowerCase()) || (META.week === 1 && w.toLowerCase() === 'nat'), `词 "${w}" 在课程里用到，但 W 里没有`);
 for (const s of usedSounds) ok(SOUNDS[s], `音 "${s}" 在课程里用到，但 SOUNDS 里没有`);
-for (const w of RESERVED) ok(META.week >= 4 || W[w], `保留词 "${w}" 不在 W 里（周检块会读 W[w].zh）`);
+/* P16（主会话裁定，2026-09-10）：删掉 `META.week >= 4 ||` 这条豁免。它原是副机
+ * 装配 W4 时的权宜之计（W4 的 RESERVED 五词当时没进 W），但规范六稿已写死
+ * 「RESERVED 必须在 W」——迁移审计 migration_audit.js:308-309 早就把它标成"待删除"
+ * 的豁免对象。真正的驱动力是 W5：`rain` 这类周检词要靠 `W[word].segments` 显式
+ * 消歧才能分词（下方 idsForWord 的口径），若周检词不进 W，`segmentWord` 拿不到
+ * explicit segments，多解词会直接抛 segment-ambiguous，整条周检块的分词都立不住。
+ * 删除后 W4 数据本身必须补齐 RESERVED/RESERVED_RETEST 十词的 W 条目（已在
+ * frontend/src/weeks/week04.data.js 补齐，zh 释义复用同文件已有的 ASSESSMENT_WORDS
+ * 常量，逐词核对过一致）。 */
+for (const w of RESERVED) ok(W[w], `保留词 "${w}" 不在 W 里（周检块会读 W[w].zh）`);
 for (const p of BOOK.pages) ok(typeof p.line === 'string' && p.zh && p.art, `小书页缺字段：${p.line}`);
 /* SOUNDS schema 校验改走共享校验器 validateSoundsSchema（2026-09-09 外审 medium，
  * 第 4b 步并入）：grapheme 合法性、ID 字符集、遗留 L 字段、ipa/type/教学字段完整性

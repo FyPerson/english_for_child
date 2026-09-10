@@ -31,7 +31,14 @@ const reject = (name,mutate,fragment)=>{
 reject('normalized overlap',d=>d.RESERVED_RETEST[0]='HEM!', '冲突');
 reject('duplicate in one pool',d=>d.RESERVED[1]='hem','冲突');
 reject('missing global pool',d=>d.GLOBAL_RESERVED.pop(),'40 词');
-reject('word dictionary leak',d=>d.W.hem={zh:'衣边'},'泄漏');
+// 任务 2（2026-09-10）改写：改前 `d.W.hem={zh:'衣边'}` 直接给测评词自己（'hem'）
+// 补一条同名 W 词典条目——这恰好是 collectTextParts 在 monthly 路径没传
+// excludeDictionaryKeys 时的自我矛盾（词典键本身被当成"可见文本"扫描，'hem'
+// 自己泄漏自己），任务 2 修复后这条不再报错（已在下方"第五处正例"验证过），
+// 这个反例必须换成真泄漏：'hem' 出现在**另一个**词条（'other'，不是它自己）的
+// 释义文本里——excludeDictionaryKeys 只跳过测评词自己那一条键，不影响别处对它
+// 的引用，这类真泄漏仍然要被抓到。
+reject('word dictionary leak',d=>d.W.other={zh:'HEM 的意思'},'泄漏');
 reject('nested block leak',d=>d.DAYS[0].steps[0].blocks.push({b:'wordforge',families:[{heads:['hem']}]}),'泄漏');
 reject('sentence leak',d=>d.BOOK.pages.push({line:'HEM!'}),'泄漏');
 reject('short passage',d=>d.ASSESS_TEXT='A pup.','60 词');
@@ -59,18 +66,30 @@ console.log('PASS assessment contract: valid fixture and 15 negative cases (mont
   d.RESERVED_RETEST[4] = 'rain'; // 原 'rot'
   d.W.rain = {zh:'雨', segments:['r', 'ai', 'n']};
   const errors = validateAssessment(d);
-  // ⚠️ 范围说明：这里不断言 errors 为空数组。给 'rain' 补一条 d.W 条目（供
-  // assertCvcByGraphemes 读取 explicitSegments）会顺带触发 monthly 路径一个与
-  // 本次修复无关的既有行为——collectTextParts(d, teachingBlocks) 在 monthly 路径
-  // 没有像 weekly 路径那样传 excludeDictionaryKeys 排除测评词自己的释义条目，
-  // 词典键本身（'rain'）会被当成"可见文本"，与同名的 RESERVED_RETEST 词形成
-  // 自己泄漏自己的假阳性——这是 monthly 路径本就存在、与"CVC 判据"无关的另一个
-  // 缺口（真实 W4 数据里 RESERVED/RESERVED_RETEST 词从不在 d.W 里声明释义，所以
-  // 从未暴露过），不在本次「第五处」任务范围内，如实记录不顺带修。断言收窄为：
-  // 不应出现任何 CVC 相关的失败（分词失败/字位数/未教字位/不是已教 CVC）。
-  const cvcRelated = errors.filter(e => e.includes('分词失败') || e.includes('不是三个字位') || e.includes('含未教字位') || e.includes('不是已教 CVC'));
-  assert.deepEqual(cvcRelated, [], 'monthly/W4 正例：rain（三个字位 r/ai/n，写了 segments）不应报任何 CVC 相关失败，实际：' + JSON.stringify(errors));
-  console.log('PASS 第五处正例：monthly/W4 路径 rain（写了 segments）的 CVC 判据本身通过（另有一条与本次修复无关的既有"词典自泄漏"行为，已如实记录，不在本次范围内）');
+  // 任务 2（2026-09-10）修复后：给 'rain' 补一条 d.W 条目（供 assertCvcByGraphemes
+  // 读取 explicitSegments）不应再触发"测评词泄漏进教学内容"的假阳性——monthly 路径
+  // 现在与 weekly 路径一样，向 collectTextParts 传 excludeDictionaryKeys（= owner，
+  // 即 RESERVED ∪ RESERVED_RETEST ∪ PROBE_A ∪ PROBE_B ∪ GLOBAL_RESERVED 五个测评池
+  // 的并集），词典键本身（'rain'）不再被当成"可见文本"扫描，不会与同名的
+  // RESERVED_RETEST 词形成自己泄漏自己的假阳性。改前这里曾如实记录过这个假阳性、
+  // 收窄断言为"只查 CVC 相关失败"；现在缺口已随任务 2 一起补上，断言收紧为整体
+  // errors 应为空数组。
+  assert.deepEqual(errors, [], 'monthly/W4 正例：rain（三个字位 r/ai/n，写了 segments，且自己在 d.W 里有释义）不应报任何失败，实际：' + JSON.stringify(errors));
+  console.log('PASS 第五处正例（任务 2 后收紧）：monthly/W4 路径 rain（写了 segments，W 里有自己的释义）整体通过，不再有"词典自泄漏"假阳性');
+}
+{
+  // 任务 2 回归：真泄漏仍然要抓到——'rain' 恰好出现在**另一个**词条（不是它自己）的
+  // 释义/例句里，或出现在书页正文这类真实教学材料里，excludeDictionaryKeys 只跳过
+  // 测评词自己的那一条键，不影响别处对它的引用，泄漏检测应照常成立。
+  const d = structuredClone(base);
+  d.SOUNDS.ai = {grapheme:'ai', type:'v'};
+  d.RESERVED_RETEST[4] = 'rain';
+  d.W.rain = {zh:'雨', segments:['r', 'ai', 'n']};
+  d.BOOK.pages.push({line:'I see the rain.'});
+  const errors = validateAssessment(d);
+  assert(errors.some(e => e.includes('泄漏') && e.includes('rain')),
+    'monthly/W4 反例：rain 出现在 BOOK.pages 正文里，即便它自己在 W 里有释义（被 excludeDictionaryKeys 排除的只是它自己那条词典键），仍应报泄漏，实际：' + JSON.stringify(errors));
+  console.log('PASS 第五处反例（任务 2 回归）：rain 出现在书页正文这类真实教学材料里，excludeDictionaryKeys 不会把这类真泄漏也一起排除掉');
 }
 {
   const d = structuredClone(base);
@@ -414,6 +433,98 @@ console.log(`PASS weekly 失败例：2 个禁止块类型（${WEEKLY_FORBIDDEN_B
     assert(errors.includes('周检词不是三个字位：rain（实际 4 个）'),
       '未教 ai 时，rain 应退化成四个字位并报"不是三个字位"，实际：' + JSON.stringify(errors));
     console.log('PASS W5 阻塞第三条：ai 未教时 rain 退化成 4 个单字母字位，报"不是三个字位"');
+  }
+}
+
+// ============================================================================
+// 轮 D M4/M1（外审 medium，2026-09-10）：CVC 判据边界测试——W5 阻塞第三条只覆盖了
+// "字位数不等于 3"这一种失败形状；assertCvcByGraphemes 还有另外三类判据分支
+// （形态非 C-V-C、type 缺失/非法导致 soundType 抛错、explicit segments 本身不合法）
+// 此前完全没有测试覆盖到，逐条补上并断言具体错误子串（不只是"errors.length > 0"）。
+// ============================================================================
+{
+  // 反例①：三字位但不是 C-V-C——V-C-V（合成词 'ata'：a-t-a，三个都是 w5 基线已教
+  // 的单字母字位，天然消歧不需要 explicit segments）。
+  {
+    const d = structuredClone(w5);
+    delete d.W.kid;
+    d.RESERVED = d.RESERVED.slice(0, 4);
+    d.RESERVED.push('ata');
+    d.W.ata = {zh: '（合成测试词，V-C-V 非 CVC）'};
+    const errors = validateAssessment(d);
+    assert(errors.includes('周检词不是已教 CVC：ata（形态 v-c-v，字位 [a,t,a]）'),
+      'ata（V-C-V）应报"不是已教 CVC"且形态标注为 v-c-v，实际：' + JSON.stringify(errors));
+    console.log('PASS CVC 边界①：三字位但非 C-V-C（V-C-V，合成词 ata）报"不是已教 CVC"');
+  }
+
+  // 反例②：三字位但不是 C-V-C——C-C-C（合成词 'stp'：s-t-p，三个都是已教的辅音字位）。
+  {
+    const d = structuredClone(w5);
+    delete d.W.kid;
+    d.RESERVED = d.RESERVED.slice(0, 4);
+    d.RESERVED.push('stp');
+    d.W.stp = {zh: '（合成测试词，C-C-C 非 CVC）'};
+    const errors = validateAssessment(d);
+    assert(errors.includes('周检词不是已教 CVC：stp（形态 c-c-c，字位 [s,t,p]）'),
+      'stp（C-C-C）应报"不是已教 CVC"且形态标注为 c-c-c，实际：' + JSON.stringify(errors));
+    console.log('PASS CVC 边界②：三字位但非 C-V-C（C-C-C，合成词 stp）报"不是已教 CVC"');
+  }
+
+  // 反例③：字位 type 字段缺失——soundType() 对缺 type 的字位抛 'sound-type-invalid'，
+  // assertCvcByGraphemes 必须把它转成清晰的 fail(...)，不能让整个校验带栈崩溃。
+  {
+    const d = structuredClone(w5);
+    delete d.W.kid;
+    d.RESERVED = d.RESERVED.slice(0, 4);
+    d.RESERVED.push('sat');
+    d.W.sat = {zh: '（合成测试词，s 缺 type 字段）'};
+    delete d.SOUNDS.s.type;
+    const errors = validateAssessment(d);
+    assert(errors.some(e => e.includes('周检词字位类型无法判定：sat') && e.includes('sound-type-invalid')),
+      '字位 "s" 缺 type 字段时应报"字位类型无法判定"并点名 sound-type-invalid，实际：' + JSON.stringify(errors));
+    console.log('PASS CVC 边界③：字位 type 字段缺失（s）报"字位类型无法判定"（sound-type-invalid），不崩溃');
+  }
+
+  // 反例④：字位 type 字段非法值（既不是 'c' 也不是 'v'）——同上错误码，验证不是只有
+  // "缺失"这一种触发方式。
+  {
+    const d = structuredClone(w5);
+    delete d.W.kid;
+    d.RESERVED = d.RESERVED.slice(0, 4);
+    d.RESERVED.push('sat');
+    d.W.sat = {zh: '（合成测试词，t 的 type 是非法值 x）'};
+    d.SOUNDS.t.type = 'x';
+    const errors = validateAssessment(d);
+    assert(errors.some(e => e.includes('周检词字位类型无法判定：sat') && e.includes('sound-type-invalid')),
+      '字位 "t" 的 type 为非法值 "x" 时应报"字位类型无法判定"并点名 sound-type-invalid，实际：' + JSON.stringify(errors));
+    console.log('PASS CVC 边界④：字位 type 字段非法值（"x"）报"字位类型无法判定"（sound-type-invalid），不是只有缺失这一种触发方式');
+  }
+
+  // 反例⑤：显式 segments 含未知字位 ID——segmentWord 的 validateExplicitSegments
+  // 应拒绝，assertCvcByGraphemes 转成"分词失败"，点名 explicit-segments-invalid。
+  {
+    const d = structuredClone(w5);
+    delete d.W.kid;
+    d.RESERVED = d.RESERVED.slice(0, 4);
+    d.RESERVED.push('rain');
+    d.W.rain = {zh: '（合成测试词，segments 含未知 ID）', segments: ['r', 'xx', 'n']};
+    const errors = validateAssessment(d);
+    assert(errors.some(e => e.includes('周检词分词失败：rain') && e.includes('explicit-segments-invalid') && e.includes('xx')),
+      'segments 含未知字位 ID "xx" 时应报"分词失败"并点名 explicit-segments-invalid 与具体的未知 ID，实际：' + JSON.stringify(errors));
+    console.log('PASS CVC 边界⑤：显式 segments 含未知字位 ID（xx）报"分词失败"（explicit-segments-invalid），不崩溃');
+  }
+
+  // 反例⑥：显式 segments 拼接结果与 word 本身不一致——同样应报"分词失败"。
+  {
+    const d = structuredClone(w5);
+    delete d.W.kid;
+    d.RESERVED = d.RESERVED.slice(0, 4);
+    d.RESERVED.push('rain');
+    d.W.rain = {zh: '（合成测试词，segments 拼接结果与 word 不一致）', segments: ['r', 'a', 'n']}; // 缺了 'i'
+    const errors = validateAssessment(d);
+    assert(errors.some(e => e.includes('周检词分词失败：rain') && e.includes('explicit-segments-invalid')),
+      'segments 拼接结果（ran）与 word（rain）不一致时应报"分词失败"并点名 explicit-segments-invalid，实际：' + JSON.stringify(errors));
+    console.log('PASS CVC 边界⑥：显式 segments 拼接结果与 word 不一致（ran ≠ rain）报"分词失败"（explicit-segments-invalid）');
   }
 }
 

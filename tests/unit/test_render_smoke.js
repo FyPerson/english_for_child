@@ -43,6 +43,21 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const SRC = path.join(ROOT, 'frontend', 'src');
 const INCLUDE = /<!-- @include ([a-zA-Z0-9_./-]+) -->/g;
 
+/* 轮 D M2 走查结论（2026-09-10，逐份核对四份 week0N.template.html）：
+ * 每份模板恰好两个 <script> 标签。第一段只在其中定义
+ * `const bookArt = key => bookArtHTML(key)`（懒引用，箭头函数体到真正调用时才解析
+ * `bookArtHTML`，本身已经是 T3-2 为规避这个跨 script 时序坑加的写法）——不在第一段
+ * 里立即调用它，也不在第一段里出现 celebrateNat/printBook/wallTileLitState 的任何
+ * 调用。这四个共享函数的定义（`@include shared/render-blocks.js`）与它们的全部调用
+ * 点（celebrateNat() 内部、renderHome() 内部的 `wallTileLitState(c)`、printBook()
+ * 内部，以及文件末尾 `renderHome(); initDateSchedule();` 这两句启动调用）都落在
+ * 第二段 <script> 之内——四份模板的 @include 顺序也确认 render-blocks.js 出现在
+ * 这些函数体/启动调用的文本位置之前。同一个 <script> 标签内部函数声明会整体提升，
+ * 所以就算文本顺序颠倒也不会因为"分段执行"而报错；但四份模板现状是"先定义后调用"，
+ * 分段执行与拼接执行对现状四份模板给出的结论一致（均全绿，见下方 render smoke 测试
+ * 输出）——没有发现真实的跨 script 提前调用。改分段执行的价值是让"以后万一有人把
+ * include 挪错位置"这类回归会被真实抓到，不是现在就抓到了一个隐藏故障。 */
+
 // 与 tools/build_lessons.py 的 expand() 同一条正则、同一套递归展开语义
 // （逐字对照：只认 [a-zA-Z0-9_./-] 字符集的相对路径，禁止跳出 SRC，禁止自引用循环）。
 function expand(text, ancestors) {
@@ -57,17 +72,61 @@ function expand(text, ancestors) {
   });
 }
 
-// 拼出整页会用到的两段 <script>...</script> 内容，按文档顺序拼接——与浏览器里
-// 同一份 <script> 标签共享同一个顶层词法作用域（let/const 跨 classic script 标签
-// 互通）的语义一致，所以这里选择"拼成一份文本一次性执行"而不是分别 runInContext，
-// 效果等价、实现更简单。
+// 抽出整页会用到的各段 <script>...</script> 内容，按文档顺序返回一个数组。
+//
+// 轮 D M2（外审 medium，2026-09-10）：改前把多段 script 拼成一份文本，一次性丢进
+// `new vm.Script().runInContext()` 执行。拼接执行会靠 JS 的函数声明提升（function
+// 声明在整份拼接文本的顶层作用域里统一提升到最前面）掩盖"真实浏览器里，若某段
+// script 在共享函数（bookArt/celebrateNat/printBook/wallTileLitState 等）定义所在
+// 的 script 标签**之前**就调用了它"这类跨 <script> 时序错误——拼接后函数提升让调用
+// 永远看得到定义，但真实浏览器是逐个 <script> 标签顺序执行，前一个标签执行时后一个
+// 标签里的 function 声明根本还不存在，会抛 ReferenceError。
+// 改法：调用方按原 <script> 顺序对每一段各自 `new vm.Script().runInContext(同一
+// context)`，不再拼接成一份文本——vm 的 Script 是"经典脚本"语义，每次
+// runInContext() 都在同一个 contextified 全局对象上执行，跨次调用之间 var/function
+// 声明的全局绑定是共享的（与浏览器同一 window 下多个 <script> 标签的语义一致），
+// 但**执行时机**严格按调用顺序发生——如果调用方在跑到某一段之前就先调用了它里面
+// 定义的函数，会像真实浏览器一样立即 ReferenceError，不会被"先拼后跑"悄悄放行。
 function extractScripts(expandedHtml) {
   const scripts = [];
   const re = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g;
   let m;
   while ((m = re.exec(expandedHtml))) scripts.push(m[1]);
   if (scripts.length === 0) throw new Error('expanded template 里没有找到任何 <script> 块，展开逻辑是不是跟 build_lessons.py 分叉了');
-  return scripts.join('\n;\n');
+  return scripts;
+}
+
+// 按原 <script> 顺序逐段执行（同一 vm context，不拼接）。`extra`（可选）是本文件
+// 自己追加的探测/收集代码（HARNESS 之类），作为最后一段单独执行——它不是模板真实
+// <script> 的一部分，但同样遵守"必须在它引用的函数定义之后执行"这条规则，所以放在
+// 全部真实 script 段之后执行是正确的时序，不是抄近路。
+function runScriptsInOrder(sandbox, segments, filenameBase, extra) {
+  segments.forEach((code, i) => {
+    new vm.Script(code, { filename: `${filenameBase}#script${i}` }).runInContext(sandbox);
+  });
+  if (extra) new vm.Script(extra, { filename: `${filenameBase}#harness` }).runInContext(sandbox);
+}
+
+/* 破坏验证（轮 D M2）：证明"分段执行"与"拼接执行"在跨 <script> 提前调用这件事上
+ * 确实给出不同结论——不是只改了写法、行为等价的重构。segA 在自己的 script 里调用
+ * `foo()`，`foo` 要到 segB 才声明。拼接执行时 `foo` 的 function 声明被提升到整份
+ * 拼接文本的最前面，segA 执行到调用点时 `foo` 已经存在，不会报错；分段执行时 segA
+ * 单独作为一次 runInContext() 调用，`foo` 这时还没有被声明过，必须真实抛
+ * ReferenceError——这正是本文件其余渲染冒烟测试现在能够查出的那类跨 script 时序错误。 */
+{
+  const segA = 'try { globalThis.__orderProbe = foo(); } catch(e) { globalThis.__orderProbe = "ReferenceError:" + e.message; }';
+  const segB = 'function foo(){ return "called"; }';
+
+  const concatSandbox = {}; vm.createContext(concatSandbox);
+  new vm.Script(segA + '\n;\n' + segB, { filename: '(order-probe concat)' }).runInContext(concatSandbox);
+  assert.equal(concatSandbox.__orderProbe, 'called',
+    '拼接执行的对照组应该因为函数声明提升而"看不出"提前调用的问题（本身不是本次要修的行为，只是用来对照）');
+
+  const segSandbox = {}; vm.createContext(segSandbox);
+  runScriptsInOrder(segSandbox, [segA, segB], '(order-probe segmented)');
+  assert(String(segSandbox.__orderProbe).startsWith('ReferenceError:'),
+    `分段执行应该像真实浏览器一样立即抛 ReferenceError（这正是 runScriptsInOrder 改前的拼接执行会掩盖的差别），实际：${segSandbox.__orderProbe}`);
+  console.log('PASS order probe（轮 D M2 破坏验证）：分段执行确实会让跨 script 提前调用报错，拼接执行确实会被函数提升掩盖——两种执行方式结论不同，证明本次改动是实质性的');
 }
 
 // ---- 最小 DOM/localStorage/window 垫片：只保证顶层收尾代码（renderHome() /
@@ -186,10 +245,9 @@ const HARNESS = `
 
 function renderSmokeForWeek(templatePath) {
   const expanded = expand(fs.readFileSync(templatePath, 'utf8'), []);
-  const scriptCode = extractScripts(expanded) + '\n' + HARNESS;
+  const segments = extractScripts(expanded);
   const sandbox = makeSandbox();
-  const script = new vm.Script(scriptCode, { filename: templatePath });
-  script.runInContext(sandbox);
+  runScriptsInOrder(sandbox, segments, templatePath, HARNESS);
   return sandbox.__renderResults;
 }
 
@@ -264,10 +322,9 @@ const WALL_LIT_STATE_HARNESS = `
 
 function wallLitStateForWeek(templatePath) {
   const expanded = expand(fs.readFileSync(templatePath, 'utf8'), []);
-  const scriptCode = extractScripts(expanded) + '\n' + WALL_LIT_STATE_HARNESS;
+  const segments = extractScripts(expanded);
   const sandbox = makeSandbox();
-  const script = new vm.Script(scriptCode, { filename: templatePath });
-  script.runInContext(sandbox);
+  runScriptsInOrder(sandbox, segments, templatePath, WALL_LIT_STATE_HARNESS);
   return sandbox.__wallLitStateResults;
 }
 
@@ -319,10 +376,9 @@ const ALL_LIT_WHEN_NO_NEW_PATTERNS_HARNESS = `
 
 function allLitForWeek(templatePath) {
   const expanded = expand(fs.readFileSync(templatePath, 'utf8'), []);
-  const scriptCode = extractScripts(expanded) + '\n' + ALL_LIT_WHEN_NO_NEW_PATTERNS_HARNESS;
+  const segments = extractScripts(expanded);
   const sandbox = makeSandbox();
-  const script = new vm.Script(scriptCode, { filename: templatePath });
-  script.runInContext(sandbox);
+  runScriptsInOrder(sandbox, segments, templatePath, ALL_LIT_WHEN_NO_NEW_PATTERNS_HARNESS);
   return sandbox.__allLitResults;
 }
 
@@ -343,19 +399,74 @@ function allLitForWeek(templatePath) {
     '如果这个数字变了，说明有其他周也变成了巩固周形态，需要重新核对这条用例是否还覆盖到位');
   console.log(`PASS wall lit state（T3-1）：newPatterns 为空的 ${checkedEmptyNewPatternsTemplates} 份模板（week04），wallLetters 经共享函数结果全亮，与改前硬编码 true 等价`);
 
-  /* T3-1 接线验证（补）：上面两道用例（wallLitStateForWeek/allLitForWeek）都是直接
-   * 调用共享函数 wallTileLitState 本身，不经过模板 hero 里那句 `const lit = ...`——
-   * 就算某份模板悄悄改回硬编码 `true`/`false`、完全不再调用共享函数，上面两道用例
-   * 也不会变红（它们测的是共享函数自己对不对，不是模板有没有真的接上它）。这里补一条
-   * 源码级断言，直接检查四份模板的 hero 渲染代码里那一行确实写的是
-   * `wallTileLitState(c)` 调用，不是硬编码字面量——防止"函数本身是对的，但某份模板
-   * 没真的接上它"这种回归。 */
-  for (const name of templates) {
-    const source = fs.readFileSync(path.join(SRC, 'weeks', name), 'utf8');
-    assert(/const lit = wallTileLitState\(c\);/.test(source),
-      `${name}：hero 积木墙渲染应调用共享函数 wallTileLitState(c)，不是硬编码字面量或各自维护一份判断表达式`);
+  /* T3-1 接线验证（轮 D M3 改写，2026-09-10，第十次恒真式候选）：改前这里是一条
+   * 源码级正则 `/const lit = wallTileLitState\(c\);/.test(source)`——只要模板文件
+   * 里**任何位置**（含注释、含已经不再执行的死代码）出现这段字面文本就能通过，不要求
+   * 它真的在渲染路径上被执行、也不要求它的调用对象真的是 hero 积木墙的全部字位。
+   * 改用运行时观测替代源码级断言：
+   *   ① 猴子补丁 sandbox.wallTileLitState（同一份 contextified 全局对象上的属性——
+   *      函数声明在经典 script 里就是全局对象的自有属性，reassign 会被同一作用域内
+   *      其他函数下一次按名字查找时看到，这与浏览器里覆盖 window.wallTileLitState
+   *      的语义一致），记录每次被调用时传入的字位 ID 与返回值；
+   *   ② 重新调用一次 renderHome()（模板文件末尾已经启动调用过一次未插桩的版本，这里
+   *      是插桩后的第二次调用，用于采集观测数据，不影响断言语义——renderHome() 是
+   *      幂等的整段 innerHTML 重渲染，不依赖"只能调一次"）；
+   *   ③ 断言"实际被调用过的字位 ID 集合" === META.wallLetters 集合——不多不少，
+   *      证明真的是"给点亮墙的每一块积木都调了一次"，不是碰巧调了几个就通过；
+   *   ④ 从重渲染后的 `document.getElementById('app').innerHTML` 里逐块解析
+   *      `data-grapheme-id` 与 class 是否含 `tile--wallon`，与①记录的返回值逐一比对
+   *      ——证明"包装函数返回的 lit"与"最终渲染出的 class"确实一致，不是调用了
+   *      函数但没有真的把返回值接到渲染结果上。
+   * 四份模板各跑一次，覆盖范围与改前源码正则声称覆盖的范围相同（四份模板），但现在
+   * 断言的是"真的执行、真的接上、覆盖面精确"而不是"文件里出现过这行文本"。 */
+  const WALL_CALL_TRACKING_BRIDGE = '__BRIDGE_META = META; __BRIDGE_APP = document.getElementById("app");';
+  function wallCallTrackingForWeek(templatePath) {
+    const expanded = expand(fs.readFileSync(templatePath, 'utf8'), []);
+    const segments = extractScripts(expanded);
+    const sandbox = makeSandbox();
+    runScriptsInOrder(sandbox, segments, templatePath); // 未插桩的第一次调用（模板末尾的启动调用），与真实页面加载行为一致
+    new vm.Script(WALL_CALL_TRACKING_BRIDGE, { filename: templatePath + ' (wall-call-tracking bridge)' }).runInContext(sandbox);
+    const META = sandbox.__BRIDGE_META;
+    const app = sandbox.__BRIDGE_APP;
+
+    const original = sandbox.wallTileLitState;
+    assert.equal(typeof original, 'function', `${templatePath}：wallTileLitState 应该是共享函数（render-blocks.js 里的顶层函数声明），实际 ${typeof original}`);
+    const observed = new Map(); // id -> lit（返回值）
+    sandbox.wallTileLitState = function (id) {
+      const lit = original(id);
+      observed.set(id, lit);
+      return lit;
+    };
+    sandbox.renderHome(); // 插桩后的第二次调用，采集观测数据
+    sandbox.wallTileLitState = original; // 复位，不影响本文件其余用例（虽然各用例各自 makeSandbox，互不共享，仅为整洁）
+
+    const renderedLit = new Map(); // id -> 从 innerHTML 解析出的 tile--wallon/walloff
+    const tileRe = /<(?:button|div)[^>]*class="([^"]*)"[^>]*data-grapheme-id="([^"]*)"[^>]*>/g;
+    let m;
+    while ((m = tileRe.exec(app.innerHTML))) {
+      const cls = m[1], id = m[2];
+      if (renderedLit.has(id)) continue; // 只认 hero 积木墙这一处（第一次出现），页面其余位置若也用了 data-grapheme-id 不重复覆盖
+      renderedLit.set(id, /(^|\s)tile--wallon(\s|$)/.test(cls));
+    }
+    return { META, observedIds: [...observed.keys()], observed, renderedLit };
   }
-  console.log(`PASS wall lit state（T3-1 接线验证）：${templates.length} 份模板的 hero 渲染均源码级确认调用了共享函数 wallTileLitState(c)`);
+
+  let checkedCallTracking = 0;
+  for (const name of templates) {
+    const templatePath = path.join(SRC, 'weeks', name);
+    const { META, observedIds, observed, renderedLit } = wallCallTrackingForWeek(templatePath);
+    assert.deepEqual([...observedIds].sort(), [...META.wallLetters].sort(),
+      `${name}：wallTileLitState 实际被调用的字位集合应恰好等于 META.wallLetters，实际调用集合 [${[...observedIds].sort()}]，期望 [${[...META.wallLetters].sort()}]——` +
+      '这正是运行时观测要证明的：真的对点亮墙的每一块积木都调了一次，不多不少');
+    for (const [id, lit] of observed) {
+      assert(renderedLit.has(id), `${name}：字位 "${id}" 被 wallTileLitState 调用过，但渲染出的 hero 积木墙里找不到对应的 data-grapheme-id 块`);
+      assert.equal(renderedLit.get(id), lit,
+        `${name}：字位 "${id}" 包装函数返回 lit=${lit}，但渲染出的 class 显示 ${renderedLit.get(id) ? 'tile--wallon' : 'tile--walloff'}，两者不一致`);
+    }
+    checkedCallTracking++;
+  }
+  assert.equal(checkedCallTracking, templates.length, '运行时调用追踪应覆盖全部模板');
+  console.log(`PASS wall lit state（T3-1 接线验证·运行时观测）：${checkedCallTracking} 份模板均确认 wallTileLitState 被恰好对 META.wallLetters 全集调用一次，且每块渲染出的 tile--wallon/walloff 与包装函数返回值逐一一致`);
 }
 
 /* T3-2（外审 medium，2026-09-10）：week01 改前的三处素材守卫（bookArt 直接回退
@@ -382,10 +493,9 @@ const MEDIA_GUARD_HARNESS = `
 
 function mediaGuardForWeek(templatePath) {
   const expanded = expand(fs.readFileSync(templatePath, 'utf8'), []);
-  const scriptCode = extractScripts(expanded) + '\n' + MEDIA_GUARD_HARNESS;
+  const segments = extractScripts(expanded);
   const sandbox = makeSandbox();
-  const script = new vm.Script(scriptCode, { filename: templatePath });
-  script.runInContext(sandbox);
+  runScriptsInOrder(sandbox, segments, templatePath, MEDIA_GUARD_HARNESS);
   return sandbox.__mediaGuardResults;
 }
 
@@ -557,10 +667,9 @@ const flushMicrotasks = () => new Promise(resolve => setImmediate(resolve));
 
 async function runInteractionScenarios(templatePath, weekName) {
   const expanded = expand(fs.readFileSync(templatePath, 'utf8'), []);
-  const scriptCode = extractScripts(expanded);
+  const segments = extractScripts(expanded);
   const sandbox = makeSandbox();
-  const script = new vm.Script(scriptCode, { filename: templatePath });
-  script.runInContext(sandbox); // 第一遍：与冒烟测试一样的空垫片，走完页面顶层收尾代码
+  runScriptsInOrder(sandbox, segments, templatePath); // 第一遍：与冒烟测试一样的空垫片，走完页面顶层收尾代码，按原 <script> 顺序逐段执行
 
   // 桥接顶层 `const DAYS`/`const WordAudio`：classic script 的顶层 const/let 绑定不会
   // 变成全局对象的自有属性（只有 function 声明会——blockHTML/initG1 等因此能直接以
