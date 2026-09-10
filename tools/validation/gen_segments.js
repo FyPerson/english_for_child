@@ -469,9 +469,16 @@ function main() {
    * 必须一直是 4。 */
   const hasUnreviewedMarkersOnDisk = hasUnreviewedMarkerInText(finalText);
 
+  /* H3（外审 high，2026-09-10）：改前退出码判断顺序是 1 → 3 → 4，与上面 hasUnreviewedMarkersOnDisk
+   * 注释里承诺的"只要磁盘还有 @gen-segments-unreviewed 标记，重跑必须一直是 4"矛盾——
+   * 标记与 tie/unknown/error 同时存在时会先命中 1，标记与未写候选同时存在时会先命中 3，
+   * 4 永远轮不到。裁定：4 优先，因为它是跨次运行持久的磁盘状态（不管这次是 dry-run、
+   * 还是这次没有 tie/unknown/error），1/3 只是本次运行的局部状态，下一次重跑就可能不再成立。
+   * 顺序改为：磁盘有未复核标记恒 4；其次 1（工具本身给不出候选，必须人工介入）；
+   * 再次 3（有候选但这次没落盘）。 */
+  if (hasUnreviewedMarkersOnDisk) process.exit(4);
   if (needsHumanExit) process.exit(1);
   if (hasUnwrittenCandidates) process.exit(3);
-  if (hasUnreviewedMarkersOnDisk) process.exit(4);
 }
 
 module.exports = {

@@ -44,6 +44,29 @@ function tileHTML(id, cls, live){
   if(live && SOUNDS[id] && hasPhoneme(id)) return `<button class="tile ${t} ${cls||''}" data-sayph="${escapeHtmlAttribute(id)}" aria-label="听 ${escapeHtmlAttribute(SOUNDS[id].ipa)} 的发音">${label}</button>`;
   return `<div class="tile ${t} ${cls||''}">${label}</div>`;
 }
+/* wallTileLitState(id) -> boolean（M1，外审 medium，2026-09-10）：判断首页 hero 积木墙
+ * 上某个字位此刻是否应该点亮。三份模板（week01/02/03）改前各自内联同一段表达式
+ * `FIRST_TEACH_DAY[c] != null ? dayDone(FIRST_TEACH_DAY[c]) : true`——它把"历史字位"
+ * （更早的周教过、本周 newPatterns 里没有它，FIRST_TEACH_DAY 也确实不会有它，规范
+ * v2.0 §3「唯一模型」）与"本周新教的字位、但数据层漏配 FIRST_TEACH_DAY"这种数据缺陷
+ * 混在了同一个"FIRST_TEACH_DAY[c] == null"分支里，导致后者被静默当成前者、错误地
+ * 显示为已点亮。
+ *
+ * 改法：先用 META.newPatterns 判断这个字位是不是"本周新教"——
+ *   - 不是本周新教（历史字位）：恒点亮。**这条口径正待用户裁定，不许改**（同旧行为）。
+ *   - 是本周新教但缺 FIRST_TEACH_DAY：数据错误，`console.warn` 提醒但不抛错（页面不能
+ *     因为一条数据缺失就整页死掉），返回 false（不点亮）——这正是本次要修的行为差异。
+ *   - 是本周新教且有 FIRST_TEACH_DAY：按 dayDone(FIRST_TEACH_DAY[id]) 现算，同旧行为。
+ * 三份模板改调用这一个共享函数，不再各自维护一份内联判断表达式。 */
+function wallTileLitState(id){
+  const isThisWeekPattern = Array.isArray(META.newPatterns) && META.newPatterns.includes(id);
+  if(!isThisWeekPattern) return true; // 历史字位：更早的周已教过，恒点亮（口径待用户裁定，不改）
+  if(FIRST_TEACH_DAY[id] == null){
+    console.warn(`[wall] 本周新教字位 "${id}" 缺少 FIRST_TEACH_DAY 条目，暂不点亮（数据缺陷，需补齐）`);
+    return false;
+  }
+  return dayDone(FIRST_TEACH_DAY[id]);
+}
 function artHTML(key, size){
   return illHTML(key, size);
 }

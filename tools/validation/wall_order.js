@@ -15,9 +15,18 @@
  *       表达（六审 M-6 拍板）。
  *
  * computeTeachingOrder 本身不读文件系统——它只吃调用方已经组装好的
- * {week, newPatterns} 数组。真正去读 frontend/src/weeks/weekNN.data.js 与
- * project.json 的是 gatherWeekRecordsUpTo，这样计算逻辑本身可以用独立 fixture
- * 反复验证、不受仓库现状影响（方案 §2.4 明文要求）。
+ * {week, newPatterns} 数组，以及调用方显式传入的 expectedWeeks（源码树校验：取自
+ * project.json 的 weeks 列表过滤到 <= 当前周，不是任何构建产物，见
+ * getExpectedWeeksUpTo）。真正去读 frontend/src/weeks/weekNN.data.js 与
+ * project.json 的是 gatherWeekRecordsUpTo/getExpectedWeeksUpTo，这样计算逻辑本身
+ * 可以用独立 fixture 反复验证、不受仓库现状影响（方案 §2.4 明文要求）。
+ *
+ * M6（外审 medium，2026-09-10）：改前"周号连续"只按 `sorted[i].week === minWeek + i`
+ * 相对第一条记录自身的最小周号判断——`computeTeachingOrder([{week:2},{week:3}])`
+ * 会直接通过，因为 2/3 相对彼此是连续的，但这不是调用方真正想要的"从 week 1 起
+ * 连续到当前周"，会静默漏掉缺开头周（比如漏了 week 1）这种情况。改为要求调用方
+ * 显式传入 expectedWeeks（通常取自 project.json 的 weeks，过滤到 <= 当前周），
+ * 用记录周号集合与 expectedWeeks 做精确前缀匹配，而不是只看记录内部彼此是否连续。
  */
 const fs = require('fs');
 const path = require('path');
@@ -33,10 +42,14 @@ function TeachingOrderError(code, message, details) {
   return err;
 }
 
-/* computeTeachingOrder(weekRecords) -> string[]
+/* computeTeachingOrder(weekRecords, expectedWeeks) -> string[]
  * weekRecords: Array<{week:number, newPatterns:string[]}>，顺序任意（本函数自己按
- * week 排序），但周号必须唯一、且从最小周号起连续无缺口，否则抛错。 */
-function computeTeachingOrder(weekRecords) {
+ * week 排序），但周号必须唯一。
+ * expectedWeeks: number[]，调用方显式传入的预期周序（通常来自
+ * getExpectedWeeksUpTo(currentWeek)，即 project.json 的 weeks 过滤到 <= 当前周）——
+ * 排序后必须与 weekRecords 的周号集合逐项相等，缺开头周、缺中间周、多余周号都会
+ * 报错（M6，见上方头注释）。 */
+function computeTeachingOrder(weekRecords, expectedWeeks) {
   if (!Array.isArray(weekRecords) || weekRecords.length === 0) {
     throw TeachingOrderError('teaching-order-empty', 'weekRecords 必须是非空数组', { value: weekRecords });
   }
@@ -52,12 +65,27 @@ function computeTeachingOrder(weekRecords) {
   if (new Set(weeks).size !== weeks.length) {
     throw TeachingOrderError('teaching-order-duplicate-week', '周号必须唯一，weekRecords 含重复周号', { weeks: weeks });
   }
+  // expectedWeeks 的合法性检查放在 weekRecords 自身结构校验之后：weekRecords 本身
+  // 是主输入，先把它的结构问题（非对象/周号非法/重复）报清楚，再检查这个新增的
+  // 辅助参数，避免"忘传 expectedWeeks"掩盖了 weekRecords 自身更基础的结构错误。
+  if (!Array.isArray(expectedWeeks) || expectedWeeks.length === 0 ||
+      !expectedWeeks.every(w => typeof w === 'number' && Number.isInteger(w) && w > 0)) {
+    throw TeachingOrderError('teaching-order-expected-weeks-invalid',
+      'expectedWeeks 必须是非空的正整数数组（调用方需显式传入预期周序，通常取自 project.json 的 weeks 过滤到 <= 当前周）',
+      { value: expectedWeeks });
+  }
   const sorted = weekRecords.slice().sort((a, b) => a.week - b.week);
-  const minWeek = sorted[0].week;
-  for (let i = 0; i < sorted.length; i++) {
-    if (sorted[i].week !== minWeek + i) {
-      throw TeachingOrderError('teaching-order-non-contiguous', '周号必须连续，不满足即失败', { weeks: sorted.map(r => r.week) });
-    }
+  /* M6：不再只判断 weekRecords 内部彼此是否连续（那会漏掉"缺开头周"——比如只给
+   * [{week:2},{week:3}] 相对彼此是连续的，但真正应该从 week 1 起）。改为与调用方
+   * 显式传入的 expectedWeeks 做精确匹配：排序后长度、每一项都必须逐一相等。 */
+  const actualWeeks = sorted.map(r => r.week);
+  const expectedSorted = expectedWeeks.slice().sort((a, b) => a - b);
+  const weekSetMatches = actualWeeks.length === expectedSorted.length &&
+    actualWeeks.every((w, i) => w === expectedSorted[i]);
+  if (!weekSetMatches) {
+    throw TeachingOrderError('teaching-order-week-set-mismatch',
+      `weekRecords 的周号集合与预期周序不一致（缺开头周/缺中间周/多余周号都会触发这条）。期望：[${expectedSorted.join(',')}]，实际：[${actualWeeks.join(',')}]`,
+      { expected: expectedSorted, actual: actualWeeks });
   }
   const order = [];
   const seen = new Set();
@@ -89,7 +117,31 @@ function computeTeachingOrder(weekRecords) {
  *   - 其余周：从 frontend/src/weeks/weekNN.data.js 读取仓库现状。
  *
  * 这是本模块唯一读工作树的函数，computeTeachingOrder 本身保持纯函数。 */
-function gatherWeekRecordsUpTo(currentBox, currentWeek) {
+/* extractNewPatterns(box, week, file)：从已加载的周数据 box 里取出 newPatterns，
+ * 缺失或非数组一律结构化报错（M5，外审 medium，2026-09-10）——改前
+ * `(box.META && box.META.newPatterns) || []` 把"字段缺失"悄悄当成了合法空数组，
+ * 与规范"newPatterns 恒是数组，教新字位的周非空、否则显式空数组"的口径矛盾：
+ * 数据层漏写这个字段（比如 META 里根本没有 newPatterns 键）应该被当结构性错误
+ * 报出来，而不是被这条兜底悄悄纠正成"这周什么都没新教"再继续算下去——那样算出
+ * 来的独立教学顺序会静默漏掉这一周本该累计的字位，且不会有任何报错提示问题出在
+ * 哪一周、哪个文件。空数组现在只能由 META 里显式写 `newPatterns: []` 表达。 */
+function extractNewPatterns(box, week, file) {
+  const newPatterns = box && box.META ? box.META.newPatterns : undefined;
+  if (!Array.isArray(newPatterns)) {
+    throw TeachingOrderError('teaching-order-missing-patterns',
+      `week ${week} 的 META.newPatterns 缺失或不是数组（file: ${file}）`,
+      { week: week, file: file, value: newPatterns });
+  }
+  return newPatterns;
+}
+
+/* getExpectedWeeksUpTo(currentWeek) -> number[]（M6，外审 medium，2026-09-10）
+ *
+ * computeTeachingOrder 现在要求调用方显式传入"预期周序"（见该函数头注释），这里
+ * 提供从源码树（project.json 的 weeks 列表，不是任何构建产物）取这份预期周序的
+ * 唯一实现，供 gatherWeekRecordsUpTo 与调用方（check_data.js）共用，避免各自重复
+ * 一份"filter(w => w <= currentWeek).sort(...)"逻辑而彼此漂移。 */
+function getExpectedWeeksUpTo(currentWeek) {
   const projectPath = path.join(REPO, 'project.json');
   const project = JSON.parse(fs.readFileSync(projectPath, 'utf8'));
   const weeks = (project.weeks || []).filter(w => w <= currentWeek).sort((a, b) => a - b);
@@ -97,14 +149,40 @@ function gatherWeekRecordsUpTo(currentBox, currentWeek) {
     throw TeachingOrderError('teaching-order-week-not-in-project',
       `project.json 的 weeks 列表不含当前周 ${currentWeek}`, { week: currentWeek, projectWeeks: project.weeks });
   }
+  return weeks;
+}
+
+function gatherWeekRecordsUpTo(currentBox, currentWeek) {
+  const weeks = getExpectedWeeksUpTo(currentWeek);
   return weeks.map(w => {
     if (w === currentWeek) {
-      return { week: w, newPatterns: (currentBox.META && currentBox.META.newPatterns) || [] };
+      // 当前被校验的文件——方案 §2.4「当前被校验的文件替换仓库里的同周记录，不
+      // 重复计入」，这里没有独立磁盘路径，用固定标签让报错信息仍能定位到"是当前
+      // 这一份"而不是仓库里的同周文件。
+      return { week: w, newPatterns: extractNewPatterns(currentBox, w, '(当前被校验的文件)') };
     }
     const file = path.join(REPO, 'frontend', 'src', 'weeks', `week${String(w).padStart(2, '0')}.data.js`);
-    const raw = fs.readFileSync(file, 'utf8');
-    const box = loadData(raw, false);
-    return { week: w, newPatterns: (box.META && box.META.newPatterns) || [] };
+    /* 文件不存在 / 读取失败 / 解析失败三类分别包成带 week/file/cause 的结构化
+     * 错误（M5）——改前 fs.readFileSync 与 loadData 的原生异常（ENOENT、语法错误
+     * 等）未经包装直接冒出去，调用方（check_data.js 的 try/catch）只能报出一句
+     * "无法计算独立教学顺序真相源"，看不出是哪一周、哪个文件、因为什么原因失败。 */
+    let raw;
+    try {
+      raw = fs.readFileSync(file, 'utf8');
+    } catch (e) {
+      throw TeachingOrderError('teaching-order-file-read-failed',
+        `week ${w} 的历史周数据文件读取失败（file: ${file}）：${e.message}`,
+        { week: w, file: file, cause: e });
+    }
+    let box;
+    try {
+      box = loadData(raw, false);
+    } catch (e) {
+      throw TeachingOrderError('teaching-order-file-parse-failed',
+        `week ${w} 的历史周数据文件解析失败（file: ${file}）：${e.message}`,
+        { week: w, file: file, cause: e });
+    }
+    return { week: w, newPatterns: extractNewPatterns(box, w, file) };
   });
 }
 
@@ -152,4 +230,4 @@ function setsEqual(a, b) {
   return true;
 }
 
-module.exports = { computeTeachingOrder, gatherWeekRecordsUpTo, expectedWallOrder, diffWallLetters, setsEqual, TeachingOrderError };
+module.exports = { computeTeachingOrder, gatherWeekRecordsUpTo, getExpectedWeeksUpTo, expectedWallOrder, diffWallLetters, setsEqual, TeachingOrderError };

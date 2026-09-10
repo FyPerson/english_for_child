@@ -50,18 +50,24 @@
  * 同样不覆盖（它排除全部多字母词）。
  *
  * 2026-09-09 里程碑 2 第 7 步：文末 `realWeekDataSemanticsSuite()`（原
- * `TODO_realWeekDataSemanticsSuite` 占位）已实作并在文件末尾调用。**当前语料仍为空**：
- * 本步向 SOUNDS 迁入的四个字段只是形态变化（字符串→数组），开工前的字位表扩充分析
- * 已证明未引入任何新的多字母字位 ID——四周真实数据仍全部是单字母字位，没有任何词的
- * `W[word].segments` 会含多字母字位。该函数因此显式打印这一点并跳过（不是悄悄断言
- * "0 个词全部通过"），判据清单原样保留，供未来某个真正教多字母字位的周（W5 起）
- * 声明多字母 `segments` 后自动激活。
+ * `TODO_realWeekDataSemanticsSuite` 占位）已实作并在文件末尾调用。
+ *
+ * ⚠️（H2，外审 high，2026-09-10 修订）上一版实作只收"box.W[word] 已经声明了
+ * segments"的词，若语料为空就整体 SKIP——这个判据本身有漏洞：W5 起若某个严格
+ * 消费词因新教字位变多解、却漏写 segments，会被"只收已有 segments 的词"这行
+ * 直接静默跳过，套件甚至可能一直保持"语料为空"的假象，不会因为漏写而报错。
+ * 已改为对四周**全部严格消费词**（word_consumers.js 的共享抽取器，与差分测试
+ * 同源）在完整 SOUNDS 下调用 segmentWord 四分类（唯一解/显式消歧解/零解/
+ * 多解未消歧即 FAIL），套件恒执行、不再有"语料为空就整体跳过"的分支——详见
+ * classifyStrictConsumptionWordsFromRealWeeks 与 realWeekDataSemanticsSuite。
  */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { segmentWord, surfaceOf, graphemeLabel } = require('../../frontend/src/shared/graphemes');
 const { loadData } = require('../../tools/validation/load_data');
+const { collectWordConsumption, ENTRY_KINDS } = require('../../tools/validation/word_consumers');
+const { withGraphemeFallback } = require('../../tools/validation/sounds_grapheme_adapter');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 
@@ -171,62 +177,156 @@ console.log('PASS grapheme semantics ④：rain/ran 字符级"不是最小对立
 console.log('PASS grapheme semantics: 四类预期差异（字位数/首字位/已教集合/最小对立）全部按明确断言验证发生，且均经 explicitSegments 路径消歧');
 
 // ============================================================================
-// H-3（2026-09-09 里程碑 2 收口批）：真实周数据语义套件接入点占位。
-// 本批只做两件事之一（另一件是上面的头注释）：预留接入点，不实作——第 7 步把双字母
-// 字位真的迁进 frontend/src/weeks/week0N.data.js 之前，没有真实语料可用，写了也是
-// 对着空集合断言，没有验证力。
-//
-// 第 7 步要在这里断言什么（判据）：
-//   1. 枚举全部 4 周真实数据里声明了多字母 `segments` 的词（`box.W[word].segments`
-//      存在且数组含至少一个 grapheme.length > 1 的字位 ID）——不能只挑几个手选例子，
-//      必须是"枚举"，理由见 test_migration_diff.js 头注释与 feedback_dont_relist_
-//      what_source_already_lists.md：源头（真实 W 声明）已经是权威清单，不能自己
-//      再挑一份更窄的子集当作"有代表性"。
-//   2. 对每个词，逐项断言：
-//      - 分词结果：segmentWord(word, sounds, box.W[word].segments) 的 ID 数组
-//        与声明的 segments 完全一致（deepEqual，不只对比长度）。
-//      - 表面串：surfaceOf(ids, sounds) 应等于该词本身（规范化后）。
-//      - 首字位：ids[0] 的 graphemeLabel 与"这个词真实的第一个书写单元"是否相符
-//        （不是 word.charAt(0)——双字母首字位时两者本该不同，这正是差异①/②在
-//        合成语料上已经证明过的形状，第 7 步要在真实词上重新证明一次）。
-//      - 长度：ids.length（字位数）与 word.length（字符数）在含多字母字位的词上
-//        应不相等（除非这个词恰好所有字位都单字母，那时才允许相等）。
-//      - 相关消费者语义：games.js/render-blocks.js/check_data.js 等第 4b/7 步已接线
-//        的消费点，对这批真实词的行为应与 test_migration_diff.js 的差分逻辑给出的
-//        "新侧"结果一致（不是本文件重新发明一套判据，是复用差分测试已验证过的算法）。
-//   3. 语料为空（当前 SOUNDS 均是单字母，没有任何词声明了多字母 segments）时，
-//      这道套件本身应显式跳过并打印原因，不能悄悄"断言 0 个词全部通过"而误报绿色
-//      （同 test_migration_diff.js 文件头 `assert(n > 50, ...)` 一类的"语料太少"
-//      防御，第 7 步实作时补上）。
-/* realWeekDataSemanticsSuite()：第 7 步实作（原 TODO_realWeekDataSemanticsSuite 占位）。
+// 真实周数据语义套件（H2，外审 high，2026-09-10 重写；原 H-3/第 7 步的"枚举已声明
+// segments 的词、语料为空则整体 SKIP"判据已作废——见下方函数头注释的完整说明）。
+// ============================================================================
+/* H2（外审 high，2026-09-10）：改前 collectMultiLetterWordsFromRealWeeks 只收
+ * "box.W[word] 已经声明了 segments 数组"的词（`if (!entry || !Array.isArray(
+ * entry.segments)) return;`）——W5 起若某个严格消费词因新教 `ai` 而变成多解、却
+ * 漏写 segments，会被这行直接静默跳过，套件甚至可能语料为空（这批词从未出现在
+ * "已有 segments"的集合里，永远进不了下面的枚举）。
  *
- * 判据 1（枚举，不挑例子）：扫描全部 4 周真实 frontend/src/weeks/week0N.data.js 的
- * W[word].segments 声明，收集其中"含至少一个多字母字位（grapheme.length > 1）"的词——
- * 这是权威源头（真实 W 声明）本身给出的清单，不自己另挑一份子集（同头注释判据 1）。
+ * 改法：语料来源换成第 3 步已建的共享严格消费词抽取器
+ * tools/validation/word_consumers.js（差分测试 tests/unit/test_migration_diff.js
+ * 引用的同一个模块，见该文件头 import），对四周每个严格消费词在**完整 SOUNDS**下
+ * 调 segmentWord(word, sounds, explicit)，按方案 §3.4/§3.9 四分类：
+ *   - 唯一解（无需 explicit）→ 计入 executed。
+ *   - segment-ambiguous 但 box.W[word].segments 有显式声明 → 交给
+ *     assertWordSemantics 验证表面串还原与每个 ID 在 SOUNDS 里存在，计入 executed
+ *     （resolved，非独占地额外记入 explicitResolvedWords 供报告可见性）。
+ *   - segment-unknown（零解，真的含未教字位）→ 单独计入 skippedUnknown，不算失败
+ *     （这是教学设计的正常产物，比如 G1 听音找开头的图片干扰词、认读词，见方案
+ *     §3.9「跳过必须分两类」）。
+ *   - segment-ambiguous 且 box.W[word].segments 缺失 → **必须 FAIL**（方案 §3.4：
+ *     多解且无 segments 即校验器必须失败，本套件与生产校验器同一口径）。
+ * 按 §3.9「逐来源守恒」：每个 word_consumers 来源（kind）各自断言
+ * executed + skippedUnknown === total，并核对来源集合与 ENTRY_KINDS 逐字相等
+ * （防止抽取器整类漏收）。 */
+/* classifyOneWordForSemantics(word, sounds, explicitSegments)：单词四分类的决策核心，
+ * 抽成独立函数——既是 classifyStrictConsumptionWordsFromRealWeeks 真正调用的逻辑，
+ * 也让下面的「分辨力验证」（verifyClassifyOneWordForSemanticsMustFailOnAmbiguity）
+ * 能直接喂合成输入证明"多解且未声明 explicitSegments"分支真的会抛错，不必等真实
+ * 数据出现这种情况才能验证它不是一段永远不会被触发的死代码。
+ * 返回 {status: 'unique'|'zero'|'explicit', ids}；multi-without-explicit 直接抛错
+ * （不是返回值，因为这是本函数唯一没有"正常结果"可返回的分支）。 */
+function classifyOneWordForSemantics(word, sounds, explicitSegments) {
+  try {
+    const ids = segmentWord(word, sounds);
+    return { status: 'unique', ids: ids };
+  } catch (e) {
+    if (e && e.code === 'segment-unknown') return { status: 'zero', ids: null };
+    if (e && e.code === 'segment-ambiguous') {
+      if (!explicitSegments) {
+        const err = new Error(
+          `H2：多解且未声明 explicit segments："${word}"——方案 §3.4 规定「多解且缺 segments ` +
+          `即校验器必须失败」，本套件按同一口径判定为测试失败，不允许静默跳过`
+        );
+        err.code = 'segment-ambiguous-missing-segments';
+        throw err;
+      }
+      return { status: 'explicit', ids: segmentWord(word, sounds, explicitSegments) };
+    }
+    throw e; // 其他任何错误码：不许吞，直接抛出
+  }
+}
+
+/* 分辨力验证（"改坏副本"办法的合成语料版——真实四周数据当前不含任何歧义词，无法
+ * 靠真实数据触发这个分支，只能用合成 SOUNDS 直接证明）。
  *
- * 判据 3（语料为空时的处置）：本步（第 7 步）迁的是四个字段的形态（字符串→数组），
- * 开工前的字位表扩充分析已证明本步不引入任何新的多字母字位 ID——四周 SOUNDS 仍全部
- * 是单字母字位（见本任务收口报告「开工前字位表扩充分析」一节的实测结论）。因此本步
- * 完成后，语料仍然为空（没有任何真实词的 W[word].segments 含多字母字位），这道套件
- * 必须显式跳过并打印原因，不能悄悄"断言 0 个词全部通过"而误报绿色——这正是判据 3
- * 明写的处置，也是"没有引入新字位就不会有新歧义"这条结论在测试层面的直接体现。
- * 语料非空的分支（判据 2 的四类逐项断言）保留实现，供未来某个双字母周（W5 起）真的
- * 声明了多字母 segments 时自动激活，不需要再回来改这个函数本身。 */
-function collectMultiLetterWordsFromRealWeeks() {
-  const multiLetterWords = [];
+ * ① 正例：无歧义词（tan）应正常返回 unique。
+ * ② 零解：含未教字位的词（zap，z 未在合成表里）应正常返回 zero，不抛错。
+ * ③ 核心：多解（rain，r/a/i/n/ai 共存）且不传 explicitSegments，必须抛出
+ *   segment-ambiguous-missing-segments——这正是 H2 要求的"多解且无 segments 即
+ *   校验器必须失败"，证明该分支不是死代码。
+ * ④ 反例：同样的多解词 rain，传入正确 explicitSegments 后应正常返回 explicit，
+ *   ids 与传入的 segments 完全一致——证明"有 segments 就该正常放行"没有被
+ *   ③ 的修复连带破坏。 */
+function verifyClassifyOneWordForSemanticsMustFailOnAmbiguity() {
+  const sounds = {
+    r: { grapheme: 'r', type: 'c' }, a: { grapheme: 'a', type: 'v' },
+    i: { grapheme: 'i', type: 'v' }, n: { grapheme: 'n', type: 'c' },
+    t: { grapheme: 't', type: 'c' }, ai: { grapheme: 'ai', type: 'v' }
+  };
+
+  const uniqueResult = classifyOneWordForSemantics('tan', sounds, null);
+  assert.equal(uniqueResult.status, 'unique');
+  assert.deepEqual(uniqueResult.ids, ['t', 'a', 'n']);
+
+  const zeroResult = classifyOneWordForSemantics('zap', sounds, null);
+  assert.equal(zeroResult.status, 'zero', '含未教字位（z 不在合成表里）的词应归为 zero，不应抛错');
+  assert.equal(zeroResult.ids, null);
+
+  const caught = assertThrows(
+    () => classifyOneWordForSemantics('rain', sounds, null),
+    e => assert.equal(e.code, 'segment-ambiguous-missing-segments'),
+    'H2 核心分支：多解（rain，r/a/i/n/ai 共存）且未传 explicitSegments 必须抛错'
+  );
+  assert(/rain/.test(caught.message), '抛错信息应点名具体的词');
+
+  const explicitResult = classifyOneWordForSemantics('rain', sounds, ['r', 'ai', 'n']);
+  assert.equal(explicitResult.status, 'explicit');
+  assert.deepEqual(explicitResult.ids, ['r', 'ai', 'n'],
+    '传入正确 explicitSegments 后应正常放行——证明 H2 的修复只堵住"缺 segments"这一种输入，不误伤"有 segments"的合法输入');
+
+  console.log('PASS grapheme semantics H2 分辨力验证：classifyOneWordForSemantics 的 unique/zero 分支按预期返回，' +
+    '"多解且未声明 explicitSegments"分支确实会抛出 segment-ambiguous-missing-segments（不是死代码），' +
+    '传入正确 explicitSegments 后同一个多解词仍能正常放行');
+}
+
+function classifyStrictConsumptionWordsFromRealWeeks() {
+  const bySource = new Map();
+  const statFor = kind => {
+    if (!bySource.has(kind)) bySource.set(kind, { total: 0, executed: 0, skippedUnknown: 0 });
+    return bySource.get(kind);
+  };
+  const zeroSolutionWords = new Set();
+  const explicitResolvedWords = [];
+
   for (let n = 1; n <= 4; n++) {
     const file = 'frontend/src/weeks/week0' + n + '.data.js';
     const raw = fs.readFileSync(path.join(ROOT, file), 'utf8');
     const box = loadData(raw, false);
-    const sounds = box.SOUNDS || {};
-    Object.keys(box.W || {}).forEach(word => {
-      const entry = box.W[word];
-      if (!entry || !Array.isArray(entry.segments)) return;
-      const hasMultiLetter = entry.segments.some(id => sounds[id] && String(sounds[id].grapheme).length > 1);
-      if (hasMultiLetter) multiLetterWords.push({ week: n, file: file, word: word, segments: entry.segments, sounds: sounds });
+    const sounds = withGraphemeFallback(box.SOUNDS);
+    const records = collectWordConsumption(box); // 不去重：来源统计要按原始记录逐条计数（同 test_migration_diff.js tallySourceCoverage 的做法）
+
+    records.forEach(rec => {
+      const word = rec.word.toLowerCase();
+      const stat = statFor(rec.kind);
+      stat.total++;
+      const entry = box.W && box.W[word];
+      const explicitSegments = entry && Array.isArray(entry.segments) ? entry.segments : null;
+      let result;
+      try {
+        result = classifyOneWordForSemantics(word, sounds, explicitSegments);
+      } catch (e) {
+        if (e && e.code === 'segment-ambiguous-missing-segments') {
+          e.message = `week ${n}，来源 "${rec.kind}"，file: ${file}：` + e.message;
+        }
+        throw e;
+      }
+      if (result.status === 'zero') { stat.skippedUnknown++; zeroSolutionWords.add(word); return; }
+      if (result.status === 'explicit') {
+        assertWordSemantics({ week: n, file: file, word: word, segments: explicitSegments, sounds: sounds });
+        explicitResolvedWords.push({ week: n, word: word, kind: rec.kind });
+      }
+      stat.executed++;
     });
   }
-  return multiLetterWords;
+
+  assert.deepEqual([...bySource.keys()].sort(), ENTRY_KINDS.slice().sort(),
+    'H2：来源分布实际收到的 kind 集合应与 word_consumers.ENTRY_KINDS 逐字相等——' +
+    '某个来源整类消失会让"executed+skippedUnknown===total"逐来源守恒抓不住（该来源根本不出现在统计里）');
+
+  let totalWords = 0;
+  for (const [kind, stat] of bySource) {
+    assert.equal(stat.executed + stat.skippedUnknown, stat.total,
+      `H2：来源 "${kind}" 的 executed(${stat.executed}) + skippedUnknown(${stat.skippedUnknown}) 应等于 total(${stat.total})——` +
+      '逐来源守恒，防止"抽取器少收一类"或"判定写错误跳一大批"被更宽松的总量阈值掩盖');
+    totalWords += stat.total;
+  }
+  assert(totalWords > 50, `H2：真实四周严格消费词语料太少（仅 ${totalWords} 条），怀疑抽取器没吃到真实数据`);
+
+  return { bySource: bySource, zeroSolutionWords: zeroSolutionWords, explicitResolvedWords: explicitResolvedWords, totalWords: totalWords };
 }
 
 /* assertWordSemantics(entry)：判据 2 的四类逐项断言，抽成独立函数——既是
@@ -298,9 +398,10 @@ function verifyAssertWordSemanticsHasDiscriminatingPower() {
   assertWordSemantics({ week: 0, file: '(synthetic)', word: 'rain', segments: ['r', 'ai', 'n'], sounds: sounds });
 
   // ①b：首字位多字符（断言 3 的 firstLabel.length>1 分支）——合成 aid/[ai,d]，此前
-  // 无论合成语料还是真实语料（真实语料当前为空，见 realWeekDataSemanticsSuite 的
-  // SKIP 分支）都没有任何输入让这个分支真正执行过。这里用能通过 segmentWord 的正确
-  // 输入去跑它，证明它不是死代码（哪怕它必然为真，见函数头注释）。
+  // 无论合成语料还是真实语料（真实语料当前 explicitResolvedWords 恒为空，见
+  // classifyStrictConsumptionWordsFromRealWeeks：当前 SOUNDS 全是单字母，没有词会
+  // 走到 segment-ambiguous 分支）都没有任何输入让这个分支真正执行过。这里用能通过
+  // segmentWord 的正确输入去跑它，证明它不是死代码（哪怕它必然为真，见函数头注释）。
   const aidSounds = { ai: { grapheme: 'ai', type: 'v' }, d: { grapheme: 'd', type: 'c' } };
   assertWordSemantics({ week: 0, file: '(synthetic)', word: 'aid', segments: ['ai', 'd'], sounds: aidSounds });
 
@@ -336,40 +437,29 @@ function verifyAssertWordSemanticsHasDiscriminatingPower() {
     'segmentWord 契约与字符串长度不等即不相等这两点保证恒真，不存在能让它们独立落空的合法输入（见函数头注释）');
 }
 
-/* realWeekDataSemanticsSuite()：第 7 步实作（原 TODO_realWeekDataSemanticsSuite 占位）。
- *
- * 判据 1（枚举，不挑例子）：扫描全部 4 周真实 frontend/src/weeks/week0N.data.js 的
- * W[word].segments 声明，收集其中"含至少一个多字母字位（grapheme.length > 1）"的词——
- * 这是权威源头（真实 W 声明）本身给出的清单，不自己另挑一份子集（同头注释判据 1）。
- *
- * 判据 3（语料为空时的处置）：本步（第 7 步）迁的是四个字段的形态（字符串→数组），
- * 开工前的字位表扩充分析已证明本步不引入任何新的多字母字位 ID——四周 SOUNDS 仍全部
- * 是单字母字位（见本任务收口报告「开工前字位表扩充分析」一节的实测结论）。因此本步
- * 完成后，语料仍然为空（没有任何真实词的 W[word].segments 含多字母字位），这道套件
- * 必须显式跳过并打印原因，不能悄悄"断言 0 个词全部通过"而误报绿色——这正是判据 3
- * 明写的处置，也是"没有引入新字位就不会有新歧义"这条结论在测试层面的直接体现。
- * 语料非空的分支（判据 2 的四类逐项断言，见 assertWordSemantics）保留实现，供未来
- * 某个双字母周（W5 起）真的声明了多字母 segments 时自动激活，不需要再回来改这个
- * 函数本身。 */
+/* realWeekDataSemanticsSuite()：H2 重写（原 H-3/第 7 步"枚举已声明 segments 的词、
+ * 语料为空则整体 SKIP"的判据已作废，完整理由见 classifyStrictConsumptionWordsFromRealWeeks
+ * 头注释）。现在语料源是四周全部严格消费词（word_consumers 共享抽取器），套件恒执行，
+ * 不再有"语料为空"这个分支。 */
 function realWeekDataSemanticsSuite() {
   verifyAssertWordSemanticsHasDiscriminatingPower();
+  verifyClassifyOneWordForSemanticsMustFailOnAmbiguity();
 
-  const multiLetterWords = collectMultiLetterWordsFromRealWeeks();
-  if (multiLetterWords.length === 0) {
-    console.log('SKIP grapheme semantics 真实周数据语义套件：四周真实数据（frontend/src/weeks/week01–04.data.js）' +
-      '当前没有任何词在 W[word].segments 里声明含多字母字位——本步（第 7 步）只迁移四个字段的形态' +
-      '（字符串→数组），开工前的字位表扩充分析已证明未引入任何新的多字母字位 ID，SOUNDS 仍全部是' +
-      '单字母字位，语料因此为空。本条判据显式打印这一点并跳过，不悄悄断言"0 个词全部通过"（那会' +
-      '误报绿色）。判据清单保留在本函数里，供未来某个真正教多字母字位的周（W5 起）声明多字母' +
-      'segments 后自动激活，无需再改这个函数。');
-    return;
-  }
+  // H2：不再按"语料是否含多字母字位"分 SKIP/执行两支——真实严格消费词语料
+  // （word_consumers 的全部 15 个来源）恒非空，四分类（唯一解/显式消歧解/零解/
+  // 多解未消歧即 FAIL）本身就是有效判据，即使当前 SOUNDS 仍全是单字母、显式消歧
+  // 分支的计数恰好是 0，也要显式跑一遍并打印真实计数（不是悄悄不跑）。
+  const result = classifyStrictConsumptionWordsFromRealWeeks();
+  let executed = 0, skippedUnknown = 0;
+  for (const stat of result.bySource.values()) { executed += stat.executed; skippedUnknown += stat.skippedUnknown; }
+  assert(executed > 0, 'H2：真实周数据语义套件不得跳空——executed 必须大于 0');
 
-  // 语料非空分支：逐词枚举全部四类预期差异（判据 2），复用差分测试已验证过的字位级算法
-  // （segmentWord/surfaceOf/graphemeLabel），不重新发明判据。
-  multiLetterWords.forEach(assertWordSemantics);
-  console.log(`PASS grapheme semantics 真实周数据语义套件：真实四周数据里 ${multiLetterWords.length} 个声明了多字母 segments 的词` +
-    '（枚举，不是手选例子），逐项验证分词结果/表面串/首字位/长度不等四类预期差异均成立');
+  console.log(`PASS grapheme semantics 真实周数据语义套件：${result.totalWords} 条严格消费记录` +
+    `（word_consumers 全部 ${result.bySource.size} 个来源，逐来源 executed+skippedUnknown===total 守恒），` +
+    `唯一解/显式消歧解共 executed=${executed}，零解（未教字位，教学设计正常产物）skippedUnknown=${skippedUnknown}` +
+    `（去重后 ${result.zeroSolutionWords.size} 个不同的词），显式消歧解 ${result.explicitResolvedWords.length} 个` +
+    '（当前 SOUNDS 仍全是单字母字位，此数应为 0；未来某周新教多字母字位后若含该字形的已教词漏写 segments，' +
+    '会在上面的分类循环里以"多解且未声明 segments"直接 FAIL，不会被静默跳过或漏收）。');
 }
 realWeekDataSemanticsSuite();
 module.exports = { realWeekDataSemanticsSuite };

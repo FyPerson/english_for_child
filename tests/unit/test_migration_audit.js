@@ -323,7 +323,12 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
      禁止出现标签）两段代码，check-data-schema-gate +10 行。
      2026-09-09 里程碑 2 第 7 步（数据迁移 + 启用 DATA-WALL-01）五次更新：check_data.js
      顶部新增一行 require('./wall_order')（墙真相源模块），check-data-schema-gate
-     单纯因这一行插入而 +1 行（103→104）；pattern 本身未变，不是消费点代码形状变化。 */
+     单纯因这一行插入而 +1 行（103→104）；pattern 本身未变，不是消费点代码形状变化。
+     2026-09-10 外审收口批（M1：首页积木墙点亮态共享化）六次更新：render-blocks.js 在
+     tileHTML 之后新增了共享函数 wallTileLitState（+23 行，供三份模板共用点亮态判定，
+     不再各自内联同一段表达式），render-blocks-tileHTML/render-blocks-forms-join 两处
+     单纯因插入位置在它们之前而整体下移 +23 行（90→113、93→116）；pattern 本身未变，
+     不是消费点代码形状变化。 */
   const expectMigrated = (id, file, line) => {
     const f = lConsumerFindings.find(x => x.findingId === 'l-field-consumer:' + id);
     assert(f, `应有 l-field-consumer:${id}`);
@@ -332,8 +337,8 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     assert.equal(f.status, 'pass', '四处已在 4a 步完成 L→grapheme 收敛，按新 pattern 应判 pass（消费点确实读取 grapheme）');
     assert.equal(f.details.consumesGrapheme, true);
   };
-  expectMigrated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 90);
-  expectMigrated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 93);
+  expectMigrated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 113);
+  expectMigrated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 116);
   expectMigrated('games-flash-display', 'frontend/src/shared/games.js', 1209);
   expectMigrated('check-data-schema-gate', 'tools/validation/check_data.js', 104);
   console.log('PASS migration_audit（H-3 验证 + H2 回归 + 4b 二次更新）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass（pattern 随 4b 消费者兼容层改动同步更新，精确定位到各自代码行）');
@@ -536,7 +541,13 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   /* 总条数不变（129）：第 7 步只是把已有 finding 的 status 从 fail 改判为 pass
      （字段格式与墙集合从不合规变成合规），不新增不减少 finding 条数——newPatterns
      字段本身虽新增到 META 里，但 newPatterns-presence 这条 finding 本来就存在
-     （只是 details.present 从 false 变 true，status 不变仍是 unknown，不影响计数）。 */
+     （只是 details.present 从 false 变 true）。
+     L1（外审 low，2026-09-10）：本条注释原写"status 不变仍是 unknown"——已随
+     上方 M-8 更新（见 §515 附近注释）作废：newPatterns-presence 的 4 条第 7 步后
+     已从 unknown 改判 not-applicable。这里只是重申"总条数 129 不变"这件事跟
+     status 具体怎么变无关——不管某条 finding 的 status 在哪一步从什么改判成什么，
+     只要没有 finding 被新增或删除，总条数就不受影响；不要把"计数不变"误读成
+     "status 也不变"。 */
 
   const REAL_FAIL_FINDING_IDS = [
     'DATA-ASSESS-01/w4:forbidden-block:retest',

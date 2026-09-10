@@ -88,6 +88,59 @@ def poison_orphan_sounds_key(raw):
     return stripped + injected_entry + trailing_ws + raw[idx:]
 
 
+def poison_wall_missing(raw):
+    """H1 缺项：从 wallLetters 里去掉一个仍应上墙的字位（'m'，week02 的 newPatterns 里
+    有它、SOUNDS 里也没标 displayOnWall:false），newPatterns/SOUNDS 不动。"""
+    m_wall, wall_items = extract_array_field(raw, 'wallLetters')
+    assert 'm' in wall_items, "fixture 的 wallLetters 应含 'm'，检查 fixture"
+    new_items = [c for c in wall_items if c != 'm']
+    return raw[:m_wall.start()] + '"wallLetters": [' + ','.join(f'"{x}"' for x in new_items) + ']' + raw[m_wall.end():]
+
+
+def poison_wall_extra(raw):
+    """H1 额外项：往 wallLetters 追加一个真实存在于 SOUNDS、但不在任何一周
+    newPatterns 累计序列里的字位（复用 poison_orphan_sounds_key 的 'zz' 条目，同时把
+    它塞进 wallLetters——这样它不会被判成孤儿字位，只会被判成"额外项"，与 M-6b 的
+    孤儿字位测试互相区分）。"""
+    with_zz_sound = poison_orphan_sounds_key(raw)
+    m_wall, wall_items = extract_array_field(with_zz_sound, 'wallLetters')
+    assert 'zz' not in wall_items
+    new_items = wall_items + ['zz']
+    return with_zz_sound[:m_wall.start()] + '"wallLetters": [' + ','.join(f'"{x}"' for x in new_items) + ']' + with_zz_sound[m_wall.end():]
+
+
+def poison_wall_duplicate(raw):
+    """H1 重复项：在 wallLetters 里重复追加一个已存在的字位（'c'），不改 newPatterns/
+    SOUNDS——'c' 仍然只应该出现一次。"""
+    m_wall, wall_items = extract_array_field(raw, 'wallLetters')
+    assert 'c' in wall_items
+    new_items = wall_items + ['c']
+    return raw[:m_wall.start()] + '"wallLetters": [' + ','.join(f'"{x}"' for x in new_items) + ']' + raw[m_wall.end():]
+
+
+def poison_wall_display_on_wall_false_not_excluded(raw):
+    """H1 displayOnWall:false 标记未生效：把某个已教字位（'d'）在 SOUNDS 里标成
+    displayOnWall:false，但错误地把它继续留在 wallLetters 里——与
+    tests/unit/test_wall_order.js 的纯函数 fixture 5 同构，这里是它的真实 CLI 入口
+    版本。"""
+    needle = "d:{grapheme:'d',"
+    assert needle in raw, "fixture 里找不到 d 的 SOUNDS 声明起始片段，检查 fixture"
+    poisoned = raw.replace(needle, "d:{grapheme:'d', displayOnWall:false,", 1)
+    assert poisoned != raw
+    return poisoned
+
+
+def poison_first_teach_day_mismatch(raw):
+    """H1 键与 newPatterns 不等：从 FIRST_TEACH_DAY 里删掉一个仍在 newPatterns 里的键
+    （'r'），newPatterns/wallLetters/SOUNDS 都不动，制造两边键集合不相等。"""
+    m = re.search(r'^const FIRST_TEACH_DAY = \{([^}]*)\};', raw, re.M)
+    assert m, 'fixture 里找不到 const FIRST_TEACH_DAY = {...}; 声明'
+    body = m.group(1)
+    assert 'r:4' in body or 'r: 4' in body, "fixture 的 FIRST_TEACH_DAY 应含 'r'，检查 fixture"
+    new_body = re.sub(r'\s*r\s*:\s*4\s*,?', '', body, count=1)
+    return raw[:m.start()] + 'const FIRST_TEACH_DAY = {' + new_body + '};' + raw[m.end():]
+
+
 class WallAssertionBlindSpotTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
@@ -132,6 +185,80 @@ class WallAssertionBlindSpotTests(unittest.TestCase):
             f'都是合法克隆，不应连带报别的错）：实际失败 {f} 条，输出：{result.stdout[-1500:]}')
         self.assertIn('孤儿字位', result.stdout, '应报出新增的"孤儿字位"断言消息')
         self.assertIn('"zz"', result.stdout, '失败消息应点名具体的孤儿键 zz')
+
+    # ---- H1（外审 high，2026-09-10）：以下五类此前只在 tests/unit/test_wall_order.js
+    # 里测过纯函数（diffWallLetters/setsEqual），没有任何测试走真实 CLI 入口证明
+    # check_data.js 真的把这些纯函数接上了、错误真的会被上报为失败——纯函数测试证明
+    # 的是"算法对"，不证明"接线对"。这里各配一个最小变异 + 真实 CLI 运行 + 摘要行/
+    # 诊断文案断言，与上面两个 M-6 用例同一套写法。
+
+    def test_wall_missing_item_is_caught(self):
+        injected = poison_wall_missing(self.baseline_text)
+        self.assertNotEqual(injected, self.baseline_text)
+        target = Path(self.tmpdir.name) / 'week02-data-wall-missing.js'
+        target.write_text(injected, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertNotEqual(result.returncode, 0, 'wallLetters 缺少应上墙字位应报失败')
+        p, f = count_pass_fail(result.stdout)
+        self.assertGreater(f, 0, f'应至少新增 1 条失败，摘要行仍应正常打印（未被更早的语法/schema 错误抢先终止）：{result.stdout[-1500:]}')
+        self.assertGreater(p, 0, '摘要行应仍报出通过项数，说明没有在解析阶段就整体崩溃')
+        self.assertIn('wallLetters 缺少独立教学顺序序列里应上墙的字位：[m]', result.stdout, '失败消息应点名具体缺失的字位 m')
+
+    def test_wall_extra_item_is_caught(self):
+        injected = poison_wall_extra(self.baseline_text)
+        self.assertNotEqual(injected, self.baseline_text)
+        target = Path(self.tmpdir.name) / 'week02-data-wall-extra.js'
+        target.write_text(injected, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertNotEqual(result.returncode, 0, 'wallLetters 含独立教学顺序序列之外的额外字位应报失败')
+        p, f = count_pass_fail(result.stdout)
+        self.assertGreater(f, 0, f'应至少新增 1 条失败，摘要行仍应正常打印：{result.stdout[-1500:]}')
+        self.assertGreater(p, 0)
+        self.assertIn('wallLetters 含独立教学顺序序列之外的额外字位：[zz]', result.stdout, '失败消息应点名具体的额外字位 zz')
+        # zz 已被塞进 wallLetters，不应再被判成孤儿字位（两类失败互斥，不应连带误报）
+        self.assertNotIn('孤儿字位', result.stdout)
+
+    def test_wall_duplicate_item_is_caught(self):
+        injected = poison_wall_duplicate(self.baseline_text)
+        self.assertNotEqual(injected, self.baseline_text)
+        target = Path(self.tmpdir.name) / 'week02-data-wall-duplicate.js'
+        target.write_text(injected, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertNotEqual(result.returncode, 0, 'wallLetters 含重复字位应报失败')
+        p, f = count_pass_fail(result.stdout)
+        self.assertGreater(f, 0, f'应至少新增 1 条失败，摘要行仍应正常打印：{result.stdout[-1500:]}')
+        self.assertGreater(p, 0)
+        self.assertIn('wallLetters 含重复字位：[c]', result.stdout, '失败消息应点名具体重复的字位 c')
+
+    def test_wall_display_on_wall_false_still_shown_is_caught(self):
+        injected = poison_wall_display_on_wall_false_not_excluded(self.baseline_text)
+        self.assertNotEqual(injected, self.baseline_text)
+        target = Path(self.tmpdir.name) / 'week02-data-wall-display-false.js'
+        target.write_text(injected, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertNotEqual(result.returncode, 0, '标了 displayOnWall:false 的字位仍出现在 wallLetters 里应报失败')
+        p, f = count_pass_fail(result.stdout)
+        self.assertGreater(f, 0, f'应至少新增 1 条失败，摘要行仍应正常打印：{result.stdout[-1500:]}')
+        self.assertGreater(p, 0)
+        self.assertIn('wallLetters 含独立教学顺序序列之外的额外字位：[d]', result.stdout,
+            'displayOnWall:false 的字位应被 expectedWallOrder 排除出预期序列，仍出现在 wallLetters 里应判为额外项')
+
+    def test_first_teach_day_keys_mismatch_newpatterns_is_caught(self):
+        injected = poison_first_teach_day_mismatch(self.baseline_text)
+        self.assertNotEqual(injected, self.baseline_text)
+        target = Path(self.tmpdir.name) / 'week02-data-first-teach-day-mismatch.js'
+        target.write_text(injected, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertNotEqual(result.returncode, 0, 'FIRST_TEACH_DAY 键集合与 newPatterns 不等应报失败')
+        p, f = count_pass_fail(result.stdout)
+        self.assertGreater(f, 0, f'应至少新增 1 条失败，摘要行仍应正常打印：{result.stdout[-1500:]}')
+        self.assertGreater(p, 0)
+        self.assertIn('FIRST_TEACH_DAY 的键集合与 newPatterns 不一致', result.stdout)
 
 
 if __name__ == '__main__':

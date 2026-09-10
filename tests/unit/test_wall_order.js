@@ -29,7 +29,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const {
-  computeTeachingOrder, gatherWeekRecordsUpTo, expectedWallOrder, diffWallLetters, setsEqual, TeachingOrderError
+  computeTeachingOrder, gatherWeekRecordsUpTo, getExpectedWeeksUpTo, expectedWallOrder, diffWallLetters, setsEqual, TeachingOrderError
 } = require('../../tools/validation/wall_order');
 
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -57,27 +57,43 @@ function assertThrows(fn, code, label) {
     { week: 2, newPatterns: ['c', 'k'] },
     { week: 1, newPatterns: ['s', 'a'] },
     { week: 3, newPatterns: ['g'] }
-  ]);
+  ], [1, 2, 3]);
   assert.deepEqual(order, ['s', 'a', 'c', 'k', 'g'],
     'computeTeachingOrder 应按周号排序后累计，不受输入数组本身顺序影响，同周内按 newPatterns 自身顺序追加');
   console.log('PASS wall_order computeTeachingOrder：三周乱序输入按周号排序后正确累计');
 }
 assertThrows(() => computeTeachingOrder([]), 'teaching-order-empty', 'computeTeachingOrder 空数组');
-assertThrows(() => computeTeachingOrder([{ week: 0, newPatterns: [] }]), 'teaching-order-invalid-week', 'computeTeachingOrder week=0');
-assertThrows(() => computeTeachingOrder([{ week: 1.5, newPatterns: [] }]), 'teaching-order-invalid-week', 'computeTeachingOrder week 非整数');
-assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [] }, { week: 1, newPatterns: [] }]),
+assertThrows(() => computeTeachingOrder([{ week: 0, newPatterns: [] }], [0]), 'teaching-order-invalid-week', 'computeTeachingOrder week=0');
+assertThrows(() => computeTeachingOrder([{ week: 1.5, newPatterns: [] }], [1]), 'teaching-order-invalid-week', 'computeTeachingOrder week 非整数');
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [] }, { week: 1, newPatterns: [] }], [1]),
   'teaching-order-duplicate-week', 'computeTeachingOrder 重复周号');
-assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [] }, { week: 3, newPatterns: [] }]),
-  'teaching-order-non-contiguous', 'computeTeachingOrder 周号不连续（缺 2）');
-assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: ['a'] }, { week: 2, newPatterns: ['a'] }]),
+// M6（外审 medium，2026-09-10）：expectedWeeks 缺失/非法数组时的独立错误码。
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [] }]),
+  'teaching-order-expected-weeks-invalid', 'computeTeachingOrder 未传 expectedWeeks');
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [] }], []),
+  'teaching-order-expected-weeks-invalid', 'computeTeachingOrder expectedWeeks 空数组');
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [] }], ['1']),
+  'teaching-order-expected-weeks-invalid', 'computeTeachingOrder expectedWeeks 元素非数字');
+// M6 核心修复：改前只判断 weekRecords 内部彼此是否连续——[{week:2},{week:3}] 相对
+// 彼此连续会直接通过，静默漏掉"缺开头周 1"。改后必须与调用方显式传入的
+// expectedWeeks 精确匹配，缺 week 1 的输入必须报错。
+assertThrows(() => computeTeachingOrder([{ week: 2, newPatterns: [] }, { week: 3, newPatterns: [] }], [1, 2, 3]),
+  'teaching-order-week-set-mismatch', 'computeTeachingOrder 缺开头周 1（相对彼此连续但不是从 1 起）');
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [] }, { week: 3, newPatterns: [] }], [1, 2, 3]),
+  'teaching-order-week-set-mismatch', 'computeTeachingOrder 周号不连续（缺中间的 2）');
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [] }, { week: 2, newPatterns: [] }], [1, 2, 3]),
+  'teaching-order-week-set-mismatch', 'computeTeachingOrder 缺结尾周 3（expectedWeeks 要求到 3）');
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [] }, { week: 2, newPatterns: [] }, { week: 3, newPatterns: [] }], [1, 2]),
+  'teaching-order-week-set-mismatch', 'computeTeachingOrder 多出 expectedWeeks 之外的周号');
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: ['a'] }, { week: 2, newPatterns: ['a'] }], [1, 2]),
   'teaching-order-duplicate-id', 'computeTeachingOrder 字位跨周重复');
-assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: ['a', 'a'] }]),
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: ['a', 'a'] }], [1]),
   'teaching-order-duplicate-id', 'computeTeachingOrder 字位同周内重复');
-assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: 'ai' }]),
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: 'ai' }], [1]),
   'teaching-order-invalid-patterns', 'computeTeachingOrder newPatterns 非数组');
-assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [1] }]),
+assertThrows(() => computeTeachingOrder([{ week: 1, newPatterns: [1] }], [1]),
   'teaching-order-invalid-id', 'computeTeachingOrder newPatterns 元素非字符串');
-console.log('PASS wall_order computeTeachingOrder：8 类非法输入（空/周号非法/重复周/不连续/跨周重复字位/同周重复字位/patterns 非数组/元素非字符串）均正确抛出对应错误码');
+console.log('PASS wall_order computeTeachingOrder：8 类非法输入（空/周号非法/重复周/expectedWeeks 缺失或非法/字位集合不匹配（缺开头周/缺中间周/缺结尾周/多余周）/跨周重复字位/同周重复字位/patterns 非数组/元素非字符串）均正确抛出对应错误码');
 
 // ============================================================================
 // ② gatherWeekRecordsUpTo：与真实 project.json + frontend/src/weeks/week0N.data.js 集成
@@ -103,7 +119,7 @@ console.log('PASS wall_order computeTeachingOrder：8 类非法输入（空/周�
   // 端到端用真实四周数据验证累计结果——不只是零散单测，这是对「真相源」本身在
   // 真实项目状态下的一次回归钉住。
   const box4 = { META: { week: 4, newPatterns: [] } };
-  const order = computeTeachingOrder(gatherWeekRecordsUpTo(box4, 4));
+  const order = computeTeachingOrder(gatherWeekRecordsUpTo(box4, 4), getExpectedWeeksUpTo(4));
   assert.deepEqual(order,
     ['s', 'a', 't', 'i', 'p', 'n', 'c', 'k', 'e', 'h', 'r', 'm', 'd', 'g', 'o', 'u', 'l', 'f', 'b'],
     '真实四周数据的累计教学顺序应为 19 个字位、按 W1→W2→W3 的 newPatterns 顺序依次追加（W4 不新增）');
@@ -112,6 +128,66 @@ console.log('PASS wall_order computeTeachingOrder：8 类非法输入（空/周�
 assertThrows(() => gatherWeekRecordsUpTo({ META: { week: 99 } }, 99),
   'teaching-order-week-not-in-project', 'gatherWeekRecordsUpTo week 不在 project.json 里');
 console.log('PASS wall_order gatherWeekRecordsUpTo：不在 project.json weeks 列表里的周号正确抛错');
+
+// ============================================================================
+// M5（外审 medium，2026-09-10）：gatherWeekRecordsUpTo 改前把字段缺失/文件读取失败/
+// 解析失败三类全部静默吞掉或不加区分地冒泡——newPatterns 缺失或非数组被 `|| []`
+// 当成合法空数组，文件 ENOENT/解析失败则是未包装的原生异常直接冒出去。这里各补一例。
+// ============================================================================
+{
+  // 当前周（currentBox）的 META.newPatterns 缺失——不应被 `|| []` 静默当成空数组。
+  assertThrows(() => gatherWeekRecordsUpTo({ META: { week: 2 } }, 2),
+    'teaching-order-missing-patterns', 'gatherWeekRecordsUpTo 当前周 META.newPatterns 缺失');
+  // 当前周的 META.newPatterns 是非数组类型（字符串），同样应报同一错误码。
+  assertThrows(() => gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: 'ai' } }, 2),
+    'teaching-order-missing-patterns', 'gatherWeekRecordsUpTo 当前周 META.newPatterns 非数组');
+  // 反证：显式空数组必须被接受为合法输入（"空数组只能由显式 [] 表达"）。
+  const recordsWithExplicitEmpty = gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2);
+  assert.deepEqual(sameRealm(recordsWithExplicitEmpty.find(r => r.week === 2).newPatterns), [],
+    '显式 newPatterns: [] 应被正常接受，不应报错');
+  console.log('PASS wall_order M5：当前周 META.newPatterns 缺失/非数组被结构化报错（teaching-order-missing-patterns），显式空数组仍被正常接受');
+}
+{
+  // 历史周（非当前周）的数据文件读取失败——monkeypatch fs.readFileSync，只在读取
+  // week01.data.js 这一个特定路径时抛错，其余路径（project.json 等）原样透传，
+  // 用后立即在 finally 里还原，不影响同一进程里的其余用例。
+  const week01Path = path.join(ROOT, 'frontend', 'src', 'weeks', 'week01.data.js');
+  const originalReadFileSync = fs.readFileSync;
+  fs.readFileSync = function (filePath, ...rest) {
+    if (String(filePath) === week01Path) {
+      throw new Error('模拟磁盘读取失败（M5 测试专用）');
+    }
+    return originalReadFileSync.call(fs, filePath, ...rest);
+  };
+  try {
+    assertThrows(() => gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2),
+      'teaching-order-file-read-failed', 'gatherWeekRecordsUpTo 历史周文件读取失败');
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+  }
+  console.log('PASS wall_order M5：历史周数据文件读取失败（如 ENOENT）被结构化报错（teaching-order-file-read-failed），不再是未包装的原生异常');
+}
+{
+  // 历史周数据文件内容能被读到，但解析失败（语法错误）——同样 monkeypatch
+  // fs.readFileSync，只对 week01.data.js 这一路径返回一段非法 JS 源码，让
+  // loadData(raw, false) 内部抛出语法错误，验证会被包成 teaching-order-file-parse-failed
+  // 而不是让 loadData 的原生异常直接冒泡。
+  const week01Path = path.join(ROOT, 'frontend', 'src', 'weeks', 'week01.data.js');
+  const originalReadFileSync = fs.readFileSync;
+  fs.readFileSync = function (filePath, ...rest) {
+    if (String(filePath) === week01Path) {
+      return 'const META = { this is not valid javascript syntax @@@';
+    }
+    return originalReadFileSync.call(fs, filePath, ...rest);
+  };
+  try {
+    assertThrows(() => gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2),
+      'teaching-order-file-parse-failed', 'gatherWeekRecordsUpTo 历史周文件解析失败');
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+  }
+  console.log('PASS wall_order M5：历史周数据文件解析失败（语法错误）被结构化报错（teaching-order-file-parse-failed），不再是未包装的原生异常');
+}
 
 // ============================================================================
 // ③ expectedWallOrder：displayOnWall:false 过滤——第五个失败 fixture。

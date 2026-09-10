@@ -70,20 +70,41 @@ with sync_playwright() as p:
     body = pg.locator("body").inner_text()
     for bad in ("undefined", "[object", "NaN"):
         ok(bad not in body, f"首页出现 {bad}")
-    live = pg.evaluate("chs => chs.map(ch => ({ch, live: hasPhoneme(ch)}))", NEW_SOUNDS)
-    # HIGH-2（里程碑 2 收口批预筛）：墙扩到 19 块累计字母后，"前 6 块"早就不是本周新音
-    # （NEW_SOUNDS），而是第一周留下的字母——原先的 slice(0,6) 是按位置切片，位置早已
-    # 对不上语义，wall.count()>=6 也从"恰好本周 6 块"退化成对 19 块恒真。改成按 ID
-    # 定位：从 META.wallLetters（数据本身，不是读被测代码再算一遍）里查出每个新音
-    # 在墙上的真实索引，再去对应位置的元素判类型，不假设新音排在最前面。
+    # M3（外审 medium，2026-09-10）：改前用 wall_letters.index(ch) 按"字位在
+    # META.wallLetters 里的下标"去定位 DOM 里对应下标的元素，再只比 tagName——这只验证
+    # "DOM 元素顺序恰好和数据顺序对齐"这一个隐含假设，不验证"这个元素真的是这个字位
+    # 自己的块"（比如未来墙上插入一个不对应任何字位的元素、或渲染顺序改变，下标错位
+    # 后这条断言依然会照常通过，因为它比的是同一个错位下标下的两侧，不是真实身份）。
+    #
+    # 改法：按 DOM 身份定位每个本周新音的块，不依赖下标对齐。墙块渲染就两种形态
+    # （见 frontend/src/weeks/week03.template.html hero 积木墙拼接逻辑）：
+    #   - 有真人录音（hasPhoneme(ch) 为真）：<button data-sayph="ID">字形</button>——
+    #     data-sayph 就是字位 ID 本身，是最稳的身份属性，直接精确匹配。
+    #   - 无录音：<div role="img">字形</div>，DOM 里没有任何属性直接携带字位 ID
+    #     （这是模板本身的限制，不是测试能绕过的），只能退而用"显示字形文本"这个
+    #     次稳属性——graphemeLabel(ch, SOUNDS) 对当前四周数据（全部单字母字位）
+    #     是逐字位唯一的，用精确文本匹配（:text-is，不是子串命中）加"唯一存在"
+    #     断言合起来钉住身份，比原来的下标对齐更接近"按这个块本身认出它"。
     wall_letters = pg.evaluate("assertIdList(META.wallLetters, SOUNDS)")
     all_tiles = pg.locator(".tiles-demo .tile")
     ok(all_tiles.count() == len(wall_letters) + 1,
        f"点亮墙积木数应为墙上 {len(wall_letters)} 块累计字母 + 1 个示例词（实际 {all_tiles.count()}）")
-    all_tags = pg.evaluate("[...document.querySelectorAll('.tiles-demo .tile')].map(e=>e.tagName)")
-    new_sound_tags = [all_tags[wall_letters.index(ch)] for ch in NEW_SOUNDS]
-    ok(new_sound_tags == ["BUTTON" if x["live"] else "DIV" for x in live],
-       f"本周新音在点亮墙上的元素类型与音频状态不配对：{new_sound_tags}（音频：{live}）")
+    for ch in NEW_SOUNDS:
+        is_live = pg.evaluate("(ch) => hasPhoneme(ch)", ch)
+        label = pg.evaluate("(ch) => graphemeLabel(ch, SOUNDS)", ch)
+        if is_live:
+            tile = pg.locator(f'.tiles-demo .tile[data-sayph="{ch}"]')
+        else:
+            tile = pg.locator(f'.tiles-demo .tile:text-is("{label}")')
+        ok(tile.count() == 1,
+           f"字位 {ch}（字形 {label}）在点亮墙上应唯一存在，实际命中 {tile.count()} 个元素")
+        if tile.count() == 1:
+            tag = tile.evaluate("el => el.tagName")
+            ok(tag == ("BUTTON" if is_live else "DIV"),
+               f"字位 {ch}（字形 {label}）的元素类型应与 hasPhoneme(ch)={is_live} 一致，实际 {tag}")
+            displayed = tile.inner_text()
+            ok(displayed == label,
+               f"字位 {ch} 在点亮墙上的显示文本应等于其字形 {label!r}，实际 {displayed!r}")
     ok(pg.locator(".tiles-demo " + DUMB_BUTTON).count() == 0, "点亮墙存在哑巴按钮")
     ILL = pg.evaluate("({word:Object.keys(WORD_ILL).length, ph:Object.keys(PHONEME_ILL).length,"
                       " book:Object.keys(BOOK_IMG).length, cel:!!CELEBRATE_NAT})")

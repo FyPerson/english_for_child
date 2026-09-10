@@ -27,7 +27,7 @@ const isHTML = SRC.toLowerCase().endsWith('.html');
 const {loadData} = require('./load_data');
 const {validateAssessment} = require('./assessment_contract');
 const {assertIdList, segmentWord, surfaceOf, validateSoundsSchema} = require('../../frontend/src/shared/graphemes');
-const {computeTeachingOrder, gatherWeekRecordsUpTo, expectedWallOrder, diffWallLetters, setsEqual} = require('./wall_order');
+const {computeTeachingOrder, gatherWeekRecordsUpTo, getExpectedWeeksUpTo, expectedWallOrder, diffWallLetters, setsEqual} = require('./wall_order');
 let box;
 try { box = loadData(raw, isHTML); } catch(e) { console.error(e.message); process.exit(2); }
 const { RESERVED, SOUNDS, W, WALL_HINT, BOOK, FIRST_TEACH_DAY, G1_ROUNDS, G1_THEME, G3_PAIRS, G4_WORDS, G5_WHITELIST, DAYS, META } = box;
@@ -245,7 +245,10 @@ ok(Array.isArray(META.newPatterns), 'META.newPatterns 必须是字位 ID 数组�
  * （方案 §5「墙」行：四类互不覆盖，任一非空即 fail）。 */
 let teachingOrder = null;
 try {
-  teachingOrder = computeTeachingOrder(gatherWeekRecordsUpTo(box, META.week));
+  // M6：computeTeachingOrder 现在要求显式传入预期周序（源码树校验，取自
+  // project.json 的 weeks，不是任何构建产物），不再只靠 weekRecords 内部彼此
+  // 连续来判定，见 wall_order.js 头注释与 getExpectedWeeksUpTo。
+  teachingOrder = computeTeachingOrder(gatherWeekRecordsUpTo(box, META.week), getExpectedWeeksUpTo(META.week));
 } catch (e) {
   ok(false, `无法计算独立教学顺序真相源（${e.code || 'error'}）：${e.message}`);
 }

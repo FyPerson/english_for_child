@@ -147,7 +147,8 @@ function makeSandbox() {
     Blob: function Blob() { },
     Audio: function Audio() { return { play() { return Promise.resolve(); }, pause() { } }; },
     navigator: { language: 'en-US' },
-    __renderResults: []
+    __renderResults: [],
+    __wallLitStateResults: []
   };
   sandbox.window = sandbox;
   sandbox.window.matchMedia = () => ({ matches: false, addListener() { }, addEventListener() { } });
@@ -210,6 +211,94 @@ for (const name of templates) {
 }
 assert.equal(totalFailures, 0, `渲染冒烟测试发现 ${totalFailures} 处块渲染抛出，见上面逐条列出（这正是 critical 1 那类"数据合法但渲染时才炸"的故障应该被拦住的地方）`);
 console.log('PASS render smoke contract: 全部周·全部天·全部块渲染无抛出');
+
+/* ============================================================================
+ * 首页 hero 积木墙点亮态三态用例（M1，外审 medium，2026-09-10）
+ *
+ * frontend/src/shared/render-blocks.js 新增的共享函数 wallTileLitState(id) 把
+ * "历史字位"与"本周新教但漏配 FIRST_TEACH_DAY 的数据错误"两种情形分开处理，改前
+ * 三份模板各自内联的 `FIRST_TEACH_DAY[c] != null ? dayDone(...) : true` 把两者合并
+ * 处理，后者会被静默显示为已点亮（不许改的口径是"历史字位恒点亮"本身，要修的是
+ * "本周新教但缺数据"不该被当成历史字位处理）。
+ *
+ * 三态：
+ *   - 历史字位（不在本周 META.newPatterns 里）：恒点亮。
+ *   - 本周字位且已到首教日（有 FIRST_TEACH_DAY 记录）：按 dayDone(FIRST_TEACH_DAY[id])
+ *     现算，与旧行为一致。
+ *   - 本周字位但缺 FIRST_TEACH_DAY（数据错误，用真实周数据临时删掉一条记录模拟）：
+ *     不点亮（这正是本次要修的行为差异——旧代码在这里会返回 true）。
+ *
+ * 用法与上面的渲染冒烟测试同一套 vm 沙箱机制：把探测代码拼进同一份 <script> 文本，
+ * 直接引用 META/FIRST_TEACH_DAY/wallTileLitState/dayDone 这些 script 级词法绑定
+ * （不是 sandbox 属性访问——const/let 声明不会出现在 vm 全局对象上），跑完把结果
+ * push 进 sandbox 预先挂好的 __wallLitStateResults 数组。用真实周数据的 FIRST_TEACH_DAY
+ * 条目做"删掉再恢复"的临时变异，不修改仓库文件。 */
+const WALL_LIT_STATE_HARNESS = `
+;(function(){
+  var results = [];
+  var historicalId = null;
+  for (var i = 0; i < META.wallLetters.length; i++) {
+    var c = META.wallLetters[i];
+    if (META.newPatterns.indexOf(c) === -1) { historicalId = c; break; }
+  }
+  if (historicalId !== null) {
+    results.push({ kase: 'historical', id: historicalId, lit: wallTileLitState(historicalId) });
+  }
+  if (META.newPatterns.length > 0) {
+    var thisWeekId = META.newPatterns[0];
+    results.push({
+      kase: 'thisWeekHasFirstTeachDay', id: thisWeekId,
+      lit: wallTileLitState(thisWeekId), expected: dayDone(FIRST_TEACH_DAY[thisWeekId])
+    });
+
+    var savedDay = FIRST_TEACH_DAY[thisWeekId];
+    delete FIRST_TEACH_DAY[thisWeekId];
+    results.push({ kase: 'thisWeekMissingFirstTeachDay', id: thisWeekId, lit: wallTileLitState(thisWeekId) });
+    FIRST_TEACH_DAY[thisWeekId] = savedDay;
+  }
+  __wallLitStateResults.push.apply(__wallLitStateResults, results);
+})();
+`;
+
+function wallLitStateForWeek(templatePath) {
+  const expanded = expand(fs.readFileSync(templatePath, 'utf8'), []);
+  const scriptCode = extractScripts(expanded) + '\n' + WALL_LIT_STATE_HARNESS;
+  const sandbox = makeSandbox();
+  const script = new vm.Script(scriptCode, { filename: templatePath });
+  script.runInContext(sandbox);
+  return sandbox.__wallLitStateResults;
+}
+
+{
+  const seenCases = new Set();
+  let checkedTemplates = 0;
+  for (const name of templates) {
+    // week04 的 hero 墙硬编码 `const lit = true;`（消化周，全无新字位），不经过
+    // wallTileLitState，本用例不适用，跳过（同头注释"三份模板"的范围声明）。
+    if (name === 'week04.template.html') continue;
+    const templatePath = path.join(SRC, 'weeks', name);
+    const results = wallLitStateForWeek(templatePath);
+    assert(results.length > 0, `${name}：wallLitState 探测未产生任何结果，检查 WALL_LIT_STATE_HARNESS 是否与该周数据结构不匹配`);
+    for (const r of results) {
+      seenCases.add(r.kase);
+      if (r.kase === 'historical') {
+        assert.equal(r.lit, true, `${name}：历史字位 "${r.id}" 应恒点亮，实际 ${r.lit}`);
+      } else if (r.kase === 'thisWeekHasFirstTeachDay') {
+        assert.equal(r.lit, r.expected, `${name}：本周字位 "${r.id}" 有 FIRST_TEACH_DAY 时应按 dayDone 现算，期望 ${r.expected}，实际 ${r.lit}`);
+      } else if (r.kase === 'thisWeekMissingFirstTeachDay') {
+        assert.equal(r.lit, false, `${name}：本周字位 "${r.id}" 缺 FIRST_TEACH_DAY（数据错误）不应被点亮，实际 ${r.lit}——` +
+          '这正是 M1 要修的行为差异：旧实现会把这种情形误判成历史字位而显示为已点亮');
+      } else {
+        assert.fail(`${name}：未知的 wallLitState 用例标识 "${r.kase}"`);
+      }
+    }
+    checkedTemplates++;
+  }
+  assert(checkedTemplates > 0, '首页积木墙点亮态三态用例一个模板都没跑起来');
+  assert.deepEqual([...seenCases].sort(), ['historical', 'thisWeekHasFirstTeachDay', 'thisWeekMissingFirstTeachDay'],
+    `首页积木墙点亮态三态用例未能覆盖全部三态，实际覆盖：${[...seenCases].sort().join(',')}`);
+  console.log(`PASS wall lit state：${checkedTemplates} 份模板均覆盖三态（历史字位恒点亮/本周字位按 dayDone 现算/本周字位缺 FIRST_TEACH_DAY 时不点亮），共验证 ${seenCases.size} 类场景`);
+}
 
 /* ============================================================================
  * 状态驱动最小交互测试（M3 第二条，外审 medium，2026-09-09）

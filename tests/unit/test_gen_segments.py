@@ -238,7 +238,11 @@ class GenSegmentsTests(unittest.TestCase):
                        'paid 已有的 segments 不应被工具覆盖或改写引号风格')
 
         reloaded = gs.run(str(self.target), write=False, capture_output=True)
-        self.assertEqual(reloaded.returncode, 1, '重新加载后 pqr/zap 仍未解决，退出码应仍非 0')
+        # H3（外审 high，2026-09-10）：磁盘上此时已经带着 rain/aid/bat 三处
+        # @gen-segments-unreviewed 标记（本次写回遗留），4 的优先级高于 1——
+        # pqr/zap 仍未解决不改变这一点，退出码应是 4，不是 1（旧顺序 1→3→4 才会
+        # 先命中 1；见 GenSegmentsExitCodePriorityTests 的专项断言）。
+        self.assertEqual(reloaded.returncode, 4, '重新加载后磁盘上仍有未复核标记（rain/aid/bat），退出码应为 4，不是 1')
         self.assertIn('唯一解（不需要 segments）：0 个词', reloaded.stdout)
         self.assertIn('已声明 segments（本工具不覆盖）：5 个词', reloaded.stdout, 'rain/aid/tan/bat 写回后 + 原有的 paid，共 5 个词已有 segments')
 
@@ -356,10 +360,18 @@ class GenSegmentsOnlyResolvedExitCodeTests(unittest.TestCase):
         self.assertEqual(first.returncode, 4, '首跑 --write-heuristic 应以退出码 4 结束（rain/aid 写回但未复核）')
         after_first = self.target.read_text(encoding='utf-8')
         marker_count_after_first = after_first.count('@gen-segments-unreviewed')
-        # 每个词的注入注释里 @gen-segments-unreviewed 字面量出现 2 次（开头声明 +
-        # 结尾"请删除本行的 @gen-segments-unreviewed 标记"提示，见
-        # injectSegmentsIntoWDeclaration 的 seg 拼接），rain/aid 两个词共 4 处。
-        self.assertEqual(marker_count_after_first, 4, '首跑后应恰好留下 4 处未复核标记（rain/aid 各一条注释、每条注释里出现 2 次字面量）')
+        # L2（外审 low，2026-09-10）：改前把 marker_count_after_first 硬编码钉死为
+        # 字面量 4，理由写的是"每条注释里出现 2 次字面量"——这钉住的是当前注释怎么
+        # 写（injectSegmentsIntoWDeclaration 里 seg 文案恰好提到两次），措辞一改这条
+        # 断言就会假红/假绿，跟"标记是否被正确留存"这件事本身无关。改为按"被标记的
+        # 词数"这个结构量反推：先各自统计 rain / aid 的 W 声明块里是否出现标记
+        # （按被标记词计数，不依赖注释里字面量出现几次），再断言总字面量数至少
+        # 覆盖这两个词、且非零——真正要保护的不变量是"这次重跑前后标记数量不变"，
+        # 由本方法最后三段的相等性断言负责，这里只需确认首跑确实留下了标记。
+        marked_words = [w for w in ('rain', 'aid')
+                        if '@gen-segments-unreviewed' in re.search(w + r":\{[^{}]*\}", after_first).group(0)]
+        self.assertEqual(sorted(marked_words), ['aid', 'rain'], '首跑后 rain/aid 两个 resolved 词都应带上未复核标记')
+        self.assertGreater(marker_count_after_first, 0, '首跑后磁盘上应留有非零个未复核标记')
 
         dry = gs.run(str(self.target), write=False, capture_output=True)
         self.assertEqual(dry.returncode, 4,
@@ -395,6 +407,96 @@ class GenSegmentsOnlyResolvedExitCodeTests(unittest.TestCase):
         self.assertIn('@gen-segments-unreviewed', checker_src,
                        'check_data.js 应仍在扫描同一个字面标记 @gen-segments-unreviewed，'
                        '否则 gen_segments 退出码 4 的"会被下游门槛拦截"这个理由就落空了')
+
+
+# ---- H3（外审 high，2026-09-10）：main() 末尾改前的判断顺序是
+# `if needsHumanExit: exit(1); if hasUnwrittenCandidates: exit(3); if hasUnreviewedMarkersOnDisk: exit(4)`——
+# 与上面 hasUnreviewedMarkersOnDisk 的注释承诺的"只要磁盘还有 @gen-segments-unreviewed
+# 标记，重跑必须一直是 4"矛盾：标记与 tie/unknown/error 同时存在时会先命中 1，标记与
+# 未落盘候选同时存在时会先命中 3，4 因此永远轮不到。裁定 4 优先（磁盘上的标记是跨次
+# 运行持久的状态，1/3 只是本次运行的局部状态）。以下两个用例各自在"旧顺序"下会先转红：
+# 用旧代码跑过（1→3→4），marker+tie 得 1、marker+unwritten 得 3，均不是 4。
+class GenSegmentsExitCodePriorityTests(unittest.TestCase):
+    """H3：磁盘上已经残留未复核标记时，不论本次运行是否还命中 tie/unknown/error 或
+    未落盘候选，退出码都必须是 4——4 的优先级最高。"""
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.target = Path(self.tmpdir.name) / 'week97.data.js'
+
+    def test_marker_on_disk_together_with_tie_still_exits_4(self):
+        # 场景：磁盘上已有一个未复核标记（rain 曾用 --write-heuristic 写回），同时
+        # 这一周另有 pqr（tie）与 zap（unknown）两个词。旧顺序下 needsHumanExit 先于
+        # hasUnreviewedMarkersOnDisk 判断，会先命中 exit(1)。改后应恒为 4。
+        marked_week_js = """/* 合成周数据（H3 专用：磁盘已有未复核标记 + tie/unknown 并存）。 */
+
+const META = {
+  "week": 97,
+  "storageKey": "test-gen-segments-h3-marker-tie",
+  "newPatterns": ["ai"]
+};
+
+const SOUNDS = {
+  r:{grapheme:'r', type:'c'},
+  a:{grapheme:'a', type:'v'},
+  i:{grapheme:'i', type:'v'},
+  n:{grapheme:'n', type:'c'},
+  ai:{grapheme:'ai', type:'v'},
+  p:{grapheme:'p', type:'c'},
+  q:{grapheme:'q', type:'c'},
+  pq:{grapheme:'pq', type:'c'},
+  qr:{grapheme:'qr', type:'c'}
+};
+
+const W = {
+  rain:{zh:'雨',art:'rain',segments:['r','ai','n'] /* @gen-segments-unreviewed：模拟上一次 --write-heuristic 遗留、尚未人工复核的标记 */},
+  pqr:{zh:'（合成，无实义，tie）',art:null},
+  zap:{zh:'（合成，含未教字位 z，unknown）',art:null}
+};
+"""
+        self.target.write_text(marked_week_js, encoding='utf-8')
+        result = gs.run(str(self.target), write=False, capture_output=True)
+        self.assertEqual(result.returncode, 4,
+            'H3：磁盘已有未复核标记，即便本次运行同时命中 tie（pqr）/unknown（zap），退出码也必须是 4，不能是 1'
+            f'（旧顺序 1→3→4 会先命中 1，实际得到 {result.returncode}）')
+
+    def test_marker_on_disk_together_with_unwritten_candidate_still_exits_4(self):
+        # 场景：磁盘上已有一个未复核标记（rain），同时这一周另有 aid——一个 resolved
+        # 但尚未落盘的候选（本次 --write 不加 --write-heuristic，不会写回 aid）。
+        # 旧顺序下 hasUnwrittenCandidates 先于 hasUnreviewedMarkersOnDisk 判断，会先
+        # 命中 exit(3)。改后应恒为 4。
+        marked_week_js = """/* 合成周数据（H3 专用：磁盘已有未复核标记 + 未落盘候选并存）。 */
+
+const META = {
+  "week": 97,
+  "storageKey": "test-gen-segments-h3-marker-unwritten",
+  "newPatterns": ["ai"]
+};
+
+const SOUNDS = {
+  r:{grapheme:'r', type:'c'},
+  a:{grapheme:'a', type:'v'},
+  i:{grapheme:'i', type:'v'},
+  n:{grapheme:'n', type:'c'},
+  d:{grapheme:'d', type:'c'},
+  ai:{grapheme:'ai', type:'v'}
+};
+
+const W = {
+  rain:{zh:'雨',art:'rain',segments:['r','ai','n'] /* @gen-segments-unreviewed：模拟上一次 --write-heuristic 遗留、尚未人工复核的标记 */},
+  aid:{zh:'帮助',art:null}
+};
+"""
+        self.target.write_text(marked_week_js, encoding='utf-8')
+        result = gs.run(str(self.target), write=True, write_heuristic=False, capture_output=True)
+        self.assertEqual(result.returncode, 4,
+            'H3：磁盘已有未复核标记，即便本次 --write（不加 --write-heuristic）还剩 aid 这个未落盘候选，'
+            f'退出码也必须是 4，不能是 3（旧顺序 1→3→4 会先命中 3，实际得到 {result.returncode}）')
+        after = self.target.read_text(encoding='utf-8')
+        m_aid = re.search(r"aid:\{[^{}]*\}", after)
+        self.assertIsNotNone(m_aid)
+        self.assertNotIn('segments', m_aid.group(0), 'aid 是 resolved 且未加 --write-heuristic，本次不应被写回')
 
 
 if __name__ == '__main__':

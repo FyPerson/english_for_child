@@ -467,7 +467,10 @@ function testWallDataAndNewPatterns() {
   // 计算结果，不是把字面量与自身比对。
   const priorWeekRecords = [{ week: CORE_META.week - 1, newPatterns: ['r', 'n'] }];
   const weekRecords = priorWeekRecords.concat([{ week: CORE_META.week, newPatterns: CORE_META.newPatterns }]);
-  const teachingOrder = computeTeachingOrder(weekRecords);
+  // M6：computeTeachingOrder 现在要求显式传入预期周序——这里就是这两条合成记录
+  // 本身的周号集合（[week-1, week]），不依赖 project.json（本文件的合成周本就不在
+  // project.json 里）。
+  const teachingOrder = computeTeachingOrder(weekRecords, [CORE_META.week - 1, CORE_META.week]);
   assert.deepEqual(teachingOrder, ['r', 'n', 'ai'],
     `独立教学顺序真相源应是上一周已教的 r/n 在前、本周新教的 ai 追加在最后：${JSON.stringify(teachingOrder)}`);
   const expectedOrder = expectedWallOrder(teachingOrder, CORE_SOUNDS);
@@ -522,7 +525,7 @@ function testBreakTheCopyProvesWallOrderDiscriminates() {
   const wallIds = core.sandbox.assertIdList(CORE_META.wallLetters, CORE_SOUNDS);
   const priorWeekRecords = [{ week: CORE_META.week - 1, newPatterns: ['r', 'n'] }];
   const weekRecords = priorWeekRecords.concat([{ week: CORE_META.week, newPatterns: CORE_META.newPatterns }]);
-  const teachingOrder = broken.computeTeachingOrder(weekRecords);
+  const teachingOrder = broken.computeTeachingOrder(weekRecords, [CORE_META.week - 1, CORE_META.week]);
   const expectedOrder = broken.expectedWallOrder(teachingOrder, CORE_SOUNDS);
   const diff = broken.diffWallLetters(wallIds, expectedOrder);
   assert.equal(diff.orderMatches, false,
