@@ -45,7 +45,7 @@ function openWeek(week){
   selectedWeek=week;
   document.querySelectorAll('[data-week]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.week===week)));
   frame.title=`第 ${week} 周课件`;
-  frame.srcdoc=new TextDecoder().decode(Uint8Array.from(atob(course.weeks[week-1].html),c=>c.charCodeAt(0)));
+  frame.srcdoc=course.weeks[week-1].html; // T8①：payload 已改存原始 HTML 字符串，不再需要 atob 解码
   refresh();
   document.querySelector('.sidebar').dataset.expanded='false';
   document.getElementById('navToggle').setAttribute('aria-expanded','false');

@@ -1,4 +1,6 @@
 """Size guardrail: budgets come from project.json; a forged oversize product must fail; equal passes."""
+import contextlib
+import io
 import json
 from pathlib import Path
 import sys
@@ -49,6 +51,49 @@ class SizeBudgetTests(unittest.TestCase):
             products(temp, {'week01.html': 100, 'course.html': 100})
             with self.assertRaisesRegex(SystemExit, 'MISSING product'):
                 size_budget.check(temp, config())
+
+    def test_low_margin_prints_warn_without_failing(self):
+        # T8②（外审 medium，2026-09-10）：余量 < 15%（size > 0.85×limit）应打一行
+        # SIZE WARN，但不改变退出码——week01.html 预算 8 MB，7 MB 恰好余量 1/8=12.5%
+        # < 15%，course.html 预算 20 MB，17.5 MB 余量 2.5/20=12.5% < 15%，两者都应
+        # 触发 WARN 但整体仍应正常返回（不抛 SystemExit）。
+        with tempfile.TemporaryDirectory() as temp:
+            products(temp, {'week01.html': 7 * MB, 'week02.html': 100, 'course.html': int(17.5 * MB)})
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                size_budget.check(temp, config())  # 不应抛出
+            out = buf.getvalue()
+            self.assertIn('SIZE WARN week01.html: 余量 1.00 MB (12.5%)', out)
+            self.assertIn('SIZE WARN course.html: 余量 2.50 MB (12.5%)', out)
+            # week02.html 几乎没占用预算，余量远大于 15%，不应被误报 WARN。
+            self.assertNotIn('SIZE WARN week02.html', out)
+
+    def test_healthy_margin_does_not_warn(self):
+        # 余量充足（> 15%）时不应打印 WARN 行，只有 verdict/margin 的常规一行。
+        with tempfile.TemporaryDirectory() as temp:
+            products(temp, {'week01.html': 5 * MB, 'week02.html': 5 * MB, 'course.html': 10 * MB})
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                size_budget.check(temp, config())
+            out = buf.getvalue()
+            self.assertNotIn('SIZE WARN', out)
+            # 每个产物都应额外打印余量 MB（不只是触发 WARN 的那些）。
+            self.assertIn('margin 3.00 MB', out)  # week01/week02：8-5=3
+            self.assertIn('margin 10.00 MB', out)  # course：20-10=10
+
+    def test_over_budget_does_not_also_print_warn(self):
+        # 已经 OVER 的产物走硬失败分支，不应该在异常抛出前重复打一条 WARN——
+        # OVER 本身已经是更明确的信号，两条同时打反而混淆严重程度。
+        with tempfile.TemporaryDirectory() as temp:
+            products(temp, {'week01.html': 9 * MB, 'week02.html': 100, 'course.html': 100})
+            buf = io.StringIO()
+            with self.assertRaises(SystemExit):
+                with contextlib.redirect_stdout(buf):
+                    size_budget.check(temp, config())
+            out = buf.getvalue()
+            self.assertIn('SIZE week01.html', out)
+            self.assertIn('(OVER)', out)
+            self.assertNotIn('SIZE WARN week01.html', out)
 
     def test_budget_declaration_is_validated(self):
         for bad in [None, 8, {'week': 8}, {'week': 8, 'course': 20, 'extra': 1}, {'week': 0, 'course': 20},

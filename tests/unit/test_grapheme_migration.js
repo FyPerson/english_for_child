@@ -215,7 +215,18 @@ const EXCLUDED_ENTRIES = [
   // 本文件自己：SEVEN_PATTERNS 的正则源码与本注释块里就写着 .L / 'L': 等字面量，
   // 扫描自身会产生自我指涉的假阳性，必须排除全部七种写法。unbounded:true 见上方
   // M2 二次修复注释——自我指涉不绑定命中数，整段豁免。
-  ...SEVEN_PATTERNS.map(p => ({ file: 'tests/unit/test_grapheme_migration.js', patternId: p.id, unbounded: true, reason: '本文件的 SEVEN_PATTERNS 正则源码与注释自我指涉' }))
+  ...SEVEN_PATTERNS.map(p => ({ file: 'tests/unit/test_grapheme_migration.js', patternId: p.id, unbounded: true, reason: '本文件的 SEVEN_PATTERNS 正则源码与注释自我指涉' })),
+  // B-M1（外审 medium，2026-09-10）新增的两份 tests/fixtures/ HTML fixture：
+  // 一份是真实历史生产产物（226e619，迁移前形态，SOUNDS 条目本就用 L 字段而不是
+  // grapheme），一份是在它基础上做最小手术式修改的合成变体——两者的存在意义就是
+  // "忠实保留/复现旧格式"，故意含 L 残留正是 B-M1 测试要验证的前提条件，不是需要
+  // 清理的残留。unbounded:true：这类历史快照类 fixture 不追求精确计数（内容本身
+  // 就是完整抄录的真实旧产物，不是逐行手写的合成数据，精确数字对判断没有意义）。
+  // 只登记这两份 fixture 实测真的命中的三种写法（dot-access/key-bare/destructure，
+  // 均实测 3/6/6 次）——不像自我指涉那样盲目登记全部七种，M2 陈旧自检对
+  // unbounded 条目仍要求"至少命中一次"，登记一个实际零命中的写法只会被判"陈旧"。
+  ...['dot-access', 'key-bare', 'destructure'].map(id => ({ file: 'tests/fixtures/week01-html-226e619-real-legacy-stripped.html', patternId: id, unbounded: true, reason: 'B-M1：真实历史生产产物（226e619，迁移前形态），忠实保留旧 L 字段是 fixture 的设计目的本身' })),
+  ...['dot-access', 'key-bare', 'destructure'].map(id => ({ file: 'tests/fixtures/week01-html-226e619-legacy-no-meta-corrupted.html', patternId: id, unbounded: true, reason: 'B-M1：基于上述真实产物做最小手术式修改（删 META + 注入语法错误 token）的合成变体，同样忠实保留旧 L 字段' }))
 ];
 function countMatches(re, text) {
   const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
@@ -641,4 +652,92 @@ function scanForLegacyTrue(files) {
   }
 
   console.log('PASS grapheme migration（M5：load_data HTML 反解析拒绝旧格式，方案 §3.8）：缺内联 META 的 HTML（含/不含旧结构痕迹）均报 legacy-html-fallback-rejected；真实现役产物与 html=false 数据层入口均不受影响');
+}
+
+// ============================================================================
+// B-M1（外审 medium，2026-09-10）：load_data.js 固定错误码可能被更早的 VM 异常截断。
+//
+// 改前 legacy-html-fallback-rejected 只在 vm.runInNewContext 执行完全部提取出的
+// 声明、且事后发现 box.META 仍是 undefined 时才抛——真实旧 HTML 若声明重复/语法
+// 不兼容/引用缺失，调用方会先收到 vm 执行阶段抛出的原生 SyntaxError/ReferenceError，
+// 与契约（缺内联 META 时给出固定错误码）不符。改法：在执行任何提取出的声明之前，
+// 先用与 declaration() 内部同一条正则（^const META = ，见 load_data.js 的
+// META_DECLARATION_RE）探测 HTML 是否含内联 META，缺失立即抛错，不进入 vm。
+//
+// 真实旧产物 fixture 的调查过程（如实记录，供复核）：
+//   1. 按方案指引 `git worktree add <临时目录> 226e619` 后在该工作树里
+//      `python tools/project.py build`——**构建成功**，产出的 build/week01.html
+//      是真实的历史生产 HTML（迁移前形态：META.wallLetters 是字符串 "satipn"、
+//      SOUNDS 条目用 L 字段而不是 grapheme、RESERVED 里还有后来被 P8 换掉的
+//      "spit"）。
+//   2. 但这份真实历史产物**仍然内联了 META**——tools/validation/load_data.js
+//      自诞生（git log --follow 显示它随 82fecc9「完善课程可靠性与第四周，重构
+//      工程目录和回归流程」一起引入）起，本仓库的构建产物就从未缺过内联 META；
+//      `git ls-tree -r 82fecc9^` 也确认 82fecc9 之前根本没有任何被版本控制的
+//      week01 HTML（只有截图）。也就是说，"真实旧生产 HTML 缺内联 META"这个
+//      场景，在本仓库整个提交历史里从未真实存在过——它是 load_data.js 注释里
+//      "旧版 HTML 结构"的假设性描述（对应更早、从未进版本库的手工原型），不是
+//      能从 git 历史直接抽取的真实产物。
+//   3. 因此按方案「若旧提交构建不了，退而合成并在测试里注明合成非真实产物」的
+//      预案（这里不是"构建不了"，而是"构建出的真实产物不含缺 META 场景"，
+//      视为同一类情况的变体，同样落到"合成"分支）：以 226e619 真实构建产物为
+//      **基底**（不是凭空手写），只做两处最小外科手术式修改：
+//        a) 用 declaration() 定位并整体删除真实的 `const META = {...};` 块
+//           （模拟"这份历史产物没有内联 META"这一假设场景）；
+//        b) 在删除 META 后，找到仍然存在的真实 `const SOUNDS = {...};` 块，往
+//           它内部插入一个语法不兼容的 token（`@@SYNTAX-ERROR@@`），模拟方案
+//           点名的"语法不兼容"这一类真实旧 HTML 故障——证明"即使其他声明本身
+//           语法有问题，缺 META 这一判定必须在到达那些声明之前就生效"。
+//      两个 fixture 文件都在 tests/fixtures/ 下（长的 base64 音频/图片数据 URI
+//      已用固定占位串替换，只保留判定逻辑需要的结构，体积从原始 2.9MB 降到
+//      ~300KB，不改变任何一处顶层声明的边界与语义）：
+//        - week01-html-226e619-real-legacy-stripped.html：未经修改的真实历史
+//          产物（仅做上述体积裁剪），META 完好，用作"真实旧格式产物应正常
+//          加载"的回归正例。
+//        - week01-html-226e619-legacy-no-meta-corrupted.html：上面基础上再做
+//          a)/b) 两处手术式修改的合成 fixture，明确标注非真实产物，专门复现
+//          "缺 META + 其他声明语法不兼容"这一具体故障组合。
+// ============================================================================
+{
+  const { loadData } = require('../../tools/validation/load_data');
+
+  const realLegacyPath = path.join(REPO, 'tests', 'fixtures', 'week01-html-226e619-real-legacy-stripped.html');
+  assert(fs.existsSync(realLegacyPath), `B-M1 真实旧产物 fixture 应存在：${realLegacyPath}`);
+  const realLegacyRaw = fs.readFileSync(realLegacyPath, 'utf8');
+
+  // 正例：真实历史产物（226e619，迁移前形态）内联了 META（老格式：字符串
+  // wallLetters、L 字段），应能被现在的 loadData 正常加载，不触发拒绝逻辑。
+  {
+    const box = loadData(realLegacyRaw, true);
+    assert.equal(box.META && box.META.week, 1, 'B-M1：真实历史产物（226e619）应能正常加载出 META.week===1');
+    assert.equal(box.META.wallLetters, 'satipn', 'B-M1：真实历史产物应保留其历史形态（wallLetters 是字符串，不是数组）——这份 fixture 忠实反映迁移前的真实数据，不应被本次改动篡改');
+    assert.equal(box.SOUNDS.s.L, 's', 'B-M1：真实历史产物的 SOUNDS 条目应仍是旧的 L 字段（未经过 4a 步收敛），confirm fixture 确实是真实的迁移前产物而不是已经处理过的现代数据');
+  }
+
+  // 核心用例：缺 META + SOUNDS 声明语法不兼容（合成 fixture，基于上面真实产物做
+  // 最小手术式修改，见上方头注释）。改前的顺序（先执行提取出的声明、事后才检查
+  // box.META）会让这份输入先在 vm.runInNewContext 阶段抛出原生 SyntaxError，
+  // 调用方拿到的 e.code 是 undefined、e 是 SyntaxError 实例，不是契约承诺的
+  // legacy-html-fallback-rejected；改后应在进入 vm 之前就被前置探测拦下。
+  {
+    const corruptedPath = path.join(REPO, 'tests', 'fixtures', 'week01-html-226e619-legacy-no-meta-corrupted.html');
+    assert(fs.existsSync(corruptedPath), `B-M1 合成 fixture 应存在：${corruptedPath}`);
+    const corruptedRaw = fs.readFileSync(corruptedPath, 'utf8');
+    // 先确认这份 fixture 真的不含内联 META（否则下面的断言就失去意义）。
+    assert(!/^const META = /m.test(corruptedRaw), 'B-M1：合成 fixture 应确实不含内联 META 声明，检查 fixture 是否被误改');
+    // 再确认它确实含有语法不兼容的 token（否则测不出"即使其他声明有语法问题，
+    // 缺 META 判定必须先生效"这一点，退化成只测"缺 META"这个已经被 M5 覆盖过的
+    // 更简单场景）。
+    assert(corruptedRaw.includes('@@SYNTAX-ERROR@@'), 'B-M1：合成 fixture 应含有意注入的语法不兼容 token，检查 fixture 是否被误改');
+
+    let caught = null;
+    try { loadData(corruptedRaw, true); } catch (e) { caught = e; }
+    assert(caught, 'B-M1：缺 META 且其他声明语法不兼容的真实历史产物（合成变体）应该抛错，实际未抛');
+    assert.equal(caught.code, 'legacy-html-fallback-rejected',
+      `B-M1：即使 SOUNDS 声明本身含语法不兼容的 token，错误码也应该是 legacy-html-fallback-rejected` +
+      `（在进入 vm.runInNewContext 之前就应该因为缺 META 被拦下），不应该是未包装的 vm 原生异常` +
+      `（实际 code=${caught.code}，构造函数=${caught.constructor && caught.constructor.name}）`);
+  }
+
+  console.log('PASS grapheme migration（B-M1：load_data 固定错误码不再被更早的 VM 异常截断，方案 §3.8）：真实历史产物（226e619，未改动）内联 META 时正常加载；缺 META + 其他声明语法不兼容的合成变体（基于同一份真实产物做最小手术式修改）在进入 vm 之前就被前置探测拦下，抛出固定的 legacy-html-fallback-rejected，不是未包装的原生 SyntaxError');
 }

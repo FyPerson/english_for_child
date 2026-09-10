@@ -28,6 +28,7 @@ const {loadData} = require('./load_data');
 const {validateAssessment} = require('./assessment_contract');
 const {assertIdList, segmentWord, surfaceOf, validateSoundsSchema} = require('../../frontend/src/shared/graphemes');
 const {computeTeachingOrder, gatherWeekRecordsUpTo, getExpectedWeeksUpTo, expectedWallOrder, diffWallLetters, setsEqual} = require('./wall_order');
+const {collectWordConsumption} = require('./word_consumers');
 let box;
 try { box = loadData(raw, isHTML); } catch(e) { console.error(e.message); process.exit(2); }
 const { RESERVED, SOUNDS, W, WALL_HINT, BOOK, FIRST_TEACH_DAY, G1_ROUNDS, G1_THEME, G3_PAIRS, G4_WORDS, G5_WHITELIST, DAYS, META } = box;
@@ -162,14 +163,53 @@ ok(RESERVED.length === 5, `周检词应为 5 个，实际 ${RESERVED.length}`);
 // 'spit'（W1 周检词）开的；2026-09-09 第 5 步把它换成三字位的 'pit' 后，W1 五词
 // 已全是三个字母，豁免零风险删除——留着会让审计里对应的 currentlyExempted:true
 // 长期显示"还豁免着"，误导后人以为这条规则对 W1 不生效。
-ok(RESERVED.every(w => w.length === 3), '周检词必须全是三个字母（规范 §7.3：全 CVC，不放连辅音/四音词）');
+/* T5（外审 medium，2026-09-10）：改前按 `w.length === 3` 判字符数——W5 起会出现
+ * `rain` 这类三个字位、四个字符的周检词，按字符数判会被误判为不合格（明明字位数
+ * 合格，字符数却不是 3）。改为用本文件已有的 idsForWord(w)（下方④已定义，
+ * function 声明会提升到本模块作用域顶部，这里可以直接调用——见下方 idsForWord
+ * 定义处的头注释）取字位数组长度 === 3；idsForWord 内部走 segmentWord，遇到
+ * 未教字位/歧义会抛错，这里用 try/catch 转成清晰的 ok(false, ...) 失败而不是让
+ * 整个进程带栈崩溃，未写 segments 的多解词按现有③/④同一套语义报错（分词失败本身
+ * 就是数据缺陷，不该被这条周检词字位数检查悄悄吞掉）。 */
+for (const w of RESERVED) {
+  let ids;
+  try { ids = idsForWord(w); }
+  catch (e) { ok(false, `周检词 "${w}" 无法按字位分词（${e.code || 'error'}）：${e.message}`); continue; }
+  ok(ids.length === 3, `周检词 "${w}" 必须是三个字位，实际 ${ids.length} 个字位 [${ids.join(',')}]（规范 §7.3：全 CVC，不放连辅音/四音词）`);
+}
 
 head('③ 字母全在已教范围内');
-for (const w of [...usedWords, ...RESERVED]) {
+/* B-M2（外审 medium，2026-09-10）：改前只遍历 usedWords（本文件顶部手写的七类块
+ * 收集：blend/initialpick/words/pair/sight/flash/sentences + G1_ROUNDS + G4_WORDS）
+ * + RESERVED——BOOK.pages 与 wordforge 两类真实词消费入口从未进入这个检查，含未教
+ * 字母的书页正文或换头造词结果不会被③抓到。改为语料换成第 3 步已建的共享抽取器
+ * tools/validation/word_consumers.js 的 collectWordConsumption（15 类来源，见该
+ * 文件的 ENTRY_KINDS），枚举全部真实消费入口，不再是这里手写的一份更窄的子集
+ * （feedback_dont_relist_what_source_already_lists：源头已经有权威清单，不用自己
+ * 再挑一份）。按词分组保留全部出现过的来源类型（kind），豁免逻辑不变：认读词
+ * （SIGHT）、G1 干扰词（G1NEG，以及 W1 的 pos 桶）、W1 的 'nat'（沿用①的历史豁免，
+ * 与 collectWordConsumption 收录 wordforge 后 'nat' 会首次出现在这里保持一致）
+ * 按原语义处理；collectWordConsumption 自己标为"不消费"的类别（W/RESERVED 池/
+ * ASSESS_TEXT/SOUNDS.demo 等，见该文件头排除清单）本就不会出现在它的返回结果里，
+ * 不需要在这里另行处理。失败消息带上具体来源类型，便于定位是哪一类入口漏教了
+ * 字母。 */
+const wordSourceKinds = new Map();
+for (const rec of collectWordConsumption(box)) {
+  const kinds = wordSourceKinds.get(rec.word) || new Set();
+  kinds.add(rec.kind);
+  wordSourceKinds.set(rec.word, kinds);
+}
+for (const w of RESERVED) {
+  const kinds = wordSourceKinds.get(w) || new Set();
+  kinds.add('RESERVED');
+  wordSourceKinds.set(w, kinds);
+}
+for (const [w, kinds] of wordSourceKinds) {
   if (SIGHT.has(w.toLowerCase())) continue;          // 认读词不按规则拼，豁免
   if (G1NEG.has(w) || (META.week === 1 && Object.values(G1_ROUNDS).some(r=>r.pos.includes(w)))) continue;                        // G1 干扰词只听不读，允许含未教字母
+  if (META.week === 1 && w.toLowerCase() === 'nat') continue; // 沿用①的历史豁免（见上方头注释）
   const bad = [...w.toLowerCase()].filter(c => !TAUGHT.has(c));
-  ok(bad.length === 0, `"${w}" 含未教字母 [${bad}]`);
+  ok(bad.length === 0, `"${w}" 含未教字母 [${bad}]（来源：${[...kinds].sort().join(',')}）`);
 }
 
 head('④ 积木架能摆出题库里的词（字位安全，方案 §2.2「摆词比较/积木架」行）');
