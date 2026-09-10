@@ -13,7 +13,7 @@ const {
   buildAudit, auditWeek, defaultWeekSources, sortFindings,
   findDuplicateFindingIds, validateAuditDocument,
   WEEKLY_FORBIDDEN_CONSTANTS, WEEKLY_FORBIDDEN_BLOCKS,
-  L_FIELD_CONSUMER_SPECS, lineOf
+  L_FIELD_CONSUMER_SPECS, lineOf, isLikelyCommentMatch, findFirstNonCommentMatch
 } = require('../../tools/validation/migration_audit');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -314,6 +314,12 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
      对磁盘上的当前文件内容重新定位一次，得到"现在应该在哪一行"，再与 finding 报出的
      source.line 比较是否一致——这样文件里其他内容的行数变化不会让断言变红，行号
      退化为"两次计算是否互相印证"的诊断，不是硬编码基准。 */
+  // isLikelyCommentLine：直接复用 migration_audit.js 导出的 isLikelyCommentMatch
+  // （L1，轮 D 复审第二轮，外审 low，2026-09-10）——不在测试里另外重写一份判据，
+  // 生产代码（findFirstNonCommentMatch）与测试断言用的是同一个函数，不会出现
+  // "两处判据分叉、各自以为对方会兜底"的缝隙。
+  const isLikelyCommentLine = isLikelyCommentMatch;
+
   const expectMigrated = id => {
     const spec = L_FIELD_CONSUMER_SPECS.find(s => s.id === id);
     assert(spec, `L_FIELD_CONSUMER_SPECS 里应有 id=${id} 的消费点定义`);
@@ -329,12 +335,74 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     const expectedLine = lineOf(raw, m.index);
     assert.equal(f.source.line, expectedLine,
       `l-field-consumer:${id} 报出的行号（${f.source.line}）应与用同一份 pattern 现算的行号（${expectedLine}）一致`);
+    // L1（轮 D 复审第二轮，外审 low，2026-09-10）新增独立语义断言：
+    //   ① 匹配行不是注释（isLikelyCommentLine）——确认选到的是真代码，不是逐字
+    //      复述同一段代码的注释文本；
+    //   ② 匹配位置落在预期函数/表达式范围内——用该消费点自己的"外层锚点"字符串
+    //      （函数名或直接外层调用名）在匹配位置**之前**、且间距在合理窗口内能
+    //      找到，粗粒度确认这不是文件里孤立飘着的一段代码，而是真的挂在预期的
+    //      函数体里。
+    assert(!isLikelyCommentLine(raw, m.index),
+      `l-field-consumer:${id} 匹配到的行（第 ${expectedLine} 行）不应是注释——真代码消费点不该落在注释文本里`);
+    const enclosingWindow = raw.slice(Math.max(0, m.index - spec.enclosingWindow), m.index);
+    assert(spec.enclosingAnchor.test(enclosingWindow),
+      `l-field-consumer:${id} 匹配位置（第 ${expectedLine} 行）之前 ${spec.enclosingWindow} 字符内应能找到预期的外层锚点 ${spec.enclosingAnchor}，实际窗口内容：${JSON.stringify(enclosingWindow.slice(-200))}`);
   };
   expectMigrated('render-blocks-tileHTML');
   expectMigrated('render-blocks-forms-join');
   expectMigrated('games-flash-display');
   expectMigrated('check-data-schema-gate');
-  console.log('PASS migration_audit（H-3 验证 + H2 回归 + 4b 二次更新 + 轮 D L2 去硬编码行号）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass，行号改按同一份 pattern 现算校验，不再随无关改动漂移');
+  console.log('PASS migration_audit（H-3 验证 + H2 回归 + 4b 二次更新 + 轮 D L2 去硬编码行号 + 轮 D L1 语义断言）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass，行号改按同一份 pattern 现算校验且落在预期函数范围内、不是注释，不再随无关改动漂移');
+
+  /* L1 诱饵测试：monkeypatch fs.readFileSync，只对 render-blocks.js 这一路径在
+   * 真实内容**之前**插入一条逐字复述同一段 pattern 的单行注释（诱饵），验证
+   * buildAudit() 报出的行号仍然精确落在真代码那一行，不会被诱饵注释带偏——
+   * 诱饵故意放在真代码**之前**（文本顺序更靠前），是对当前"取首个匹配"实现
+   * 最不利的摆放方式：如果实现真的会被注释骗到，这个位置的诱饵最先暴露。 */
+  {
+    const targetPath = path.join(REPO_ROOT, 'frontend', 'src', 'shared', 'render-blocks.js');
+    const originalRaw = fs.readFileSync(targetPath, 'utf8');
+    const spec = L_FIELD_CONSUMER_SPECS.find(s => s.id === 'render-blocks-tileHTML');
+    const decoyLine = `// 诱饵（L1 测试专用，不是真实注释）：示例调用 tileHTML(f,'tile--lg',true)\n`;
+    const poisonedRaw = decoyLine + originalRaw;
+    const originalReadFileSync = fs.readFileSync;
+    fs.readFileSync = function (filePath, ...rest) {
+      if (String(filePath) === targetPath) return poisonedRaw;
+      return originalReadFileSync.call(fs, filePath, ...rest);
+    };
+    let poisonedDoc;
+    try {
+      poisonedDoc = buildAudit(defaultWeekSources());
+    } finally {
+      fs.readFileSync = originalReadFileSync;
+    }
+    const poisonedFinding = poisonedDoc.findings.find(f => f.ruleId === 'DATA-SOUNDS-01' && f.findingId === 'l-field-consumer:render-blocks-tileHTML');
+    assert(poisonedFinding, '诱饵场景下也应该有 l-field-consumer:render-blocks-tileHTML 这条 finding');
+    // 诱饵行本身也会被 spec.pattern 命中（毕竟逐字复述），先确认这份合成文本真的
+    // 制造出了"诱饵在前、真代码在后，两处都能匹配"的场景，不是诱饵没写对。
+    const decoyMatches = [...poisonedRaw.matchAll(new RegExp(spec.pattern.source, 'g'))];
+    assert(decoyMatches.length >= 2, `诱饵场景前提：poisonedRaw 里 spec.pattern 应至少命中 2 次（诱饵 + 真代码），实际 ${decoyMatches.length} 次`);
+    const decoyLineNumber = lineOf(poisonedRaw, decoyMatches[0].index);
+    assert(isLikelyCommentLine(poisonedRaw, decoyMatches[0].index), '诱饵那一处匹配本身应该被识别为注释行（前提检查，不是本测试要验证的结论）');
+    // L1 实测发现（本批修复）：改前 migration_audit.js 的 L_FIELD_CONSUMER_SPECS
+    // 循环用裸 `.exec()` 取"整份文件第一处出现"，诱饵放在真代码之前时会被误选中
+    // （本文件曾在这里抓到过这个问题）。已改为 findFirstNonCommentMatch（跳过
+    // isLikelyCommentMatch 判定为注释的匹配），这里断言修复后的正确行为：报出的
+    // 行号既不是诱饵所在行，也确实是真代码行、status 仍是 pass。
+    assert.notEqual(poisonedFinding.source.line, decoyLineNumber,
+      `诱饵测试：buildAudit() 报出的行号不应该是诱饵注释所在的第 ${decoyLineNumber} 行`);
+    assert.equal(poisonedFinding.status, 'pass', '诱饵存在时，真代码本身没有变化，finding 状态仍应是 pass');
+    // 独立复核：用同一个已修复的 findFirstNonCommentMatch 对 poisonedRaw 重新算
+    // 一次，它的返回值按定义就不会是注释（否则函数自己的循环不会选中它）——这里
+    // 用它验证 buildAudit() 报出的行号确实与"正确算法应得的行号"一致，不是碰巧
+    // 避开了诱饵那一行。
+    const recomputed = findFirstNonCommentMatch(spec.pattern, poisonedRaw);
+    assert(recomputed, '诱饵场景下 findFirstNonCommentMatch 应该仍能找到真代码那一处匹配');
+    assert(!isLikelyCommentLine(poisonedRaw, recomputed.index), 'findFirstNonCommentMatch 返回的匹配按定义不应是注释（自检）');
+    assert.equal(poisonedFinding.source.line, lineOf(poisonedRaw, recomputed.index),
+      'buildAudit() 报出的行号应与 findFirstNonCommentMatch 独立算出的行号一致');
+    console.log('PASS migration_audit（L1 诱饵测试）：诱饵注释放在真代码之前时，buildAudit()（已改用 findFirstNonCommentMatch）仍然正确选中了真代码行，未被诱饵带偏');
+  }
 }
 
 // ============================================================================
@@ -504,8 +572,12 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
     /* P16（主会话裁定，2026-09-10）后更新：check_data.js 删掉了 `META.week >= 4 ||
        W[w]` 那条豁免，frontend/src/weeks/week04.data.js 同步把 RESERVED 五词
        （dab/nag/nod/rot/sob）补进 W——原先 5 条 w4:definition:* fail 全部转 pass，
-       40 条全部 pass，不再有 fail。 */
-    'DATA-RESERVED-01': { pass: 40, fail: 0, 'not-applicable': 0, unknown: 0 },
+       40 条全部 pass，不再有 fail。
+       2026-09-10 轮 D 复审第二轮（H1）后更新：definition/leak 两条检查改为审
+       `[...RESERVED, ...RESERVED_RETEST]`（改前只审 RESERVED，漏了复测词），
+       W4 的 RESERVED_RETEST 五词（gab/gal/hub/rib/sod）同样已在 W 里、不泄漏，
+       新增 5 条 definition pass + 5 条 leak pass，40→50 条全部 pass。 */
+    'DATA-RESERVED-01': { pass: 50, fail: 0, 'not-applicable': 0, unknown: 0 },
     /* 2026-09-09 里程碑 2 第 5 步 P8：W1 周检词 spit（4 字位）换成 pit（3 字位）后，
        segment-count 24 条全部 pass，不再有 fail。 */
     'DATA-RESERVED-02': { pass: 24, fail: 0, 'not-applicable': 0, unknown: 0 },
@@ -534,17 +606,21 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   }
   assert.deepEqual(actualByRule, REAL_STATUS_COUNTS_BY_RULE,
     '真实四周审计的 status 分布必须与钉住的期望值一致——如果这条红了，说明某条规则的判定逻辑或语料覆盖发生了变化，需要人工核实是修复还是回归');
-  assert.equal(realDoc.findings.length, 129, `真实审计总条数应为 129，实际 ${realDoc.findings.length}`);
-  /* 总条数不变（129）：第 7 步只是把已有 finding 的 status 从 fail 改判为 pass
+  assert.equal(realDoc.findings.length, 139, `真实审计总条数应为 139，实际 ${realDoc.findings.length}`);
+  /* 总条数原为 129：第 7 步只是把已有 finding 的 status 从 fail 改判为 pass
      （字段格式与墙集合从不合规变成合规），不新增不减少 finding 条数——newPatterns
      字段本身虽新增到 META 里，但 newPatterns-presence 这条 finding 本来就存在
      （只是 details.present 从 false 变 true）。
      L1（外审 low，2026-09-10）：本条注释原写"status 不变仍是 unknown"——已随
      上方 M-8 更新（见 §515 附近注释）作废：newPatterns-presence 的 4 条第 7 步后
-     已从 unknown 改判 not-applicable。这里只是重申"总条数 129 不变"这件事跟
+     已从 unknown 改判 not-applicable。这里只是重申当时"总条数 129 不变"这件事跟
      status 具体怎么变无关——不管某条 finding 的 status 在哪一步从什么改判成什么，
      只要没有 finding 被新增或删除，总条数就不受影响；不要把"计数不变"误读成
-     "status 也不变"。 */
+     "status 也不变"。
+     2026-09-10 轮 D 复审第二轮（H1）后更新：129→139——definition/leak 两条检查
+     从只审 RESERVED 改成审 `[...RESERVED, ...RESERVED_RETEST]`，W4 多出
+     RESERVED_RETEST 五词，每词各产生一条 definition + 一条 leak finding，共
+     新增 10 条（这次是真的新增 finding，不是既有 finding 改判）。 */
 
   const REAL_FAIL_FINDING_IDS = [
     'DATA-ASSESS-01/w4:forbidden-block:retest',

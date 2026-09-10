@@ -64,10 +64,15 @@ const L_FIELD_CONSUMER_SPECS = [
      的 flash 卡面展示改走 escapeHtmlText(s.grapheme) 而不是裸插值——M2 发现文本节点
      这里同样没转义（同一批修复 sight/initialpick 等处的裸文本插值），pattern 相应
      改指向新的调用形状，不是清单过期。 */
-  { id: 'render-blocks-tileHTML', file: 'frontend/src/shared/render-blocks.js', pattern: /tileHTML\(f,\s*'tile--lg',\s*true\)/, label: 'tileHTML(f, ...) 传字位 ID，内部经 graphemeLabel 取字形' },
-  { id: 'render-blocks-forms-join', file: 'frontend/src/shared/render-blocks.js', pattern: /forms\.map\(f\s*=>\s*SOUNDS\[f\]\.grapheme\)\.join/, label: 'forms.map(f=>SOUNDS[f].grapheme).join(\' 和 \')' },
-  { id: 'games-flash-display', file: 'frontend/src/shared/games.js', pattern: /escapeHtmlText\(s\.grapheme\)/, label: 'flash 卡面显示 escapeHtmlText(s.grapheme)' },
-  { id: 'check-data-schema-gate', file: 'tools/validation/check_data.js', pattern: /validateSoundsSchema\(SOUNDS,\s*\{requireTeachingFields:\s*true\}\)/, label: 'SOUNDS 条目字段齐全门槛改走共享 validateSoundsSchema（4b 步并入）' }
+  /* enclosingAnchor/enclosingWindow（轮 D 复审第二轮，外审 low，2026-09-10，L1）：
+   * 供 tests/unit/test_migration_audit.js 的独立语义断言使用——在匹配位置之前
+   * enclosingWindow 个字符内，enclosingAnchor 这个正则应该能找到，粗粒度确认
+   * 匹配落在预期的外层代码结构里（不是文件里孤立飘着的一段文本）。这两个字段
+   * 只被测试读取，不影响 auditWeek/buildAudit 生产逻辑本身的判定。 */
+  { id: 'render-blocks-tileHTML', file: 'frontend/src/shared/render-blocks.js', pattern: /tileHTML\(f,\s*'tile--lg',\s*true\)/, label: 'tileHTML(f, ...) 传字位 ID，内部经 graphemeLabel 取字形', enclosingAnchor: /class="sound__hd"/, enclosingWindow: 200 },
+  { id: 'render-blocks-forms-join', file: 'frontend/src/shared/render-blocks.js', pattern: /forms\.map\(f\s*=>\s*SOUNDS\[f\]\.grapheme\)\.join/, label: 'forms.map(f=>SOUNDS[f].grapheme).join(\' 和 \')', enclosingAnchor: /class="sound__hint"/, enclosingWindow: 200 },
+  { id: 'games-flash-display', file: 'frontend/src/shared/games.js', pattern: /escapeHtmlText\(s\.grapheme\)/, label: 'flash 卡面显示 escapeHtmlText(s.grapheme)', enclosingAnchor: /SOUNDS\[it\.k\]/, enclosingWindow: 150 },
+  { id: 'check-data-schema-gate', file: 'tools/validation/check_data.js', pattern: /validateSoundsSchema\(SOUNDS,\s*\{requireTeachingFields:\s*true\}\)/, label: 'SOUNDS 条目字段齐全门槛改走共享 validateSoundsSchema（4b 步并入）', enclosingAnchor: /soundsIssuesByKey/, enclosingWindow: 300 }
 ];
 
 const STATUS_VALUES = new Set(['pass', 'fail', 'not-applicable', 'unknown']);
@@ -75,6 +80,40 @@ const STATUS_VALUES = new Set(['pass', 'fail', 'not-applicable', 'unknown']);
 function lineOf(raw, index) {
   if (index == null || index < 0) return null;
   return raw.slice(0, index).split('\n').length;
+}
+
+/* isLikelyCommentMatch(raw, index)（L1，轮 D 复审第二轮，外审 low，2026-09-10）：
+ * 粗粒度判断某个匹配位置是否落在注释里——不是完整的 JS 词法分析器（不处理字符串
+ * 字面量里出现的 `//`/`/*` 这类边界情形），只覆盖两种常见注释形态：
+ *   ① 匹配所在整行（trim 后）以 `//` 开头——单行注释；
+ *   ② 匹配位置往前找最近一次 `/*` 与 `*​/`，如果 `/*` 比 `*​/` 更晚出现（或
+ *      `*​/` 根本不存在），说明匹配落在一段尚未闭合的块注释里面。 */
+function isLikelyCommentMatch(raw, index) {
+  const lineStart = raw.lastIndexOf('\n', index) + 1;
+  const lineEnd = raw.indexOf('\n', index);
+  const line = raw.slice(lineStart, lineEnd === -1 ? raw.length : lineEnd).trim();
+  if (line.startsWith('//')) return true;
+  const beforeOpen = raw.lastIndexOf('/*', index);
+  const beforeClose = raw.lastIndexOf('*/', index);
+  if (beforeOpen !== -1 && beforeOpen > beforeClose) return true;
+  return false;
+}
+
+/* findFirstNonCommentMatch(pattern, raw)（L1）：L_FIELD_CONSUMER_SPECS 的
+ * pattern 是纯文本正则，原样 `.exec()` 只取"整份文件里第一处出现"，如果一条
+ * 逐字复述同一段代码的诱饵注释排在真代码之前，会被误选中（诱饵测试实测触发过
+ * 这个问题）。改为遍历全部匹配（临时补 `g` 标志，不改调用方传入的原始正则
+ * 对象），跳过 isLikelyCommentMatch 判定为注释的匹配，返回第一个真代码匹配；
+ * 如果全部匹配都在注释里（或压根没匹配），返回 null，与"找不到"同一种后续
+ * 处置（fail）。 */
+function findFirstNonCommentMatch(pattern, raw) {
+  const globalPattern = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g');
+  let m;
+  while ((m = globalPattern.exec(raw))) {
+    if (!isLikelyCommentMatch(raw, m.index)) return m;
+    if (globalPattern.lastIndex === m.index) globalPattern.lastIndex++; // 防止零宽匹配死循环
+  }
+  return null;
 }
 
 /* 复用 load_data.js 的 declaration() 取顶层常量声明的原始文本，再在 raw 里定位其起始行。
@@ -119,6 +158,12 @@ function auditWeek(box, raw, file) {
   const weekTag = 'w' + week + ':';
   const META = box.META || {};
   const RESERVED = Array.isArray(box.RESERVED) ? box.RESERVED : [];
+  /* H1（轮 D 复审第二轮，外审 high，2026-09-10）：DATA-RESERVED-01 改前只审
+   * RESERVED（周检词），不审 RESERVED_RETEST（复测词）——与 check_data.js ①
+   * 那处同一个缺口（同一批 P16 把十词一起补进 W4 的 W，这里也该同一份词池对齐）。
+   * RESERVED_RETEST 是 monthly 专属（weekly 周不声明，`Array.isArray` 兜底成
+   * 空数组，不影响 weekly 周的现状发现）。 */
+  const RESERVED_RETEST = Array.isArray(box.RESERVED_RETEST) ? box.RESERVED_RETEST : [];
   const SOUNDS = box.SOUNDS || {};
   const W = box.W || {};
   /* 适配层遇到 grapheme/L 冲突（同一条目两个字段都在但值不同）或非法 grapheme（键存在
@@ -297,8 +342,13 @@ function auditWeek(box, raw, file) {
    * "check_data.js 现状豁免" 后来被删除的情形，同样按那段的处置口径：不删
    * `currentlyExempted`/`note` 这两个字段（保持 details 形状稳定，下游按字段取值
    * 而非按字段存在与否判断），只把取值来源从"week >= 4"改成常量 false，并同步
-   * 更新措辞——不能让 note 继续说"现状还豁免着""待删除"这些已经不成立的话。 */
-  RESERVED.forEach(word => {
+   * 更新措辞——不能让 note 继续说"现状还豁免着""待删除"这些已经不成立的话。
+   *
+   * H1（轮 D 复审第二轮，外审 high，2026-09-10）：definition/leak 两条检查改为
+   * `[...RESERVED, ...RESERVED_RETEST]` 统一审——周检词与复测词都要求"在 W 里
+   * 有释义"+"不许泄漏进别处"，findingId 仍按词本身命名（两个词池不应该有同名词，
+   * 若真的撞了 checkFindingIdUniqueness 会抓出来，不悄悄吞并）。 */
+  [...RESERVED, ...RESERVED_RETEST].forEach(word => {
     const currentlyExempted = false;
     const exemptedNote = null;
     const originalKey = wKeysByLower.get(word.toLowerCase());
@@ -319,7 +369,7 @@ function auditWeek(box, raw, file) {
       }
     });
   });
-  RESERVED.forEach(word => {
+  [...RESERVED, ...RESERVED_RETEST].forEach(word => {
     const normalizedWord = word.toLowerCase();
     const hits = consumption.filter(r => r.word.toLowerCase() === normalizedWord);
     pushFinding(findings, {
@@ -482,7 +532,9 @@ function buildAudit(weekSources, opts) {
      不用重新翻一遍四模式扫描。 */
   L_FIELD_CONSUMER_SPECS.forEach(spec => {
     const specRaw = fs.readFileSync(path.join(REPO, spec.file), 'utf8');
-    const m = spec.pattern.exec(specRaw);
+    // L1（轮 D 复审第二轮，2026-09-10）：不再用裸 `.exec()` 取"整份文件第一处
+    // 出现"——改用 findFirstNonCommentMatch 跳过注释里的诱饵匹配，只认真代码。
+    const m = findFirstNonCommentMatch(spec.pattern, specRaw);
     // H2：pattern 现在指向 grapheme 等价写法（见上方常量注释的语义变化说明）——
     // 找到 = pass（消费点确实按预期读取 grapheme，4a 迁移已生效且未回退）；
     // 找不到 = fail（这个已知消费点的代码形状变了：可能回退回 L，也可能被改写/
@@ -627,7 +679,10 @@ module.exports = {
   // 用同一份清单 + 同一个定位函数现算"当前应该在哪一行"，不再在测试里另外硬编码
   // 一份绝对行号快照（那份快照与被扫描文件的任何无关改动都会漂移，历史上已经
   // 因为不相关的改动被迫更新了九次，见该测试文件对应位置的沿革注释）。
-  L_FIELD_CONSUMER_SPECS, lineOf
+  L_FIELD_CONSUMER_SPECS, lineOf,
+  // 轮 D L1（外审 low，2026-09-10）导出：供 test_migration_audit.js 的诱饵测试
+  // 复用同一份注释判定逻辑（不在测试里另外重写一份，避免两处判据分叉）。
+  isLikelyCommentMatch, findFirstNonCommentMatch
 };
 
 if (require.main === module) main();

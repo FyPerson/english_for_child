@@ -304,6 +304,43 @@ console.log(`PASS weekly 失败例：2 个禁止块类型（${WEEKLY_FORBIDDEN_B
     'weekly RESERVED 词出现在别的词条里（非自身释义键）应查出泄漏，实际：' + JSON.stringify(errors));
   console.log('PASS M2 回归：周检词出现在别的词条（非自身释义）里仍被查出泄漏');
 }
+{
+  // M2（轮 D 复审第二轮，外审 medium，2026-09-10）反例①：两个测评词互相引用——
+  // 改前 `excludeDictionaryKeys` 命中键后整条 `continue`，连同它自己的释义值也
+  // 一起跳过；若测评词 A（RESERVED 词 'ram'）的释义里提到了测评词 B（RESERVED
+  // 词 'hem'），因为 A 自己是 excludeDictionaryKeys 命中的键，B 出现在 A 的释义
+  // 值里这件事完全不会被扫到——两个测评词互相引用，两边都查不出。
+  const d = structuredClone(w5);
+  d.W.ram = {zh: '公羊（跟 hem 这个词很像）'};
+  const errors = validateAssessment(d);
+  assert(errors.some(e => e.includes('测评词泄漏进教学内容：hem')),
+    '测评词 hem 出现在【另一个测评词 ram 自己】的释义值里应查出泄漏，实际：' + JSON.stringify(errors));
+  console.log('PASS M2 反例①：一个保留词（hem）出现在另一个保留词（ram）自己的释义值里仍被查出泄漏');
+}
+{
+  // M2 反例②：GLOBAL_RESERVED 键里的交叉引用——同一个测评池内部，两个测评词
+  // 互相引用同样要查出（不只是 RESERVED 内部）。GLOBAL_RESERVED 池默认没有任何
+  // W 声明（base.W 只有 cat），这里给池内第一个词 'shelf' 补一条 W 声明，释义值
+  // 提到池内另一个词 'shaft'。
+  const d = structuredClone(base);
+  assert(d.GLOBAL_RESERVED.includes('shelf') && d.GLOBAL_RESERVED.includes('shaft'),
+    'GLOBAL_POOL 应含 shelf 与 shaft 两个词，检查 GLOBAL_POOL 是否已变');
+  d.W.shelf = {zh: '架子（跟 shaft 说的轴不是一回事）'};
+  const errors = validateAssessment(d);
+  assert(errors.some(e => e.includes('测评词泄漏进教学内容：shaft')),
+    'GLOBAL_RESERVED 池内测评词 shaft 出现在同池另一个测评词 shelf 自己的释义值里应查出泄漏，实际：' + JSON.stringify(errors));
+  console.log('PASS M2 反例②：GLOBAL_RESERVED 键里的交叉引用（shaft 出现在 shelf 的释义值里）仍被查出泄漏');
+}
+{
+  // M2 正例（防止修复矫枉过正）：测评词自己的释义值里用词本身当资源标识符
+  // （真实数据里 W1 的 `art:'pit'` 就是这个惯例——art 字段直接拿词本身当插画
+  // 键）不应该被误判成"泄漏了自己"。这不是新泄漏，是词条自己的命名惯例。
+  const d = structuredClone(w5);
+  d.W.ram = {zh: '公羊', art: 'ram'};
+  const errors = validateAssessment(d);
+  assert.deepEqual(errors, [], '测评词自己的 art 字段用词本身当资源标识符不应被误判成"泄漏了自己"，实际：' + JSON.stringify(errors));
+  console.log('PASS M2 正例：测评词自己释义值里的自身词命名惯例（art:自身词）不误判为泄漏（回归防止修复矫枉过正）');
+}
 
 // ============================================================================
 // M3 回归（外审 medium，2026-09-09）：泄漏判据的书面边界——见 assessment_contract.js
@@ -542,6 +579,25 @@ for (let week = 1; week <= 3; week++) {
   assert.deepEqual(baseline.filter(word => exposed.has(word)), [], `W4 baseline exposed in W${week}`);
 }
 console.log('PASS W4 baseline: no exposure in any prior weekly data or explanation');
+
+// ============================================================================
+// M3（轮 D 复审第二轮，外审 medium，2026-09-10）：ASSESSMENT_WORDS 改前是独立
+// 手写字面量，与 W 里同一批词的 zh 是同一份内容抄两遍——已改成从 W 派生（见
+// frontend/src/weeks/week04.data.js 末尾）。这里用真实 build 产物（复用上面
+// `actual` 已加载的 W4 box）钉住这条不变量：即便将来有人把派生改回手写字面量，
+// 这条测试也会在两份字面量出现分歧的那一刻变红，不必等到真的有人手滑漏改一处。
+// ============================================================================
+{
+  const reservedAndRetest = [...actual.RESERVED, ...actual.RESERVED_RETEST];
+  assert.deepEqual(Object.keys(actual.ASSESSMENT_WORDS).sort(), [...reservedAndRetest].sort(),
+    `ASSESSMENT_WORDS 的键集合应恰好等于 RESERVED ∪ RESERVED_RETEST，实际：${JSON.stringify(Object.keys(actual.ASSESSMENT_WORDS).sort())}`);
+  for (const w of reservedAndRetest) {
+    assert(actual.W[w], `${w} 应该在 W 里有声明（P16 已补齐十词，这里核实真实构建产物没有漏）`);
+    assert.equal(actual.ASSESSMENT_WORDS[w].zh, actual.W[w].zh,
+      `ASSESSMENT_WORDS.${w}.zh（${actual.ASSESSMENT_WORDS[w].zh}）应与 W.${w}.zh（${actual.W[w].zh}）逐词一致，不应是两份独立维护的字面量`);
+  }
+  console.log(`PASS M3：真实 W4 构建产物里 ASSESSMENT_WORDS 十词的 zh 与 W 逐词一致（${reservedAndRetest.length} 词，单一真相源——派生自 W，不是独立字面量）`);
+}
 
 // ============================================================================
 // M1 回归（外审 medium，2026-09-09）：不支持路由（stage/annual/monthly&&week!==4）

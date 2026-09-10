@@ -17,12 +17,16 @@ QUICK_NAMES_WITH_BASELINE = ['build', 'reproducible build', 'reproducible build:
                              'legacy scripts refuse replay',
                              'check_data unreviewed marker gate', 'check_data sounds schema global gate',
                              'check_data array field guards', 'check_data wall assertion blind spots',
+                             'check_data letter range by grapheme', 'check_data reserved segment count',
+                             'check_data untaught letter sources', 'check_data reserved in W at week4',
+                             'check_data G1 exemption granularity', 'build course payload escaping',
                              'directory layout', 'build boundaries', 'run_checks contract', 'graphemes contract',
                              'word coloring contract', 'render smoke', 'strict render ambiguity regression',
                              'wall order contract',
                              'word consumers contract', 'migration diff contract', 'grapheme semantics contract',
                              'synthetic ai integration contract',
-                             'migration audit contract', 'grapheme migration contract', 'assessment contract', 'media coverage']
+                             'migration audit contract', 'grapheme migration contract', 'assessment contract',
+                             'W4 ten words not exposed', 'media coverage']
 
 QUICK_NAMES_WITHOUT_BASELINE = [n for n in QUICK_NAMES_WITH_BASELINE if n != 'single-file baseline']
 
@@ -32,12 +36,16 @@ POST_BASELINE_NAMES = ['size budget', 'baseline contract', 'size budget contract
                         'legacy scripts refuse replay',
                         'check_data unreviewed marker gate', 'check_data sounds schema global gate',
                         'check_data array field guards', 'check_data wall assertion blind spots',
+                        'check_data letter range by grapheme', 'check_data reserved segment count',
+                        'check_data untaught letter sources', 'check_data reserved in W at week4',
+                        'check_data G1 exemption granularity', 'build course payload escaping',
                         'directory layout', 'build boundaries', 'run_checks contract', 'graphemes contract',
                         'word coloring contract', 'render smoke', 'strict render ambiguity regression',
                         'wall order contract',
                         'word consumers contract', 'migration diff contract', 'grapheme semantics contract',
                         'synthetic ai integration contract',
-                        'migration audit contract', 'grapheme migration contract', 'assessment contract', 'media coverage']
+                        'migration audit contract', 'grapheme migration contract', 'assessment contract',
+                        'W4 ten words not exposed', 'media coverage']
 
 BROWSER_SUITE_NAMES = ['test_audio_touch', 'test_date_schedule', 'test_progress', 'test_games', 'test_initialpick',
                         'test_assessment_browser', 'test_mobile', 'test_course', 'smoke_parent_panel',

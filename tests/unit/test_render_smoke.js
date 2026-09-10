@@ -419,8 +419,28 @@ function allLitForWeek(templatePath) {
    *      函数但没有真的把返回值接到渲染结果上。
    * 四份模板各跑一次，覆盖范围与改前源码正则声称覆盖的范围相同（四份模板），但现在
    * 断言的是"真的执行、真的接上、覆盖面精确"而不是"文件里出现过这行文本"。 */
+  /* H2（轮 D 复审第二轮，外审 high，2026-09-10）：改前的猴子补丁
+   * `sandbox.wallTileLitState = function(id){ const lit = original(id); ...;
+   * return lit; }` 原样透传 `original(id)` 的返回值——这只证明了"包装函数被调用
+   * 过"，不证明"渲染出的 class 真的是被包装函数的返回值驱动的"：模板若在别处
+   * 另算了一套逻辑（哪怕完全不读包装函数的返回值），只要那套逻辑碰巧算出同样的
+   * 真假值（现实中大概率如此——四份模板的点亮态本来就该一致），渲染出的 class
+   * 与 `observed` 记录的返回值照样逐一相等，这条断言依然全绿，测不出"没接上"这类
+   * 回归。
+   * 改法：不原样透传，而是**扰动**——用与自然真值无关的规则强行改写返回值，跑
+   * 两组互补的扰动映射：
+   *   组 A：对每个 ID 返回自然值的反值（!original(id)）；
+   *   组 B：按调用顺序下标奇偶交错真假（与 A 的规则不同、也与自然值无关）。
+   * 两组扰动后的返回值集合互不相同（A 是"全部取反"，B 是"按下标奇偶"，只要
+   * wallLetters 长度 > 1 就不会退化成同一组值），若渲染出的 class 都能跟着两组
+   * 各自不同的扰动结果走，才说明 class 真的是由这个函数的返回值决定的——只算
+   * 一套"看起来正确"的独立逻辑不可能同时满足两组互相矛盾的扰动结果。
+   * 同时（M1）：记录每个 ID 的调用次数，断言均为 1（不多不少，防止重复调用/漏调
+   * 被"最终结果碰巧对"掩盖）；解析 class 时显式断言 `tile--wallon` 与
+   * `tile--walloff` 恰有一个命中，不隐含"没有 wallon 就是 walloff"这个未经断言
+   * 的假设。 */
   const WALL_CALL_TRACKING_BRIDGE = '__BRIDGE_META = META; __BRIDGE_APP = document.getElementById("app");';
-  function wallCallTrackingForWeek(templatePath) {
+  function wallCallTrackingForWeek(templatePath, perturb) {
     const expanded = expand(fs.readFileSync(templatePath, 'utf8'), []);
     const segments = extractScripts(expanded);
     const sandbox = makeSandbox();
@@ -431,11 +451,16 @@ function allLitForWeek(templatePath) {
 
     const original = sandbox.wallTileLitState;
     assert.equal(typeof original, 'function', `${templatePath}：wallTileLitState 应该是共享函数（render-blocks.js 里的顶层函数声明），实际 ${typeof original}`);
-    const observed = new Map(); // id -> lit（返回值）
+    const observed = new Map(); // id -> 本次插桩实际返回的值（自然值或扰动值）
+    const callCounts = new Map(); // id -> 调用次数
+    let callIndex = 0;
     sandbox.wallTileLitState = function (id) {
-      const lit = original(id);
-      observed.set(id, lit);
-      return lit;
+      callCounts.set(id, (callCounts.get(id) || 0) + 1);
+      const natural = original(id);
+      const forced = perturb ? perturb(natural, id, callIndex) : natural;
+      callIndex++;
+      observed.set(id, forced);
+      return forced;
     };
     sandbox.renderHome(); // 插桩后的第二次调用，采集观测数据
     sandbox.wallTileLitState = original; // 复位，不影响本文件其余用例（虽然各用例各自 makeSandbox，互不共享，仅为整洁）
@@ -446,27 +471,53 @@ function allLitForWeek(templatePath) {
     while ((m = tileRe.exec(app.innerHTML))) {
       const cls = m[1], id = m[2];
       if (renderedLit.has(id)) continue; // 只认 hero 积木墙这一处（第一次出现），页面其余位置若也用了 data-grapheme-id 不重复覆盖
-      renderedLit.set(id, /(^|\s)tile--wallon(\s|$)/.test(cls));
+      const hasOn = /(^|\s)tile--wallon(\s|$)/.test(cls);
+      const hasOff = /(^|\s)tile--walloff(\s|$)/.test(cls);
+      assert.notEqual(hasOn, hasOff,
+        `${templatePath}：字位 "${id}" 的 class（${JSON.stringify(cls)}）应恰好命中 tile--wallon/tile--walloff 二者之一，不是"没命中就当作另一个"的隐含假设`);
+      renderedLit.set(id, hasOn);
     }
-    return { META, observedIds: [...observed.keys()], observed, renderedLit };
+    return { META, observedIds: [...observed.keys()], observed, renderedLit, callCounts };
   }
+
+  const PERTURBATIONS = [
+    { label: '自然值（透传，回归既有断言）', fn: null },
+    { label: '组 A：全部取反', fn: natural => !natural },
+    { label: '组 B：按调用下标奇偶交错', fn: (natural, id, index) => index % 2 === 0 },
+  ];
 
   let checkedCallTracking = 0;
   for (const name of templates) {
     const templatePath = path.join(SRC, 'weeks', name);
-    const { META, observedIds, observed, renderedLit } = wallCallTrackingForWeek(templatePath);
-    assert.deepEqual([...observedIds].sort(), [...META.wallLetters].sort(),
-      `${name}：wallTileLitState 实际被调用的字位集合应恰好等于 META.wallLetters，实际调用集合 [${[...observedIds].sort()}]，期望 [${[...META.wallLetters].sort()}]——` +
-      '这正是运行时观测要证明的：真的对点亮墙的每一块积木都调了一次，不多不少');
-    for (const [id, lit] of observed) {
-      assert(renderedLit.has(id), `${name}：字位 "${id}" 被 wallTileLitState 调用过，但渲染出的 hero 积木墙里找不到对应的 data-grapheme-id 块`);
-      assert.equal(renderedLit.get(id), lit,
-        `${name}：字位 "${id}" 包装函数返回 lit=${lit}，但渲染出的 class 显示 ${renderedLit.get(id) ? 'tile--wallon' : 'tile--walloff'}，两者不一致`);
+    const perGroupObserved = [];
+    for (const { label, fn } of PERTURBATIONS) {
+      const { META, observedIds, observed, renderedLit, callCounts } = wallCallTrackingForWeek(templatePath, fn);
+      assert.deepEqual([...observedIds].sort(), [...META.wallLetters].sort(),
+        `${name}（${label}）：wallTileLitState 实际被调用的字位集合应恰好等于 META.wallLetters，实际调用集合 [${[...observedIds].sort()}]，期望 [${[...META.wallLetters].sort()}]——` +
+        '这正是运行时观测要证明的：真的对点亮墙的每一块积木都调了一次，不多不少');
+      for (const id of META.wallLetters) {
+        assert.equal(callCounts.get(id), 1,
+          `${name}（${label}）：字位 "${id}" 的 wallTileLitState 调用次数应恰好为 1，实际 ${callCounts.get(id)}（M1：重复调用/漏调都可能被"最终结果碰巧对"掩盖）`);
+      }
+      for (const [id, lit] of observed) {
+        assert(renderedLit.has(id), `${name}（${label}）：字位 "${id}" 被 wallTileLitState 调用过，但渲染出的 hero 积木墙里找不到对应的 data-grapheme-id 块`);
+        assert.equal(renderedLit.get(id), lit,
+          `${name}（${label}）：字位 "${id}" 包装函数返回 lit=${lit}，但渲染出的 class 显示 ${renderedLit.get(id) ? 'tile--wallon' : 'tile--walloff'}，两者不一致——` +
+          '这一步在扰动组（组 A/组 B）里尤其关键：证明的不是"结果碰巧一致"，而是渲染出的 class 真的随扰动结果变化');
+      }
+      perGroupObserved.push({ label, values: [...observed.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, v]) => v) });
     }
+    // 交叉核验：组 A 与组 B 的扰动结果集合必须互不相同（否则"两组扰动都能通过"
+    // 这件事本身没有区分力——如果两组算出来的值序列一样，通过两次也只是通过了
+    // 同一组断言两次）。wallLetters 长度 > 1 时，"全部取反" 与 "按下标奇偶" 这两条
+    // 规则在绝大多数情况下会给出不同的序列；用真实断言钉住而不是假设。
+    const [, groupA, groupB] = perGroupObserved;
+    assert.notDeepEqual(groupA.values, groupB.values,
+      `${name}：组 A（全部取反）与组 B（按下标奇偶）的扰动结果序列不应相同，否则两组扰动不构成有效的交叉验证。A=${JSON.stringify(groupA.values)} B=${JSON.stringify(groupB.values)}`);
     checkedCallTracking++;
   }
   assert.equal(checkedCallTracking, templates.length, '运行时调用追踪应覆盖全部模板');
-  console.log(`PASS wall lit state（T3-1 接线验证·运行时观测）：${checkedCallTracking} 份模板均确认 wallTileLitState 被恰好对 META.wallLetters 全集调用一次，且每块渲染出的 tile--wallon/walloff 与包装函数返回值逐一一致`);
+  console.log(`PASS wall lit state（T3-1 接线验证·运行时观测 + H2 扰动验证）：${checkedCallTracking} 份模板均确认 wallTileLitState 被恰好对 META.wallLetters 全集调用一次（每 ID 恰好 1 次），且在自然值/取反/按下标奇偶三组互不相同的扰动下，渲染出的 tile--wallon/walloff 均与包装函数返回值逐一一致——证明渲染 class 真的由该函数的返回值驱动，不是碰巧算出同样答案的独立逻辑`);
 }
 
 /* T3-2（外审 medium，2026-09-10）：week01 改前的三处素材守卫（bookArt 直接回退

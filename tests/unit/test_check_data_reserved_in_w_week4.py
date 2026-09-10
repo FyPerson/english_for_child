@@ -102,8 +102,67 @@ class ReservedInWAtWeek4Tests(unittest.TestCase):
         result = run_check_data(target)
         self.assertNotEqual(result.returncode, 0,
             '周检词 "fib" 只在 RESERVED、不在 W 时，week4 应报失败（删豁免前会被静默放行）')
-        self.assertIn('保留词 "fib" 不在 W 里', result.stdout,
+        self.assertIn('周检词 "fib" 不在 W 里', result.stdout,
             f'失败消息应点名具体缺失的周检词 "fib"：{result.stdout[-1500:]}')
+
+    def base_fixture_with_reserved_retest(self):
+        """在 week4 化的 fixture 基础上追加一份 RESERVED_RETEST 声明（week03
+        fixture 本身没有这个常量——它是 monthly 专属，weekly fixture 不声明）。
+        五个复测词全取自 fixture 已有的 W 词条（pin/pan/nap/tap/tip，均已在 W 里
+        有释义、全是已教字位的三字位 CVC），保证"正例"天然合格，不需要额外造词。"""
+        raw = base_fixture_as_week4()
+        old_reserved = "const RESERVED = ['gut','bud','fin','lob','fib'];   /* 周检五词，全 CVC，本周任何练习/游戏/小书里都不出现 */"
+        assert old_reserved in raw, 'fixture 里找不到 RESERVED 声明，检查 fixture 是否已变'
+        new_block = old_reserved + "\nconst RESERVED_RETEST = ['pin','pan','nap','tap','tip'];   /* H1 测试专用：复测五词，均已在 W 里有释义 */"
+        raw = raw.replace(old_reserved, new_block, 1)
+        return raw
+
+    def test_reserved_retest_already_in_w_still_passes_at_week4(self):
+        # H1（轮 D 复审第二轮，外审 high，2026-09-10）正例：RESERVED_RETEST 五词
+        # （pin/pan/nap/tap/tip）本就在 W 里，追加这个声明不应引入①「复测词不在 W
+        # 里」这条新失败。
+        #
+        # 范围说明：这份 fixture 的 assessmentMode 仍是 'weekly'（week03 fixture
+        # 原样），追加 RESERVED_RETEST 声明本身会触发⑩测评隔离的另一条独立规则
+        # 「weekly 周不得声明 RESERVED_RETEST」——那是 assessmentMode 路由的职责，
+        # 与本条要验证的①「复测词是否在 W 里」是两件不同的事，不在这条测试的范围内
+        # （造一份完整合法的 monthly fixture 需要 PROBE_A/PROBE_B/GLOBAL_RESERVED/
+        # ASSESS_TEXT 等一整套字段，成本远超本条要证明的东西）。这里只断言①那一条
+        # 具体的失败消息不出现，不要求整体 0 失败。
+        raw = self.base_fixture_with_reserved_retest()
+        target = Path(self.tmpdir.name) / 'week04-data-reserved-retest-in-w.js'
+        target.write_text(raw, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertNotIn('不在 W 里', result.stdout,
+            f'RESERVED_RETEST 五词已在 W 里，①这一层不应报任何"不在 W 里"的失败：{result.stdout[-1500:]}')
+        self.assertIn('weekly 周不得声明 RESERVED_RETEST', result.stdout,
+            'range check：这份 fixture 仍是 weekly，应该命中⑩的独立规则（与本条无关，只是确认 fixture 状态符合预期）')
+
+    def test_reserved_retest_missing_from_w_fails_at_week4(self):
+        # H1 反例：删掉复测词 'tip' 的 W 声明——改前 check_data.js ①「保留词不在 W
+        # 里」只查 RESERVED（周检词），完全不查 RESERVED_RETEST（复测词），这类
+        # 数据缺陷在①这一层查不出来（只有 monthly 路径的 assertCvcByGraphemes 分词
+        # 失败时才会连带暴露，且报错信息不会点名"复测词缺释义"这件事本身）。改后
+        # 应该在①这一层就被拦下，并点名是"复测词"不是笼统的"保留词"。
+        raw = self.base_fixture_with_reserved_retest()
+        old_w_entry = "pan:{zh:'平底锅'"
+        assert old_w_entry in raw, 'fixture 里找不到 W.pan 声明起始，检查 fixture 是否已变'
+        old_tip_entry = "tip:{zh:'小费'"
+        assert old_tip_entry in raw, 'fixture 里找不到 W.tip 声明起始，检查 fixture 是否已变'
+        # tip 声明的完整形态需要连同它所在的整行一起核对，直接找到该 key 到下一个
+        # 逗号为止的片段整体删除，避免破坏同一行里其它词条的声明。
+        m = re.search(r"tip:\{zh:'[^']*',art:[^,}]*\},?\s*", raw)
+        assert m, '找不到完整的 tip:{...} 声明片段，检查 fixture 格式是否已变'
+        raw = raw[:m.start()] + raw[m.end():]
+        target = Path(self.tmpdir.name) / 'week04-data-reserved-retest-missing-from-w.js'
+        target.write_text(raw, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertNotEqual(result.returncode, 0,
+            '复测词 "tip" 只在 RESERVED_RETEST、不在 W 时，week4 应报失败')
+        self.assertIn('复测词 "tip" 不在 W 里', result.stdout,
+            f'失败消息应点名具体缺失的复测词 "tip"，且措辞应是"复测词"不是"周检词"：{result.stdout[-1500:]}')
 
 
 if __name__ == '__main__':

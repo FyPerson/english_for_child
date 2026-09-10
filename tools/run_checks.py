@@ -64,6 +64,16 @@ def build_jobs(temp, quick, skip_baseline, reproducible_fn=reproducible):
             ('check_data sounds schema global gate', [sys.executable, 'tests/unit/test_check_data_sounds_schema_global.py']),
             ('check_data array field guards', [sys.executable, 'tests/unit/test_check_data_array_guards.py']),
             ('check_data wall assertion blind spots', [sys.executable, 'tests/unit/test_check_data_wall_assertions.py']),
+            # 轮 D 复审第二轮（验证收口，2026-09-10）补挂：这几份 tests/unit/test_check_data_*.py
+            # / test_build_course.py 此前一直没有登记进 build_jobs，`python tools/project.py check`
+            # 从未真的执行过它们——写了测试但没接进验收档位，等于没测（同一处仓库沉淀过的教训：
+            # 「改了什么就确认验收档位覆盖它」）。这里一并补挂，不只挂本批新增的两份。
+            ('check_data letter range by grapheme', [sys.executable, 'tests/unit/test_check_data_letter_range_by_grapheme.py']),
+            ('check_data reserved segment count', [sys.executable, 'tests/unit/test_check_data_reserved_segment_count.py']),
+            ('check_data untaught letter sources', [sys.executable, 'tests/unit/test_check_data_untaught_letter_sources.py']),
+            ('check_data reserved in W at week4', [sys.executable, 'tests/unit/test_check_data_reserved_in_w_week4.py']),
+            ('check_data G1 exemption granularity', [sys.executable, 'tests/unit/test_check_data_g1_exemption_granularity.py']),
+            ('build course payload escaping', [sys.executable, 'tests/unit/test_build_course.py']),
             ('directory layout', [sys.executable, 'tests/unit/test_layout.py']),
             ('build boundaries', [sys.executable, 'tests/unit/test_build.py']),
             ('run_checks contract', [sys.executable, 'tests/unit/test_run_checks.py']),
@@ -79,6 +89,10 @@ def build_jobs(temp, quick, skip_baseline, reproducible_fn=reproducible):
             ('migration audit contract', ['node', 'tests/unit/test_migration_audit.js']),
             ('grapheme migration contract', ['node', 'tests/unit/test_grapheme_migration.js']),
             ('assessment contract', ['node', 'tests/unit/test_assessment_contract.js']),
+            # M4（轮 D 复审第二轮，2026-09-10）补挂：读真实 build/week04.html 产物做负向
+            # 核实（测评词未泄漏进音频清单/词卡插画/教学消费记录），'build' 是本列表第一个
+            # 任务，跑到这里时 build/week04.html 必然已存在。
+            ('W4 ten words not exposed', ['node', 'tests/unit/test_w4_ten_words_not_exposed.js']),
             ('media coverage', ['node', 'tests/unit/test_media.js'])]
     if not quick:
         jobs += [(name, [sys.executable, 'tests/browser/' + name + '.py']) for name in

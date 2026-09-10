@@ -90,38 +90,9 @@ const TAUGHT_SIGHT = [
 
 const ASSESS_TEXT = "I see a pup. I see a cub. The pup is at a rug. The cub is at the rug. I tug the rug. The rug is up. The pup is up. The cub is up. I rub the rug. I rub, rub, rub. I see the pup at the rug. I see the cub at the rug. I see the rug.";
 
-const ASSESSMENT_WORDS = {
-  "dab": {
-    "zh": "轻点"
-  },
-  "nag": {
-    "zh": "唠叨"
-  },
-  "nod": {
-    "zh": "点头"
-  },
-  "sob": {
-    "zh": "抽泣"
-  },
-  "rot": {
-    "zh": "腐烂"
-  },
-  "gab": {
-    "zh": "闲聊"
-  },
-  "gal": {
-    "zh": "女孩（口语）"
-  },
-  "hub": {
-    "zh": "中心"
-  },
-  "rib": {
-    "zh": "肋骨"
-  },
-  "sod": {
-    "zh": "草皮"
-  }
-};
+/* ASSESSMENT_WORDS 声明挪到文件末尾（M3，轮 D 复审第二轮，外审 medium，
+ * 2026-09-10）：见文件末尾定义与理由。原地留一个占位注释，方便照 NAMES 常量表
+ * 顺序读到这里的人知道它去哪了，不是被删掉了。 */
 
 const SOUNDS = {
   "s": {
@@ -2096,3 +2067,21 @@ const W = {
     "art": null
   }
 };
+
+/* M3（轮 D 复审第二轮，外审 medium，2026-09-10）：ASSESSMENT_WORDS 改前是独立
+ * 手写的字面量（RESERVED/RESERVED_RETEST 十词各自的 zh 释义），与 W 里同一批词
+ * 的 zh 是同一份内容的两份字面量抄写，不是单一真相源——改哪一份都可能漏改另一份。
+ *
+ * 消费者核实：全仓 grep `.ASSESSMENT_WORDS`，除 tools/validation/load_data.js
+ * 的 NAMES 白名单（只是声明"这个常量名允许被加载"，不读取它的内容）与散落的
+ * 注释外，没有任何生产代码或测试实际读取 `box.ASSESSMENT_WORDS` 的值——它当前
+ * 是零消费者的声明。既然如此，让它从 W 派生（单一真相源）比"补一份逐词一致性
+ * 测试、继续维护两份字面量"更彻底：不会再有"改了 W 忘改 ASSESSMENT_WORDS"这类
+ * 未来的手滑空间。
+ *
+ * 派生位置说明：声明本身从原来的文件顶部（ASSESS_TEXT 之后）挪到这里（W 声明
+ * 之后）——RESERVED/RESERVED_RETEST 定义在文件顶部，W 定义在文件末尾，真实浏览器
+ * 按文件文本顺序（不是 tools/validation/load_data.js 的 NAMES 常量表顺序）逐行
+ * 执行 <script>，`const ASSESSMENT_WORDS = ...W[w]...` 必须物理上写在 `const W`
+ * 声明之后，否则会在 W 完成初始化之前访问它，触发暂时性死区 ReferenceError。 */
+const ASSESSMENT_WORDS = Object.fromEntries([...RESERVED, ...RESERVED_RETEST].map(w => [w, { zh: W[w].zh }]));

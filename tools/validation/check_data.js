@@ -31,7 +31,7 @@ const {computeTeachingOrder, gatherWeekRecordsUpTo, getExpectedWeeksUpTo, expect
 const {collectWordConsumption} = require('./word_consumers');
 let box;
 try { box = loadData(raw, isHTML); } catch(e) { console.error(e.message); process.exit(2); }
-const { RESERVED, SOUNDS, W, WALL_HINT, BOOK, FIRST_TEACH_DAY, G1_ROUNDS, G1_THEME, G3_PAIRS, G4_WORDS, G5_WHITELIST, DAYS, META } = box;
+const { RESERVED, RESERVED_RETEST, SOUNDS, W, WALL_HINT, BOOK, FIRST_TEACH_DAY, G1_ROUNDS, G1_THEME, G3_PAIRS, G4_WORDS, G5_WHITELIST, DAYS, META } = box;
 
 let fail = 0, pass = 0;
 const ok = (cond, msg) => { if (cond) pass++; else { fail++; console.log('  ✗ ' + msg); } };
@@ -88,8 +88,20 @@ for (const s of usedSounds) ok(SOUNDS[s], `音 "${s}" 在课程里用到，但 S
  * explicit segments，多解词会直接抛 segment-ambiguous，整条周检块的分词都立不住。
  * 删除后 W4 数据本身必须补齐 RESERVED/RESERVED_RETEST 十词的 W 条目（已在
  * frontend/src/weeks/week04.data.js 补齐，zh 释义复用同文件已有的 ASSESSMENT_WORDS
- * 常量，逐词核对过一致）。 */
-for (const w of RESERVED) ok(W[w], `保留词 "${w}" 不在 W 里（周检块会读 W[w].zh）`);
+ * 常量，逐词核对过一致）。
+ *
+ * H1（轮 D 复审第二轮，外审 high，2026-09-10）：上面这条只查了 RESERVED（周检词），
+ * 没查 RESERVED_RETEST（复测词）——P16 把十词一起补进 W4 的 W（RESERVED 五词 +
+ * RESERVED_RETEST 五词），assessment_contract.js 的 validateMonthlyW4 也是把
+ * `[...d.RESERVED, ...d.RESERVED_RETEST]` 当同一组词跑 CVC 判据（assertCvcByGraphemes
+ * 需要 `W[word].segments` 才能给多解词消歧，参见 P16 注释），只查 RESERVED 这一半
+ * 会让"复测词缺 W 条目"这类数据缺陷在①这一层完全查不出——只有 monthly 路径的
+ * assertCvcByGraphemes 分词失败时才会连带暴露，报错信息也不会点名"复测词缺释义"
+ * 这件事本身。改为 `[...RESERVED, ...(RESERVED_RETEST || [])]` 统一校验（weekly 周
+ * 没有 RESERVED_RETEST 声明，`|| []` 兜底不报错），消息按来源数组区分是"周检词"
+ * 还是"复测词"，不再笼统都叫"保留词"。 */
+for (const w of RESERVED) ok(W[w], `周检词 "${w}" 不在 W 里（周检块会读 W[w].zh）`);
+for (const w of (RESERVED_RETEST || [])) ok(W[w], `复测词 "${w}" 不在 W 里（月测复测块会读 W[w].zh）`);
 for (const p of BOOK.pages) ok(typeof p.line === 'string' && p.zh && p.art, `小书页缺字段：${p.line}`);
 /* SOUNDS schema 校验改走共享校验器 validateSoundsSchema（2026-09-09 外审 medium，
  * 第 4b 步并入）：grapheme 合法性、ID 字符集、遗留 L 字段、ipa/type/教学字段完整性

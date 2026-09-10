@@ -114,11 +114,22 @@ const WEEKLY_FORBIDDEN_BLOCKS = ['retest', 'probe'];
  * 那是一个词典查阅入口，不是练习/游戏，"不泄漏进练习/游戏"语义上不包含它。
  *
  * M2 修复（里程碑 2 第 5 步预筛）：与 `DATA-RESERVED-01` 真正打架的只有周检词自己
- * 那一条键（连同它的释义值），不是整个 `W`——若某个周检词恰好出现在**别的**词条的
- * zh/art/例句里，那仍然是一次真实泄漏，理应查出。所以这里只按键逐条跳过
- * `excludeDictionaryKeys` 命中的条目，其余词条照常纳入"可见文本"扫描，而不是
- * 像旧版 `includeDictionary:false` 那样把整个 `W` 都排除在外。
+ * 那一条键，不是整个 `W`——若某个周检词恰好出现在**别的**词条的 zh/art/例句里，
+ * 那仍然是一次真实泄漏，理应查出。所以这里只按键逐条跳过 `excludeDictionaryKeys`
+ * 命中的**键文本本身**，其余词条（含被排除键自己的释义值）照常纳入"可见文本"
+ * 扫描，而不是像旧版 `includeDictionary:false` 那样把整个 `W` 都排除在外。
  * weekly 分支显式传 `{excludeDictionaryKeys: owner}`（RESERVED 词集合）。
+ *
+ * M2（轮 D 复审第二轮，外审 medium，2026-09-10）：上一版虽然已经按键逐条判断，
+ * 但命中后是 `continue` 整条跳过——`visit(key)` 与 `visit(entry)` 一起被跳过了，
+ * 只排除了"键文本"这一层，却把这条目**自己的释义值**也一并排除掉了。这与本段
+ * 注释开头那句"与 DATA-RESERVED-01 真正打架的只有周检词自己那一条键"自相矛盾：
+ * 真正该排除的只是"键本身作为词元出现"（那是词典入口，不是练习/游戏），条目的
+ * 释义值（zh/art/segments 等）是普通可见文本，其中完全可能引用**另一个**测评词
+ * （比如 RESERVED 词 A 的 zh 释义里提到了 RESERVED 词 B，或 GLOBAL_RESERVED 池
+ * 两个词互相在释义里引用），旧写法会把这类真实交叉引用一起吞掉，两个测评词互相
+ * 引用时完全查不出任何一边的泄漏。改法：只跳过 `visit(key)`（键文本本身，即
+ * "自身词"的自匹配），`visit(entry)`（释义值）无论键是否被排除都要照常扫描。
  *
  * 任务 2（2026-09-10）：monthly（W4）分支改前不传，理由是"W4 的 RESERVED 系列词
  * 按 check_data.js 旧的 week>=4 豁免不在 W 里，包含 W 不会造成自我冲突"——这条
@@ -135,6 +146,27 @@ function collectTextParts(d, teachingBlocks, options) {
     else if (Array.isArray(v)) v.forEach(visit);
     else if (v && typeof v === 'object') Object.values(v).forEach(visit);
   }
+  /* visitRedactingSelfWord(v, selfWord)：与 visit 相同的递归遍历，但字符串值先
+   * 挖掉"自身词"selfWord 的完整单词匹配（大小写不敏感）再收进 textParts。
+   *
+   * M2 修复带出的连锁问题（轮 D 复审第二轮，2026-09-10 实测触发）：改成"值始终
+   * 扫描"后，真实 W1 数据的 `art:'pit'`（插画键命名惯例——art 字段就是拿词本身
+   * 当资源标识符，pit/tan/sap/pip 等词条皆如此）被当成"可见文本"扫进去，
+   * `visibleWordSet` 分词后 'pit' 自己就出现在可见词集合里，被判"测评词泄漏进
+   * 教学内容：pit"——这是词条自己的资源命名惯例，不是教学内容真的引用了这个词，
+   * 不该算泄漏。真正要查的是**其他**测评词是否出现在这条目里，不是这条目本身
+   * 会不会提到自己。改法：仅对 excludeDictionaryKeys 命中的键，扫描其释义值时
+   * 用单词边界正则挖掉词本身的完整单词匹配（不是子串替换——避免误伤把
+   * selfWord 当子串包含的其他合法词，比如 selfWord='an' 不该误删 'man' 里的
+   * 'an'），挖除后的剩余文本仍正常扫描，其他测评词的交叉引用不受影响。 */
+  function visitRedactingSelfWord(v, selfWord) {
+    if (typeof v === 'string') {
+      const re = new RegExp('\\b' + selfWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi');
+      const redacted = v.replace(re, ' ');
+      if (redacted) textParts.push(redacted);
+    } else if (Array.isArray(v)) v.forEach(x => visitRedactingSelfWord(x, selfWord));
+    else if (v && typeof v === 'object') Object.values(v).forEach(x => visitRedactingSelfWord(x, selfWord));
+  }
   // Cover all teaching fields, not just a hand-picked set of block properties.
   visit(teachingBlocks); visit(d.BOOK); visit(d.WALL_HINT); visit(d.SOUNDS);
   visit(d.G1_ROUNDS); visit(d.G1_THEME); visit(d.G3_PAIRS); visit(d.G4_WORDS); visit(d.G5_WHITELIST);
@@ -149,8 +181,13 @@ function collectTextParts(d, teachingBlocks, options) {
     return [day && day.title, day && day.goal, day && day.wd, ...steps.map(s => s && s.t)];
   }));
   for (const [key, entry] of Object.entries(d.W || {})) {
-    if (excludeDictionaryKeys && excludeDictionaryKeys.has(key.toLowerCase())) continue;
-    visit(key); visit(entry);
+    const isSelfExcluded = !!(excludeDictionaryKeys && excludeDictionaryKeys.has(key.toLowerCase()));
+    if (!isSelfExcluded) visit(key);
+    // 释义值始终扫描——即便键本身被排除，值里仍可能交叉引用其他测评词；但对
+    // 被排除的键自己，值里出现的"自身词"要先挖掉（art 字段惯例用词本身当资源
+    // 标识符），不然会把这条目自己的资源命名当成"泄漏了自己"。
+    if (isSelfExcluded) visitRedactingSelfWord(entry, key);
+    else visit(entry);
   }
   return textParts;
 }
