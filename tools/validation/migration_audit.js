@@ -17,6 +17,7 @@ const { loadData, declaration } = require('./load_data');
 const { collectWordConsumption } = require('./word_consumers');
 const { withGraphemeFallback } = require('./sounds_grapheme_adapter');
 const { segmentWord } = require('../../frontend/src/shared/graphemes');
+const { scanState } = require('./js_lex');
 
 const REPO = path.resolve(__dirname, '..', '..');
 const SCHEMA_VERSION = '1.0.0';
@@ -82,21 +83,26 @@ function lineOf(raw, index) {
   return raw.slice(0, index).split('\n').length;
 }
 
-/* isLikelyCommentMatch(raw, index)（L1，轮 D 复审第二轮，外审 low，2026-09-10）：
- * 粗粒度判断某个匹配位置是否落在注释里——不是完整的 JS 词法分析器（不处理字符串
- * 字面量里出现的 `//`/`/*` 这类边界情形），只覆盖两种常见注释形态：
- *   ① 匹配所在整行（trim 后）以 `//` 开头——单行注释；
- *   ② 匹配位置往前找最近一次 `/*` 与 `*​/`，如果 `/*` 比 `*​/` 更晚出现（或
- *      `*​/` 根本不存在），说明匹配落在一段尚未闭合的块注释里面。 */
+/* isLikelyCommentMatch(raw, index)（L1，轮 D 复审第二轮，外审 low，2026-09-10；
+ * H-M1，段 3 第九批，外审 medium，2026-09-10 改用真正的词法状态机重写）：
+ *
+ * 改前只覆盖两种粗粒度形态——①匹配所在整行（trim 后）以 `//` 开头；②匹配位置
+ * 往前找最近一次 `/*` 与 `*​/`，判断是否落在尚未闭合的块注释里——漏掉了两类真实
+ * 存在的诱饵：
+ *   - 行尾注释：真代码之后跟一段 `// tileHTML(...)` 这类注释，整行并不是以 `//`
+ *     开头（行首是真代码），①判不出来；
+ *   - 字符串/模板字符串内的同形文本：某个字符串字面量或模板字符串里恰好包含
+ *     与 pattern 相同的文本，既不是注释也不该被当真代码匹配命中，但①②都不覆盖
+ *     "在字符串里"这类情形。
+ * 改法：直接复用 tools/validation/js_lex.js 的 `scanState`（行首 `//` 单行注释、
+ * 未闭合块注释、单/双引号字符串、模板字符串四种状态的最小 JS 词法扫描），
+ * 按"该位置落在哪种词法状态"精确判定——`code` 状态之外的匹配（含字符串/模板
+ * 内的同形文本）一律按"不是真代码匹配"处理，与函数名原本承诺的"不该被当作
+ * 真代码命中"语义一致（调用方 findFirstNonCommentMatch 的用途本就是跳过非真
+ * 代码的诱饵匹配，不只是跳过字面意义上的"注释"）。 */
 function isLikelyCommentMatch(raw, index) {
-  const lineStart = raw.lastIndexOf('\n', index) + 1;
-  const lineEnd = raw.indexOf('\n', index);
-  const line = raw.slice(lineStart, lineEnd === -1 ? raw.length : lineEnd).trim();
-  if (line.startsWith('//')) return true;
-  const beforeOpen = raw.lastIndexOf('/*', index);
-  const beforeClose = raw.lastIndexOf('*/', index);
-  if (beforeOpen !== -1 && beforeOpen > beforeClose) return true;
-  return false;
+  const state = scanState(raw, index);
+  return state !== 'code';
 }
 
 /* findFirstNonCommentMatch(pattern, raw)（L1）：L_FIELD_CONSUMER_SPECS 的

@@ -151,6 +151,65 @@ console.log('PASS word_consumers: usedWordSet / findConsumptionOf 基础行为')
   console.log('PASS word_consumers（M1 反例）：g1-rounds 记录 bucket 缺失/非法值时，isExemptConsumptionRecord 显式抛出结构化错误（g1-rounds-missing-bucket），不是碰巧不豁免');
 }
 
+// ---- I-M1（段 3 第九批，外审 medium，2026-09-10）：g1-rounds pos 桶的周次判定
+// 改前只信 options.week，完全忽略 rec.week；改后优先信 rec.week，两者都给时必须
+// 一致，两者都没给要抛错。三组缺失/非法/不一致反例 + 两组正例（只给一边）。 ----
+{
+  // 正例①：只给 rec.week（options 没有 week），应正常按 rec.week=1 判豁免。
+  assert.equal(
+    isExemptConsumptionRecord({ kind: 'g1-rounds', bucket: 'pos', word: 'cat', week: 1 }, {}),
+    true,
+    'I-M1 正例①：只提供 rec.week=1 时，pos 桶应按它豁免'
+  );
+  assert.equal(
+    isExemptConsumptionRecord({ kind: 'g1-rounds', bucket: 'pos', word: 'cat', week: 2 }, {}),
+    false,
+    'I-M1 正例①：只提供 rec.week=2（非第一周）时，pos 桶不应豁免'
+  );
+  // 正例②：只给 options.week（rec 没有 week 字段），应正常按 options.week 判豁免
+  // ——与改前行为一致，不能因为这次修复而破坏"只传 options.week"这条既有调用习惯
+  // （test_grapheme_semantics.js 的合成 TABLE 用例正是这种调用形态）。
+  assert.equal(
+    isExemptConsumptionRecord({ kind: 'g1-rounds', bucket: 'pos', word: 'cat' }, { week: 1 }),
+    true,
+    'I-M1 正例②：只提供 options.week=1 时，pos 桶应按它豁免'
+  );
+
+  // 反例①：rec.week 与 options.week 都给，但不一致——必须抛错，不能悄悄择一采信。
+  {
+    let caught = null;
+    try {
+      isExemptConsumptionRecord({ kind: 'g1-rounds', bucket: 'pos', word: 'cat', week: 1 }, { week: 2 });
+    } catch (e) { caught = e; }
+    assert(caught, 'I-M1 反例①：rec.week（1）与 options.week（2）不一致时应该抛错');
+    assert.equal(caught.code, 'g1-rounds-week-mismatch', `I-M1 反例①：抛错的 code 应为 'g1-rounds-week-mismatch'，实际：${caught.code}`);
+  }
+
+  // 反例②：rec.week 与 options.week 均缺失——pos 桶豁免判据无法判定，必须抛错，
+  // 不能悄悄当成"不是第一周"处理成 false（那看起来像是"碰巧判对"）。
+  {
+    let caught = null;
+    try {
+      isExemptConsumptionRecord({ kind: 'g1-rounds', bucket: 'pos', word: 'cat' }, {});
+    } catch (e) { caught = e; }
+    assert(caught, 'I-M1 反例②：rec.week 与 options.week 均未提供时应该抛错');
+    assert.equal(caught.code, 'g1-rounds-week-missing', `I-M1 反例②：抛错的 code 应为 'g1-rounds-week-missing'，实际：${caught.code}`);
+  }
+
+  // 反例③：rec.week 是非法值（非正整数）——即使 options.week 合法，也应该抛错，
+  // 不能悄悄忽略 rec.week 转而只信 options.week（那样又回到了改前的旧行为）。
+  {
+    let caught = null;
+    try {
+      isExemptConsumptionRecord({ kind: 'g1-rounds', bucket: 'pos', word: 'cat', week: 0 }, { week: 1 });
+    } catch (e) { caught = e; }
+    assert(caught, 'I-M1 反例③：rec.week=0（非法正整数）时应该抛错');
+    assert.equal(caught.code, 'g1-rounds-invalid-rec-week', `I-M1 反例③：抛错的 code 应为 'g1-rounds-invalid-rec-week'，实际：${caught.code}`);
+  }
+
+  console.log('PASS word_consumers（I-M1）：g1-rounds pos 桶周次判定优先信 rec.week，两者都给必须一致，均缺失/rec.week 非法时显式抛错（不悄悄只信 options.week）');
+}
+
 // ---- ③ 真实数据回归：week02 的 wordforge 与 BOOK.pages 内容确实被收录 ----
 const week02Path = path.resolve(__dirname, '..', '..', 'frontend/src/weeks/week02.data.js');
 const raw = fs.readFileSync(week02Path, 'utf8');

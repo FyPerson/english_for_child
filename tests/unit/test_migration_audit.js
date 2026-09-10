@@ -354,54 +354,106 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   expectMigrated('check-data-schema-gate');
   console.log('PASS migration_audit（H-3 验证 + H2 回归 + 4b 二次更新 + 轮 D L2 去硬编码行号 + 轮 D L1 语义断言）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass，行号改按同一份 pattern 现算校验且落在预期函数范围内、不是注释，不再随无关改动漂移');
 
-  /* L1 诱饵测试：monkeypatch fs.readFileSync，只对 render-blocks.js 这一路径在
-   * 真实内容**之前**插入一条逐字复述同一段 pattern 的单行注释（诱饵），验证
-   * buildAudit() 报出的行号仍然精确落在真代码那一行，不会被诱饵注释带偏——
-   * 诱饵故意放在真代码**之前**（文本顺序更靠前），是对当前"取首个匹配"实现
-   * 最不利的摆放方式：如果实现真的会被注释骗到，这个位置的诱饵最先暴露。 */
+  /* L1/H-L1 诱饵测试（段 3 第九批，H-L1 外审 low，2026-09-10 改用固定合成源）：
+   * 改前用"真实 render-blocks.js 内容 + 在最前面插入一行诱饵"合成诱饵场景——
+   * 期望行号靠在测试运行时对同一份 poisonedRaw 重新跑一次 spec.pattern/
+   * findFirstNonCommentMatch 现算，不是写死的已知值。这意味着"期望值"与"生产
+   * 实现用来算 finding.source.line 的实现"是**同一份代码路径**，测试实质上只
+   * 验证了"两次调用同一个函数给出相同结果"（自洽），没有独立验证这个函数本身
+   * 算得对不对——如果 findFirstNonCommentMatch 本身有系统性 bug（比如总是选中
+   * 第二个匹配而不是第一个非注释匹配），这份测试因为两处都调用同一个有 bug 的
+   * 函数，期望值与实际值会"碰巧"一起算错到同一个结果，测不出来。
+   * 改法：三份手写的固定合成源，每份的行号在源代码里写死为常量（不依赖任何运行时
+   * 重新计算/正则重新定位），覆盖三种形态：
+   *   A（真代码，无诱饵）：真实匹配单独存在，验证基线不受影响。
+   *   B（诱饵在前 + 真代码在后）：验证选中的是真代码那一行，不是诱饵行——与
+   *     "期望行号"这个数字在源码里写死为字面量 5，不依赖任何算法重新推导。
+   *   C（只有诱饵，没有真代码）：真实消费点已经不存在了（比如被改写/删除），
+   *     只剩一段逐字复述的注释——findFirstNonCommentMatch 应该返回 null（不能
+   *     把注释里的诱饵误当真代码放行），finding 应判 fail、source.line 为 null。
+   * 三份都用同一个 spec（render-blocks-tileHTML：pattern/enclosingAnchor 来自
+   * L_FIELD_CONSUMER_SPECS，不重新写一份判据）。 */
   {
     const targetPath = path.join(REPO_ROOT, 'frontend', 'src', 'shared', 'render-blocks.js');
-    const originalRaw = fs.readFileSync(targetPath, 'utf8');
     const spec = L_FIELD_CONSUMER_SPECS.find(s => s.id === 'render-blocks-tileHTML');
-    const decoyLine = `// 诱饵（L1 测试专用，不是真实注释）：示例调用 tileHTML(f,'tile--lg',true)\n`;
-    const poisonedRaw = decoyLine + originalRaw;
     const originalReadFileSync = fs.readFileSync;
-    fs.readFileSync = function (filePath, ...rest) {
-      if (String(filePath) === targetPath) return poisonedRaw;
-      return originalReadFileSync.call(fs, filePath, ...rest);
+    const runWithSyntheticSource = (source) => {
+      fs.readFileSync = function (filePath, ...rest) {
+        if (String(filePath) === targetPath) return source;
+        return originalReadFileSync.call(fs, filePath, ...rest);
+      };
+      try {
+        return buildAudit(defaultWeekSources());
+      } finally {
+        fs.readFileSync = originalReadFileSync;
+      }
     };
-    let poisonedDoc;
-    try {
-      poisonedDoc = buildAudit(defaultWeekSources());
-    } finally {
-      fs.readFileSync = originalReadFileSync;
+    const findingOf = doc => doc.findings.find(f => f.ruleId === 'DATA-SOUNDS-01' && f.findingId === 'l-field-consumer:render-blocks-tileHTML');
+
+    // A：真代码，无诱饵。期望行号 5，在下面的合成源字面量里数出来、写死，不现算。
+    const SOURCE_A = [
+      '// line 1 filler',
+      '// line 2 filler',
+      'function renderSound(){',
+      '  return `<div class="sound__hd">',
+      "    ${tileHTML(f, 'tile--lg', true)}",
+      '  </div>`;',
+      '}'
+    ].join('\n');
+    const EXPECTED_LINE_A = 5;
+    assert(spec.pattern.test(SOURCE_A), 'H-L1 前提：合成源 A 应该能被 spec.pattern 匹配到，检查合成源是否写对');
+    {
+      const doc = runWithSyntheticSource(SOURCE_A);
+      const f = findingOf(doc);
+      assert(f, 'A：应产出 l-field-consumer:render-blocks-tileHTML');
+      assert.equal(f.status, 'pass', 'A：真代码存在，应判 pass');
+      assert.equal(f.source.line, EXPECTED_LINE_A, `A：行号应为写死的 ${EXPECTED_LINE_A}，实际 ${f.source.line}`);
     }
-    const poisonedFinding = poisonedDoc.findings.find(f => f.ruleId === 'DATA-SOUNDS-01' && f.findingId === 'l-field-consumer:render-blocks-tileHTML');
-    assert(poisonedFinding, '诱饵场景下也应该有 l-field-consumer:render-blocks-tileHTML 这条 finding');
-    // 诱饵行本身也会被 spec.pattern 命中（毕竟逐字复述），先确认这份合成文本真的
-    // 制造出了"诱饵在前、真代码在后，两处都能匹配"的场景，不是诱饵没写对。
-    const decoyMatches = [...poisonedRaw.matchAll(new RegExp(spec.pattern.source, 'g'))];
-    assert(decoyMatches.length >= 2, `诱饵场景前提：poisonedRaw 里 spec.pattern 应至少命中 2 次（诱饵 + 真代码），实际 ${decoyMatches.length} 次`);
-    const decoyLineNumber = lineOf(poisonedRaw, decoyMatches[0].index);
-    assert(isLikelyCommentLine(poisonedRaw, decoyMatches[0].index), '诱饵那一处匹配本身应该被识别为注释行（前提检查，不是本测试要验证的结论）');
-    // L1 实测发现（本批修复）：改前 migration_audit.js 的 L_FIELD_CONSUMER_SPECS
-    // 循环用裸 `.exec()` 取"整份文件第一处出现"，诱饵放在真代码之前时会被误选中
-    // （本文件曾在这里抓到过这个问题）。已改为 findFirstNonCommentMatch（跳过
-    // isLikelyCommentMatch 判定为注释的匹配），这里断言修复后的正确行为：报出的
-    // 行号既不是诱饵所在行，也确实是真代码行、status 仍是 pass。
-    assert.notEqual(poisonedFinding.source.line, decoyLineNumber,
-      `诱饵测试：buildAudit() 报出的行号不应该是诱饵注释所在的第 ${decoyLineNumber} 行`);
-    assert.equal(poisonedFinding.status, 'pass', '诱饵存在时，真代码本身没有变化，finding 状态仍应是 pass');
-    // 独立复核：用同一个已修复的 findFirstNonCommentMatch 对 poisonedRaw 重新算
-    // 一次，它的返回值按定义就不会是注释（否则函数自己的循环不会选中它）——这里
-    // 用它验证 buildAudit() 报出的行号确实与"正确算法应得的行号"一致，不是碰巧
-    // 避开了诱饵那一行。
-    const recomputed = findFirstNonCommentMatch(spec.pattern, poisonedRaw);
-    assert(recomputed, '诱饵场景下 findFirstNonCommentMatch 应该仍能找到真代码那一处匹配');
-    assert(!isLikelyCommentLine(poisonedRaw, recomputed.index), 'findFirstNonCommentMatch 返回的匹配按定义不应是注释（自检）');
-    assert.equal(poisonedFinding.source.line, lineOf(poisonedRaw, recomputed.index),
-      'buildAudit() 报出的行号应与 findFirstNonCommentMatch 独立算出的行号一致');
-    console.log('PASS migration_audit（L1 诱饵测试）：诱饵注释放在真代码之前时，buildAudit()（已改用 findFirstNonCommentMatch）仍然正确选中了真代码行，未被诱饵带偏');
+
+    // B：诱饵在前 + 真代码在后。期望行号仍是 5（真代码那一行），不是 1（诱饵行）
+    // ——两个数字都写死在这里，不依赖任何算法对 SOURCE_B 重新定位。
+    const SOURCE_B = [
+      "// 诱饵：示例调用 tileHTML(f, 'tile--lg', true)",
+      '// line 2 filler',
+      'function renderSound(){',
+      '  return `<div class="sound__hd">',
+      "    ${tileHTML(f, 'tile--lg', true)}",
+      '  </div>`;',
+      '}'
+    ].join('\n');
+    const EXPECTED_DECOY_LINE_B = 1;
+    const EXPECTED_REAL_LINE_B = 5;
+    {
+      const decoyMatches = [...SOURCE_B.matchAll(new RegExp(spec.pattern.source, 'g'))];
+      assert.equal(decoyMatches.length, 2, `H-L1 前提：合成源 B 应恰好命中 2 次（诱饵 + 真代码），实际 ${decoyMatches.length}`);
+      const doc = runWithSyntheticSource(SOURCE_B);
+      const f = findingOf(doc);
+      assert(f, 'B：应产出 l-field-consumer:render-blocks-tileHTML');
+      assert.equal(f.status, 'pass', 'B：诱饵存在但真代码也在，应判 pass');
+      assert.notEqual(f.source.line, EXPECTED_DECOY_LINE_B, `B：行号不应是诱饵所在的第 ${EXPECTED_DECOY_LINE_B} 行`);
+      assert.equal(f.source.line, EXPECTED_REAL_LINE_B, `B：行号应为写死的真代码行 ${EXPECTED_REAL_LINE_B}，实际 ${f.source.line}`);
+    }
+
+    // C：只有诱饵，没有真代码——findFirstNonCommentMatch 应该找不到任何非注释
+    // 匹配，finding 应判 fail、source.line 为 null（不能把诱饵误当真代码放行）。
+    const SOURCE_C = [
+      "// 诱饵：示例调用 tileHTML(f, 'tile--lg', true)",
+      '// line 2 filler',
+      'function renderSound(){',
+      '  return `<div class="sound__hd">No real call here</div>`;',
+      '}'
+    ].join('\n');
+    {
+      assert.equal(findFirstNonCommentMatch(spec.pattern, SOURCE_C), null,
+        'H-L1 前提：合成源 C 只有注释里的诱饵，findFirstNonCommentMatch 应返回 null');
+      const doc = runWithSyntheticSource(SOURCE_C);
+      const f = findingOf(doc);
+      assert(f, 'C：应产出 l-field-consumer:render-blocks-tileHTML（即使判 fail 也要有这条记录）');
+      assert.equal(f.status, 'fail', 'C：只有诱饵没有真代码时应判 fail，不能被注释里的诱饵误判成 pass');
+      assert.equal(f.source.line, null, 'C：找不到真代码匹配时 source.line 应为 null');
+    }
+
+    console.log('PASS migration_audit（H-L1 固定合成源诱饵测试）：真代码/诱饵+真代码/只有诱饵 三种形态，期望行号全部写死在合成源里（不现算），buildAudit() 均给出正确的 status 与 source.line');
   }
 }
 

@@ -28,7 +28,7 @@ const {loadData} = require('./load_data');
 const {validateAssessment} = require('./assessment_contract');
 const {assertIdList, segmentWord, surfaceOf, validateSoundsSchema} = require('../../frontend/src/shared/graphemes');
 const {computeTeachingOrder, gatherWeekRecordsUpTo, getExpectedWeeksUpTo, expectedWallOrder, diffWallLetters, setsEqual} = require('./wall_order');
-const {collectWordConsumption} = require('./word_consumers');
+const {collectWordConsumption, cumulativeSightWordsUpTo} = require('./word_consumers');
 const {isExemptConsumptionRecord} = require('./exemptions');
 let box;
 try { box = loadData(raw, isHTML); } catch(e) { console.error(e.message); process.exit(2); }
@@ -259,8 +259,18 @@ head('③ 字母全在已教范围内');
  * **字位操作类来源**也会被豁免，与"认读词豁免只对阅读文本类来源（sight/
  * sentences/book-page）生效"这条规则（H3，语义套件已有的判据）直接冲突。这条
  * 独立跳过也已删除——认读词豁免现在完全由 `isExemptConsumptionRecord` 按记录
- * 的 kind 精确判定，`SIGHT` 集合改为通过 `cumulativeSightWords` 选项传入（本
- * 文件目前只处理单周数据，传入的是"本周 sight 记录"这个子集，不是跨周累计）。 */
+ * 的 kind 精确判定。
+ *
+ * I-H1（段 3 第九批，外审 high，2026-09-10）：上一版传给 `cumulativeSightWords`
+ * 的是"本周 sight 记录"这个子集（本地 `SIGHT`），不是跨周累计——历史周教过的
+ * 认读词出现在**后续周**的 book-page/sentences 里会因为"不在当周这个临时集合里"
+ * 被误判为不豁免，与 tests/unit/test_grapheme_semantics.js 语义套件早已修好的
+ * "累计认读词，不是仅本周"口径（H3）不一致，是同一条规则在两个调用方之间又
+ * "各改对了一半"。改为调用 `word_consumers.cumulativeSightWordsUpTo(box, META.week)`
+ * ——按 project.json 的 weeks 读取截至本周的历史周文件（复用 wall_order.js 的
+ * `getExpectedWeeksUpTo`/`loadHistoricalWeekBox`，同一份"读历史周+校验 META.week"
+ * 实现，不重写一份近似逻辑），当前周用调用方已加载好的 box 本身（可能是正在校验的
+ * 候选文件，未必已提交，与⑤断言①的 `gatherWeekRecordsUpTo` 同一口径）。 */
 const wordRecords = new Map(); // word -> Array<record>（含 kind，g1-rounds 记录另带 bucket/week）
 for (const rec of collectWordConsumption(box)) {
   const list = wordRecords.get(rec.word) || [];
@@ -298,11 +308,47 @@ function describeRecord(r) {
   if (r.kind === 'g1-rounds') return `g1-rounds(bucket=${r.bucket},week=${r.week})`;
   return r.kind;
 }
+/* I-L2（段 3 第九批，外审 low，2026-09-10）：dedupeDescr(records) 把"这个词全部
+ * 非豁免记录"按 kind/bucket/week 去重后再拼进失败消息，附计数、限制展示条数——改前
+ * `nonExempt.map(describeRecord).join('；')` 原样罗列每一条记录，同一个词若在同一天
+ * 反复出现在同一类来源（比如 blend 块在两天各出现一次同一个词），失败消息里会重复
+ * "blend；blend"这类无信息量的堆叠，词形本身若出现在很多天/很多块，消息可能长到
+ * 淹没真正有用的定位信息。去重后每种唯一 (kind[,bucket][,week]) 只展示一次并标注
+ * 命中次数，总数仍保留在消息里，不丢信息。 */
+function dedupeDescr(records, limit) {
+  const counts = new Map(); // descr -> count
+  records.forEach(r => {
+    const descr = describeRecord(r);
+    counts.set(descr, (counts.get(descr) || 0) + 1);
+  });
+  const entries = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const shown = entries.slice(0, limit == null ? entries.length : limit);
+  const parts = shown.map(([descr, n]) => n > 1 ? `${descr}×${n}` : descr);
+  const omitted = entries.length - shown.length;
+  const suffix = omitted > 0 ? `（另有 ${omitted} 种来源未展示，共 ${entries.length} 种、${records.length} 条记录）` : '';
+  return parts.join('；') + suffix;
+}
+/* I-M3（段 3 第九批，外审 medium，2026-09-10）：isExemptConsumptionRecord 现在可能
+ * 结构化抛错（g1-rounds-missing-bucket / g1-rounds-week-mismatch 等，见
+ * exemptions.js），改前 `records.filter(r => !isExemptConsumptionRecord(...))` 不在
+ * 任何 try/catch 范围内——一旦真的抛错，整个 Node 进程带原生栈崩溃退出，CLI 上面
+ * 逐条积累的 pass/fail 计数与已经跑完的检查结果全部看不到，退出码也不是本脚本自己
+ * 约定的 1（而是 Node 未捕获异常的默认退出码），排障体验与③其余分支（idsForWord
+ * 分词失败转 ok(false, ...)）不一致。改法：给每条词单独包一层 try/catch，抛错转成
+ * 一条清晰的 ok(false, ...) 失败（带 code/word/kind/bucket/week），不让单个词的
+ * 豁免判据异常拖垮整份报告，其余词继续正常检查。 */
+const cumulativeSightWords = cumulativeSightWordsUpTo(box, META.week);
 for (const [w, records] of wordRecords) {
-  const nonExempt = records.filter(r => !isExemptConsumptionRecord(r, { cumulativeSightWords: SIGHT, week: META.week }));
+  let nonExempt;
+  try {
+    nonExempt = records.filter(r => !isExemptConsumptionRecord(r, { cumulativeSightWords: cumulativeSightWords, week: META.week }));
+  } catch (e) {
+    ok(false, `"${w}" 的豁免判据本身出错（${e.code || 'error'}）：${e.message}（全部来源：${dedupeDescr(records)}）`);
+    continue;
+  }
   if (nonExempt.length === 0) continue; // 这个词全部出现的来源都豁免，不检查
   const kinds = new Set(records.map(r => r.kind)); // 全部来源（含豁免来源），仅作补充定位
-  const nonExemptDescr = nonExempt.map(describeRecord).join('；');
+  const nonExemptDescr = dedupeDescr(nonExempt);
   let ids;
   try {
     ids = idsForWord(w);

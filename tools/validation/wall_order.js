@@ -34,6 +34,22 @@ const { loadData } = require('./load_data');
 
 const REPO = path.resolve(__dirname, '..', '..');
 
+/* formatWeekValue(v) -> string（I-L1，段 3 第九批，外审 low，2026-09-10）：错误消息里
+ * 展示"实际拿到的周次值"专用的格式化——`JSON.stringify` 对 NaN/Infinity/-Infinity
+ * 都会坍缩成字符串 "null"（与真实 `null` 值、以及 0/负数经 JSON.stringify 后的输出
+ * 混在一起，无法从消息文本本身分辨"到底拿到的是 NaN 还是 null"），排障时容易把
+ * "META.week 手滑写成 NaN"误读成"META.week 是 null"。数字类型单独处理
+ * （Number.isNaN/Number.isFinite 可区分 NaN/±Infinity/普通数字），其余类型（字符串/
+ * null/undefined/对象等）沿用 JSON.stringify 的既有可读格式，不改变它们的展示形式。 */
+function formatWeekValue(v) {
+  if (typeof v === 'number') {
+    if (Number.isNaN(v)) return 'NaN';
+    if (!Number.isFinite(v)) return v > 0 ? 'Infinity' : '-Infinity';
+    return String(v);
+  }
+  return JSON.stringify(v);
+}
+
 function TeachingOrderError(code, message, details) {
   const err = new Error(message);
   err.name = 'TeachingOrderError';
@@ -152,37 +168,39 @@ function getExpectedWeeksUpTo(currentWeek) {
   return weeks;
 }
 
-function gatherWeekRecordsUpTo(currentBox, currentWeek) {
-  const weeks = getExpectedWeeksUpTo(currentWeek);
-  return weeks.map(w => {
-    if (w === currentWeek) {
-      // 当前被校验的文件——方案 §2.4「当前被校验的文件替换仓库里的同周记录，不
-      // 重复计入」，这里没有独立磁盘路径，用固定标签让报错信息仍能定位到"是当前
-      // 这一份"而不是仓库里的同周文件。
-      return { week: w, newPatterns: extractNewPatterns(currentBox, w, '(当前被校验的文件)') };
-    }
-    const file = path.join(REPO, 'frontend', 'src', 'weeks', `week${String(w).padStart(2, '0')}.data.js`);
-    /* 文件不存在 / 读取失败 / 解析失败三类分别包成带 week/file/cause 的结构化
-     * 错误（M5）——改前 fs.readFileSync 与 loadData 的原生异常（ENOENT、语法错误
-     * 等）未经包装直接冒出去，调用方（check_data.js 的 try/catch）只能报出一句
-     * "无法计算独立教学顺序真相源"，看不出是哪一周、哪个文件、因为什么原因失败。 */
-    let raw;
-    try {
-      raw = fs.readFileSync(file, 'utf8');
-    } catch (e) {
-      throw TeachingOrderError('teaching-order-file-read-failed',
-        `week ${w} 的历史周数据文件读取失败（file: ${file}）：${e.message}`,
-        { week: w, file: file, cause: e });
-    }
-    let box;
-    try {
-      box = loadData(raw, false);
-    } catch (e) {
-      throw TeachingOrderError('teaching-order-file-parse-failed',
-        `week ${w} 的历史周数据文件解析失败（file: ${file}）：${e.message}`,
-        { week: w, file: file, cause: e });
-    }
-    /* M1（外审 medium，2026-09-10）：gatherWeekRecordsUpTo 与 getExpectedWeeksUpTo
+/* loadHistoricalWeekBox(w) -> {box, file}（I-H1，段 3 第九批，外审 high，2026-09-10
+ * 从 gatherWeekRecordsUpTo 内联逻辑抽出）：读取+解析+校验某个历史周（非当前被校验
+ * 的那一周）的 frontend/src/weeks/weekNN.data.js，返回已加载的 box 与文件路径。
+ * 抽出的理由：check_data.js ③「认读词豁免」的累计认读词集合（见
+ * tools/validation/word_consumers.js 的 cumulativeSightWordsUpTo）需要跟
+ * gatherWeekRecordsUpTo 同样的"按 project.json.weeks 读历史周文件、校验 META.week
+ * 与文件名对应"逻辑，但要拿到的是完整 box（用于跑 collectWordConsumption 取
+ * sight 记录）而不是只取 newPatterns 字段——两处调用方共用这一份读取+校验实现，
+ * 不重复维护一份"读历史周文件"的逻辑（feedback_dont_relist_what_source_already_lists
+ * 同一处方法论：源头已经写好的读取/校验逻辑，不要另起一份近似实现）。 */
+function loadHistoricalWeekBox(w) {
+  const file = path.join(REPO, 'frontend', 'src', 'weeks', `week${String(w).padStart(2, '0')}.data.js`);
+  /* 文件不存在 / 读取失败 / 解析失败三类分别包成带 week/file/cause 的结构化
+   * 错误（M5）——改前 fs.readFileSync 与 loadData 的原生异常（ENOENT、语法错误
+   * 等）未经包装直接冒出去，调用方（check_data.js 的 try/catch）只能报出一句
+   * "无法计算独立教学顺序真相源"，看不出是哪一周、哪个文件、因为什么原因失败。 */
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    throw TeachingOrderError('teaching-order-file-read-failed',
+      `week ${w} 的历史周数据文件读取失败（file: ${file}）：${e.message}`,
+      { week: w, file: file, cause: e });
+  }
+  let box;
+  try {
+    box = loadData(raw, false);
+  } catch (e) {
+    throw TeachingOrderError('teaching-order-file-parse-failed',
+      `week ${w} 的历史周数据文件解析失败（file: ${file}）：${e.message}`,
+      { week: w, file: file, cause: e });
+  }
+  /* M1（外审 medium，2026-09-10）：gatherWeekRecordsUpTo 与 getExpectedWeeksUpTo
      * 同源于 project.json 的 weeks 列表，历史记录的 week 字段改前直接写成"这份记录
      * 是从 week0N.data.js 这个文件名读出来的"里的 N，从未回头校验文件内容自己
      * 声明的 box.META.week 是否也等于 N——如果某份历史文件被误放错了文件名（比如
@@ -220,7 +238,7 @@ function gatherWeekRecordsUpTo(currentBox, currentWeek) {
     }
     if (!(typeof box.META.week === 'number' && Number.isInteger(box.META.week) && box.META.week > 0)) {
       throw TeachingOrderError('teaching-order-week-mismatch',
-        `week ${w} 的历史周数据文件（file: ${file}）的 META.week 不是合法正整数，实际：${JSON.stringify(box.META.week)}`,
+        `week ${w} 的历史周数据文件（file: ${file}）的 META.week 不是合法正整数，实际：${formatWeekValue(box.META.week)}`,
         { week: w, file: file, expected: w, actual: box.META.week });
     }
     if (box.META.week !== w) {
@@ -228,6 +246,19 @@ function gatherWeekRecordsUpTo(currentBox, currentWeek) {
         `week ${w} 的历史周数据文件（file: ${file}）自称的 META.week 是 ${box.META.week}，与文件名对应的周次不一致`,
         { week: w, file: file, expected: w, actual: box.META.week });
     }
+  return { box: box, file: file };
+}
+
+function gatherWeekRecordsUpTo(currentBox, currentWeek) {
+  const weeks = getExpectedWeeksUpTo(currentWeek);
+  return weeks.map(w => {
+    if (w === currentWeek) {
+      // 当前被校验的文件——方案 §2.4「当前被校验的文件替换仓库里的同周记录，不
+      // 重复计入」，这里没有独立磁盘路径，用固定标签让报错信息仍能定位到"是当前
+      // 这一份"而不是仓库里的同周文件。
+      return { week: w, newPatterns: extractNewPatterns(currentBox, w, '(当前被校验的文件)') };
+    }
+    const { box, file } = loadHistoricalWeekBox(w);
     return { week: w, newPatterns: extractNewPatterns(box, w, file) };
   });
 }
@@ -276,4 +307,4 @@ function setsEqual(a, b) {
   return true;
 }
 
-module.exports = { computeTeachingOrder, gatherWeekRecordsUpTo, getExpectedWeeksUpTo, expectedWallOrder, diffWallLetters, setsEqual, TeachingOrderError };
+module.exports = { computeTeachingOrder, gatherWeekRecordsUpTo, getExpectedWeeksUpTo, expectedWallOrder, diffWallLetters, setsEqual, TeachingOrderError, formatWeekValue, loadHistoricalWeekBox };

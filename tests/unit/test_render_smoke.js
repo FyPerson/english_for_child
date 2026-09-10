@@ -480,10 +480,19 @@ function allLitForWeek(templatePath) {
     return { META, observedIds: [...observed.keys()], observed, renderedLit, callCounts };
   }
 
+  /* H-补（段 3 第九批，扰动第四组，2026-09-10）：前三组的映射规则分别是"恒等"
+   * （自然值）、"与返回值成固定的一元函数关系（全部取反）"、"与调用下标相关、与
+   * 返回值本身无关（按下标奇偶）"——都还没有一组是"按字位 ID 本身的某个与前三组
+   * 全不相关的特征来定"。补一组按字位 ID 字符串本身的奇偶（首字符 code point
+   * 奇偶）分派，与"返回值""调用下标"都无关，进一步确认这套运行时观测机制不是
+   * 只能抓住"取反"和"按下标"这两种特定形态的扰动，而是能抓住"任意与自然返回值
+   * 不恒等的函数"——只要渲染出的 class 没有忠实跟随包装函数的返回值，换哪种
+   * 扰动规则都会被下面的逐 ID 断言（组内）与交叉核验（组间互不相同）抓到。 */
   const PERTURBATIONS = [
     { label: '自然值（透传，回归既有断言）', fn: null },
     { label: '组 A：全部取反', fn: natural => !natural },
     { label: '组 B：按调用下标奇偶交错', fn: (natural, id, index) => index % 2 === 0 },
+    { label: '组 C：按字位 ID 首字符奇偶交错（与自然值、调用下标均无关）', fn: (natural, id) => id.charCodeAt(0) % 2 === 0 },
   ];
 
   let checkedCallTracking = 0;
@@ -507,17 +516,22 @@ function allLitForWeek(templatePath) {
       }
       perGroupObserved.push({ label, values: [...observed.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, v]) => v) });
     }
-    // 交叉核验：组 A 与组 B 的扰动结果集合必须互不相同（否则"两组扰动都能通过"
-    // 这件事本身没有区分力——如果两组算出来的值序列一样，通过两次也只是通过了
-    // 同一组断言两次）。wallLetters 长度 > 1 时，"全部取反" 与 "按下标奇偶" 这两条
-    // 规则在绝大多数情况下会给出不同的序列；用真实断言钉住而不是假设。
-    const [, groupA, groupB] = perGroupObserved;
+    // 交叉核验：组 A/组 B/组 C（H-补新增）三组扰动的结果集合必须两两互不相同
+    // （否则"多组扰动都能通过"这件事本身没有区分力——如果几组算出来的值序列
+    // 一样，通过多次也只是通过了同一组断言多次）。wallLetters 长度 > 1 时，
+    // "全部取反"/"按下标奇偶"/"按字位 ID 首字符奇偶"三条规则在绝大多数情况下会
+    // 两两给出不同的序列；用真实断言逐对钉住而不是假设。
+    const [, groupA, groupB, groupC] = perGroupObserved;
     assert.notDeepEqual(groupA.values, groupB.values,
       `${name}：组 A（全部取反）与组 B（按下标奇偶）的扰动结果序列不应相同，否则两组扰动不构成有效的交叉验证。A=${JSON.stringify(groupA.values)} B=${JSON.stringify(groupB.values)}`);
+    assert.notDeepEqual(groupA.values, groupC.values,
+      `${name}：组 A（全部取反）与组 C（按字位 ID 首字符奇偶）的扰动结果序列不应相同。A=${JSON.stringify(groupA.values)} C=${JSON.stringify(groupC.values)}`);
+    assert.notDeepEqual(groupB.values, groupC.values,
+      `${name}：组 B（按下标奇偶）与组 C（按字位 ID 首字符奇偶）的扰动结果序列不应相同。B=${JSON.stringify(groupB.values)} C=${JSON.stringify(groupC.values)}`);
     checkedCallTracking++;
   }
   assert.equal(checkedCallTracking, templates.length, '运行时调用追踪应覆盖全部模板');
-  console.log(`PASS wall lit state（T3-1 接线验证·运行时观测 + H2 扰动验证）：${checkedCallTracking} 份模板均确认 wallTileLitState 被恰好对 META.wallLetters 全集调用一次（每 ID 恰好 1 次），且在自然值/取反/按下标奇偶三组互不相同的扰动下，渲染出的 tile--wallon/walloff 均与包装函数返回值逐一一致——证明渲染 class 真的由该函数的返回值驱动，不是碰巧算出同样答案的独立逻辑`);
+  console.log(`PASS wall lit state（T3-1 接线验证·运行时观测 + H2 扰动验证 + H-补扰动第四组）：${checkedCallTracking} 份模板均确认 wallTileLitState 被恰好对 META.wallLetters 全集调用一次（每 ID 恰好 1 次），且在自然值/取反/按下标奇偶/按字位 ID 首字符奇偶四组互不相同的扰动下，渲染出的 tile--wallon/walloff 均与包装函数返回值逐一一致——证明渲染 class 真的由该函数的返回值驱动，能抓住任意与返回值非恒等的函数，不是只对"取反"和"按下标"两种特定形态有分辨力`);
 }
 
 /* T3-2（外审 medium，2026-09-10）：week01 改前的三处素材守卫（bookArt 直接回退

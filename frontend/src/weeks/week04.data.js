@@ -2084,4 +2084,23 @@ const W = {
  * 按文件文本顺序（不是 tools/validation/load_data.js 的 NAMES 常量表顺序）逐行
  * 执行 <script>，`const ASSESSMENT_WORDS = ...W[w]...` 必须物理上写在 `const W`
  * 声明之后，否则会在 W 完成初始化之前访问它，触发暂时性死区 ReferenceError。 */
-const ASSESSMENT_WORDS = Object.fromEntries([...RESERVED, ...RESERVED_RETEST].map(w => [w, { zh: W[w].zh }]));
+/* H-M3（段 3 第九批，外审 medium，2026-09-10）：改用 reduce 拼装普通对象，不用
+ * Object.fromEntries——项目未写死最低浏览器版本，frontend 其余位置也没有别处用过
+ * Object.fromEntries（已 grep 确认），换成 reduce 零成本消掉这个兼容性问号，不
+ * 依赖 ES2019 才补齐的这个 API。保持单行（逗号表达式 `(赋值, acc)` 代替多语句
+ * 函数体）：tools/validation/load_data.js 的 declaration() 按"单行以 `;` 结尾"
+ * 或"多行以顶格 `};`/`];` 结尾"两种形态提取顶层声明，多语句 reduce 回调体若换行
+ * 写会破坏这条提取契约（已实测：`Unterminated data declaration` 报错）。
+ *
+ * H-M4（段 3 第九批，外审 medium，2026-09-10）：`W[w].zh` 改成 `(W[w] || {}).zh`
+ * 安全取值——这行声明是 tools/validation/load_data.js 的 NAMES 之一，
+ * `loadData()` 用 vm 执行它的时机早于 check_data.js ①「保留词在 W」检查
+ * （`ok(W[w], ...)`，check_data.js:104-105）：若某个 RESERVED/RESERVED_RETEST
+ * 词漏写进 W，改前 `W[w].zh` 会在 vm 执行这行声明时直接抛出未包装的 TypeError
+ * （Cannot read properties of undefined），check_data.js 的 `try { box =
+ * loadData(...) } catch(e) { console.error(e.message); process.exit(2); }`
+ * 只能吐出这句原生报错，看不出"是哪个词缺了 W 条目"——①原本准备好的清晰校验
+ * 消息完全没有机会跑到。改用安全取值后，缺条目时这里得到 `{zh: undefined}`
+ * （不抛错），loadData() 能正常跑完，控制权交回 check_data.js，①的
+ * `ok(W[w], ...)` 才能正常报出那条清晰消息。 */
+const ASSESSMENT_WORDS = [...RESERVED, ...RESERVED_RETEST].reduce((acc, w) => (acc[w] = { zh: (W[w] || {}).zh }, acc), {});

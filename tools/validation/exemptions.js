@@ -45,10 +45,63 @@ const SIGHT_EXEMPT_READING_KINDS = new Set(['sight', 'sentences', 'book-page']);
  * 结构化错误——不能因为字段缺失就静默落到"不豁免"这个默认分支，那样看起来像是
  * "碰巧判定正确"，掩盖了数据/抽取器本身的契约缺陷（bucket 缺失说明
  * word_consumers.js 的 g1-rounds 记录构造出了问题，需要先修那里，不该被这里的
- * 豁免判据悄悄吞掉）。 */
+ * 豁免判据悄悄吞掉）。
+ *
+ * I-M1（段 3 第九批，外审 medium，2026-09-10）：改前只信 `options.week`，完全忽略
+ * `rec.week`——word_consumers.collectWordConsumption() 产出的每条记录其实都自带
+ * `week` 字段（取自 `d.META.week`，见该文件 `push()` 的实现），调用方若因为拼错
+ * options 键名、或传了与记录实际所属周不同的 `options.week`，这里会悄悄采信调用方
+ * 给的那个（可能错误的）值，判出一个看似合理、实则用错了周次的豁免结论，且没有
+ * 任何信号提示"记录自带的 week 和调用方传的不一致"。
+ * 改法（仅影响需要用到"当前周"的 g1-rounds pos 桶分支——neg 桶与认读词判据本身
+ * 不依赖 week，不在这里额外要求它）：`resolveG1Week` 优先信任 `rec.week`（记录自带、
+ * 更贴近数据本身），若 `options.week` 也提供则要求两者是相同的合法正整数，不一致
+ * 或任一方非法都显式抛错；若只提供了其中一个，用那一个；两个都没提供，抛错——
+ * "仅第一周的 pos 桶豁免"这条规则离不开一个可信的周次，不能悄悄当成"不是第一周"
+ * 处理。 */
+function isValidWeek(w) {
+  return typeof w === 'number' && Number.isInteger(w) && w > 0;
+}
+
+function resolveG1Week(rec, options) {
+  const recWeek = rec && rec.week;
+  const optWeek = options && options.week;
+  const hasRec = recWeek !== undefined && recWeek !== null;
+  const hasOpt = optWeek !== undefined && optWeek !== null;
+  if (hasRec && !isValidWeek(recWeek)) {
+    const err = new Error(
+      `isExemptConsumptionRecord: g1-rounds 记录的 rec.week 不是合法正整数，实际：${JSON.stringify(recWeek)}（word: ${rec.word}）`
+    );
+    err.code = 'g1-rounds-invalid-rec-week';
+    throw err;
+  }
+  if (hasOpt && !isValidWeek(optWeek)) {
+    const err = new Error(
+      `isExemptConsumptionRecord: options.week 不是合法正整数，实际：${JSON.stringify(optWeek)}（word: ${rec.word}）`
+    );
+    err.code = 'g1-rounds-invalid-options-week';
+    throw err;
+  }
+  if (hasRec && hasOpt && recWeek !== optWeek) {
+    const err = new Error(
+      `isExemptConsumptionRecord: rec.week（${JSON.stringify(recWeek)}）与 options.week（${JSON.stringify(optWeek)}）不一致` +
+      `（word: ${rec.word}）——两个来源都声称知道"当前周"，但给出的值不同，说明调用方传参有误，不应悄悄择一采信。`
+    );
+    err.code = 'g1-rounds-week-mismatch';
+    throw err;
+  }
+  if (hasRec) return recWeek;
+  if (hasOpt) return optWeek;
+  const err = new Error(
+    `isExemptConsumptionRecord: g1-rounds 记录缺少可用的周次（rec.week 与 options.week 均未提供），` +
+    `无法判定"仅第一周的 pos 桶豁免"（word: ${rec.word}）`
+  );
+  err.code = 'g1-rounds-week-missing';
+  throw err;
+}
+
 function isExemptConsumptionRecord(rec, options) {
   const cumulativeSightWords = options && options.cumulativeSightWords;
-  const week = options && options.week;
   if (rec.kind === 'g1-rounds') {
     if (rec.bucket !== 'pos' && rec.bucket !== 'neg') {
       const err = new Error(
@@ -60,6 +113,7 @@ function isExemptConsumptionRecord(rec, options) {
       throw err;
     }
     if (rec.bucket === 'neg') return true;
+    const week = resolveG1Week(rec, options);
     return week === 1;
   }
   if (SIGHT_EXEMPT_READING_KINDS.has(rec.kind)) {
@@ -69,4 +123,4 @@ function isExemptConsumptionRecord(rec, options) {
   return false;
 }
 
-module.exports = { isExemptConsumptionRecord, SIGHT_EXEMPT_READING_KINDS };
+module.exports = { isExemptConsumptionRecord, SIGHT_EXEMPT_READING_KINDS, resolveG1Week };

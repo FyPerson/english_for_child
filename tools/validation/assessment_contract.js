@@ -159,6 +159,13 @@ function collectTextParts(d, teachingBlocks, options) {
    * 用单词边界正则挖掉词本身的完整单词匹配（不是子串替换——避免误伤把
    * selfWord 当子串包含的其他合法词，比如 selfWord='an' 不该误删 'man' 里的
    * 'an'），挖除后的剩余文本仍正常扫描，其他测评词的交叉引用不受影响。 */
+  /* H-M2（段 3 第九批，外审 medium，2026-09-10）：这条正则用 `\b...\b` 词边界，
+   * 只挖掉与 selfWord **完全相同的独立词元**——'pit' 只会匹配独立出现的 "pit"，
+   * 不会匹配 "pits"（复数形式，t 与 s 之间没有词边界）或 "spit"（selfWord 前面
+   * 紧跟着另一个字母，没有词边界）。这是刻意的、正确的行为，不是需要修的缺陷：
+   * "spit"/"pits" 里含 "pit" 这个子串，但它们是**不同的词**，不该被当成"这条目
+   * 提到了自己"而挖掉——挖多了反而会把无关词的合法文本误伤成空白，掩盖真实的
+   * 交叉引用信号。这里只留一句记录，防止后人"以为\b是疏忽"改成子串匹配。 */
   function visitRedactingSelfWord(v, selfWord) {
     if (typeof v === 'string') {
       const re = new RegExp('\\b' + selfWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi');
@@ -412,4 +419,4 @@ function validateAssessment(d) {
   return errors;
 }
 
-module.exports = { validateAssessment, GLOBAL_POOL, tokens, normalize };
+module.exports = { validateAssessment, GLOBAL_POOL, tokens, normalize, collectTextParts };

@@ -150,5 +150,96 @@ class G1ExemptionGranularityTests(unittest.TestCase):
             f'week01 真实数据应保持通过（G1 pos 桶豁免在第一周仍然生效）：{result.stdout[-1500:]}')
 
 
+class CumulativeSightWordExemptionTests(unittest.TestCase):
+    """I-H1（段 3 第九批，外审 high，2026-09-10）：check_data.js ③ 传给
+    `isExemptConsumptionRecord` 的 `cumulativeSightWords` 改前只是"本周 SIGHT"（本地
+    变量，只收当前正在校验的这份文件自己声明的 sight 记录），不是跨周累计——历史周
+    教过的认读词出现在**后续周**的 book-page/sentences 里，会因为"不在当周这个临时
+    集合里"被误判为不豁免，与语义套件早已修好的"累计认读词"口径（H3）不一致。
+
+    真实项目数据里找不到"某个字母从未被教过"的天然认读词案例可以直接复用——sight
+    词虽然拼读不规则，但组成它们的每个字母通常已经单独教过（比如 'the' = t+h+e，
+    三个字母都是已教字母，idsForWord('the') 能正常分词，不会触发"无法按字位分词"，
+    没有分辨力）。这里对 frontend/src/weeks/week01.data.js 做一次最小手术式临时
+    修改：追加一个含未教字母 'z'（本项目四周数据从未教过 z）的合成认读词 'zil'，
+    测完原样写回读到的原始字节（不用 git 命令还原，规避"改动可能撞上仓库当前未
+    提交的其它改动"这条风险；与 test_wall_order.js 的 fs.readFileSync 猴子补丁思路
+    同一目的、不同手法——这里要跑的是真实 CLI 子进程，进程内猴子补丁对子进程无效，
+    只能真的写盘再还原）。
+    """
+
+    def setUp(self):
+        # newline=''（读写都要）：本仓库 .gitattributes 强制 `* text=auto eol=lf`，
+        # 工作区文本文件一律 LF。Python 的文本模式在 Windows 上默认按 os.linesep
+        # 做换行转换（read 端把 CRLF 归一成 \n 不算坏事，但 write 端会把 \n 写回
+        # CRLF）——不传 newline='' 会把这份真实文件从 LF 悄悄改写成 CRLF，就算
+        # 还原时字符内容完全一致，也会在磁盘上留下一次"整文件换行符变更"的假改动
+        # （已实测踩过：第一版用 read_text()/write_text() 不传 newline，还原后
+        # git status 显示文件被修改，diff 却因为 git 的 autocrlf 比对时做了归一化
+        # 而看不出差异——具有迷惑性，唯一可靠的检查是直接读字节数一数 \r\n）。
+        self.week01_path = ROOT / 'frontend' / 'src' / 'weeks' / 'week01.data.js'
+        with open(self.week01_path, 'r', encoding='utf-8', newline='') as f:
+            self.week01_original = f.read()
+        self.addCleanup(self._restore_week01)
+        needle = "{b:'sight', items:[['I','我'],['a','一个'],['see','看见']]},"
+        self.assertIn(needle, self.week01_original,
+            'week01.data.js 目标 sight 声明未找到，检查该文件是否已变')
+        mutated = self.week01_original.replace(
+            needle,
+            "{b:'sight', items:[['I','我'],['a','一个'],['see','看见'],"
+            "['zil','测试认读词（I-H1 合成，z 从未被教过）']]},",
+            1
+        )
+        self.assertNotEqual(mutated, self.week01_original)
+        with open(self.week01_path, 'w', encoding='utf-8', newline='') as f:
+            f.write(mutated)
+
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.week02_baseline = FIXTURE.read_text(encoding='utf-8')
+
+    def _restore_week01(self):
+        # 副本对比式还原（不用 git 命令）：写回 setUp 一开始读到的原始字节
+        # （newline=''，理由同上，避免把 LF 悄悄写回 CRLF）。
+        with open(self.week01_path, 'w', encoding='utf-8', newline='') as f:
+            f.write(self.week01_original)
+
+    def test_historical_sight_word_exempt_in_book_page(self):
+        # 正例：week01 声明的认读词 'zil' 出现在 week02 的 book-page 正文（阅读文本类
+        # 来源）——改前只信本周 SIGHT，week02 自己没声明过 'zil'，会被误判为不豁免、
+        # 因无法分词（z 未教）而报失败；改后应正确沿用累计集合豁免，CLI 通过。
+        needle = "{line:'Dan sat.',          art:'danSit',   zh:'丹也坐下了。'},"
+        self.assertIn(needle, self.week02_baseline, 'fixture 里找不到目标 BOOK 页台词，检查 fixture 是否已变')
+        poisoned = self.week02_baseline.replace(needle, needle.replace('Dan sat.', 'Dan has zil.'), 1)
+        self.assertNotEqual(poisoned, self.week02_baseline)
+        target = Path(self.tmpdir.name) / 'week02-data-ih1-book-page-zil.js'
+        target.write_text(poisoned, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertEqual(result.returncode, 0,
+            'I-H1：week01 声明的认读词 "zil" 出现在 week02 的 book-page 正文时应被跨周累计'
+            f'豁免、CLI 应正常通过：{result.stdout[-1500:]}\n{result.stderr[-1000:]}')
+
+    def test_historical_sight_word_still_checked_in_words_block(self):
+        # 反例：同一个词 'zil' 改放进 week02 的 words 块（字位操作类来源，不在
+        # SIGHT_EXEMPT_READING_KINDS 里）——即使它跨周累计豁免（认读词身份成立），
+        # 出现在这类要求可拼读的位置仍然不豁免，应该被查出且报"无法按字位分词"。
+        words_needle = "{b:'words', items:['cat','cap','can','kit']}"
+        self.assertIn(words_needle, self.week02_baseline, 'fixture 里找不到目标 words 块声明，检查 fixture 是否已变')
+        poisoned = self.week02_baseline.replace(
+            words_needle, "{b:'words', items:['cat','cap','can','kit','zil']}", 1)
+        self.assertNotEqual(poisoned, self.week02_baseline)
+        target = Path(self.tmpdir.name) / 'week02-data-ih1-words-zil.js'
+        target.write_text(poisoned, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertNotEqual(result.returncode, 0,
+            'I-H1：认读词 "zil" 即使跨周累计豁免成立，出现在 words 块（字位操作类来源）时仍不应豁免')
+        self.assertIn('"zil"', result.stdout)
+        self.assertIn('无法按字位分词', result.stdout)
+        self.assertIn('words', result.stdout,
+            f'失败消息应点名 words 这个非豁免来源，实际：{result.stdout[-1500:]}')
+
+
 if __name__ == '__main__':
     unittest.main()

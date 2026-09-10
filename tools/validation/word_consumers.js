@@ -227,6 +227,40 @@ function usedWordSet(d) {
   return new Set(collectWordConsumption(d).map(r => r.word.toLowerCase()));
 }
 
+/* cumulativeSightWordsUpTo(currentBox, currentWeek) -> Set<string>（I-H1，段 3 第九批，
+ * 外审 high，2026-09-10）。
+ *
+ * 背景：check_data.js ③「字母全在已教范围内」传给 isExemptConsumptionRecord 的
+ * `cumulativeSightWords` 改前是本周 `SIGHT`（当前文件自己声明的 sight 记录），不是
+ * 跨周累计——历史周教过的认读词（比如 W1 教的 see）出现在**后续周**的 book-page/
+ * sentences 里会因为"不在当周这个临时集合里"被误判为不豁免，与
+ * tests/unit/test_grapheme_semantics.js 语义套件里 `classifyConsumptionRecordsForWeeks`
+ * 早已修好的"累计认读词，不是仅本周"（H3）口径不一致，是同一处豁免规则在两个
+ * 调用方之间又出现了"各改对一半"。
+ *
+ * 实现：复用 wall_order.js 的 getExpectedWeeksUpTo（project.json 的 weeks 过滤到
+ * <= currentWeek）与 loadHistoricalWeekBox（读历史周文件 + 校验 META.week 与文件名
+ * 对应，同一份实现，不重写一份近似逻辑）；当前周直接用调用方已经加载好的
+ * currentBox（可能是正在校验的候选文件，未必已提交，同 gatherWeekRecordsUpTo 的
+ * "当前被校验的文件替换仓库里的同周记录"口径），其余周从磁盘读取。逐周跑
+ * collectWordConsumption 取 kind==='sight' 的记录累加进结果集合（小写归一化），
+ * 与 kind 的具体来源无关——sight 记录本身就是"认读词声明"，声明过就算数，不需要
+ * 额外过滤。 */
+function cumulativeSightWordsUpTo(currentBox, currentWeek) {
+  // 延迟 require：wall_order.js 不 require 本文件，不存在真正的循环依赖，这里延迟
+  // 只是避免模块加载顺序对调用方暴露不必要的耦合细节。
+  const { getExpectedWeeksUpTo, loadHistoricalWeekBox } = require('./wall_order');
+  const weeks = getExpectedWeeksUpTo(currentWeek);
+  const result = new Set();
+  weeks.forEach(w => {
+    const box = w === currentWeek ? currentBox : loadHistoricalWeekBox(w).box;
+    collectWordConsumption(box).forEach(r => {
+      if (r.kind === 'sight') result.add(String(r.word).toLowerCase());
+    });
+  });
+  return result;
+}
+
 /* findConsumptionOf(d, word) -> Array<record>：给定词（大小写不敏感），返回全部消费记录，
  * 用于泄漏检测报告"泄漏位置"。 */
 function findConsumptionOf(d, word) {
@@ -234,4 +268,4 @@ function findConsumptionOf(d, word) {
   return collectWordConsumption(d).filter(r => r.word.toLowerCase() === target);
 }
 
-module.exports = { ENTRY_KINDS, BLOCK_TYPE_CATALOG, tokenizeSentence, collectWordConsumption, usedWordSet, findConsumptionOf };
+module.exports = { ENTRY_KINDS, BLOCK_TYPE_CATALOG, tokenizeSentence, collectWordConsumption, usedWordSet, findConsumptionOf, cumulativeSightWordsUpTo };

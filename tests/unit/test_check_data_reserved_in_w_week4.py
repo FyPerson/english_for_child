@@ -165,5 +165,53 @@ class ReservedInWAtWeek4Tests(unittest.TestCase):
             f'失败消息应点名具体缺失的复测词 "tip"，且措辞应是"复测词"不是"周检词"：{result.stdout[-1500:]}')
 
 
+class AssessmentWordsSafeAccessTests(unittest.TestCase):
+    """H-M4（段 3 第九批，外审 medium，2026-09-10）：frontend/src/weeks/week04.data.js
+    的 `ASSESSMENT_WORDS` 声明从 W 派生 zh 释义（`W[w].zh`），这行声明是
+    tools/validation/load_data.js NAMES 之一，`loadData()` 用 vm 执行它的时机早于
+    check_data.js ①「保留词在 W」检查——若某个 RESERVED 词漏写进 W，改前
+    `W[w].zh` 会在 vm 执行阶段直接抛出未包装的 TypeError（check_data.js 的
+    loadData try/catch 只能吐出这句原生报错、以 exit 2 退出），①原本准备好的清晰
+    校验消息（"周检词 X 不在 W 里"）完全没有机会跑到。改用 `(W[w] || {}).zh`
+    安全取值后，应该改为走①的正常失败路径（清晰消息 + exit 1，不是原生异常 +
+    exit 2）。
+
+    本测试直接对真实 frontend/src/weeks/week04.data.js 做最小手术式临时删除（删掉
+    一条 W 声明），跑真实 CLI，测完原样写回（byte-safe，newline=''——同
+    CumulativeSightWordExemptionTests 踩过的坑：Python 文本模式在 Windows 上默认
+    按 os.linesep 转换换行，不传 newline='' 会把这份 LF 文件悄悄写回 CRLF，即使
+    还原后字符内容一致，也会在磁盘上留下一次整文件换行符变更）。
+    """
+
+    def setUp(self):
+        self.week04_path = ROOT / 'frontend' / 'src' / 'weeks' / 'week04.data.js'
+        with open(self.week04_path, 'r', encoding='utf-8', newline='') as f:
+            self.week04_original = f.read()
+        self.addCleanup(self._restore_week04)
+
+    def _restore_week04(self):
+        with open(self.week04_path, 'w', encoding='utf-8', newline='') as f:
+            f.write(self.week04_original)
+
+    def test_missing_w_entry_gives_clean_validation_message_not_crash(self):
+        needle = '  "dab": {\n    "zh": "轻点",\n    "art": null\n  },\n'
+        self.assertIn(needle, self.week04_original,
+            '真实 week04.data.js 里找不到目标 W.dab 声明整块，检查文件是否已变')
+        mutated = self.week04_original.replace(needle, '', 1)
+        self.assertNotEqual(mutated, self.week04_original)
+        with open(self.week04_path, 'w', encoding='utf-8', newline='') as f:
+            f.write(mutated)
+
+        result = run_check_data(self.week04_path)
+        self.assertNotEqual(result.returncode, 0, '周检词 "dab" 缺 W 条目时应该报失败')
+        self.assertNotEqual(result.returncode, 2,
+            'H-M4：不应该是 loadData 阶段崩溃退出（exit 2），应该是①正常校验失败路径（exit 1）：'
+            f'stdout={result.stdout[-800:]} stderr={result.stderr[-800:]}')
+        self.assertIn('周检词 "dab" 不在 W 里', result.stdout,
+            f'H-M4：应得到①准备好的清晰校验消息，实际 stdout：{result.stdout[-1500:]}')
+        self.assertNotIn('Cannot read', result.stderr,
+            f'H-M4：不应该出现未包装的原生 TypeError 消息，实际 stderr：{result.stderr[-500:]}')
+
+
 if __name__ == '__main__':
     unittest.main()

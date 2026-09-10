@@ -932,3 +932,49 @@ function scanForLegacyTrue(files) {
 
   console.log('PASS grapheme migration（L2：多 script 前置伪声明检测）：前置 script 的伪 RESERVED 声明与后置 script 的真实声明重名时，loadData 显式拒绝（duplicate-declaration），不悄悄选中前置的伪声明');
 }
+
+// ============================================================================
+// I-M2（段 3 第九批，外审 medium，2026-09-10）：countDeclarationOccurrences 改前
+// 按"行首 + 可选缩进"匹配 `const NAME = `，不看这一行嵌套在多深的括号里——某个辅助
+// 函数体内部若手滑写了一个同名局部 const（哪怕缩进再深也满足"行首"这条判据），会被
+// 误计成"又一次顶层声明"，触发不该触发的 duplicate-declaration 拒绝。改用
+// maskStringsAndComments + bracketDepthAt 只数括号深度为 0（真正 Program 顶层）的
+// 匹配。测试：一个辅助函数体内部有同名局部 const RESERVED（深度 > 0），顶层只有一份
+// 真实 RESERVED 声明（深度 0）——应计数为 1，不是 2；loadData 应该正常通过，不应该
+// 因为这个局部变量而误报 duplicate-declaration。
+// ============================================================================
+{
+  const { loadData, countDeclarationOccurrences, extractScriptContents } = require('../../tools/validation/load_data');
+
+  const scriptBody = [
+    "function helperWithLocalShadow() {",
+    "  // 辅助函数内部的局部同名 const，与顶层 RESERVED 声明无关，不应被计成顶层声明",
+    "  const RESERVED = ['local', 'shadow', 'not', 'top', 'level'];",
+    "  return RESERVED;",
+    "}",
+    "const META = {\"week\":1};",
+    "const RESERVED = ['ram','hem','rid','dam','kid'];",
+    "const SOUNDS = {};",
+    "const W = {};",
+    "const WALL_HINT = {};",
+    "const BOOK = {pages:[]};",
+    "const FIRST_TEACH_DAY = {};",
+    "const G1_ROUNDS = {};",
+    "const G1_THEME = {};",
+    "const G3_PAIRS = [];",
+    "const G4_WORDS = [];",
+    "const G5_WHITELIST = [];",
+    "const DAYS = [];"
+  ].join('\n');
+  const html = `<!doctype html><html><body><script>\n${scriptBody}\n</script></body></html>`;
+
+  const scriptText = extractScriptContents(html);
+  assert.equal(countDeclarationOccurrences(scriptText, 'RESERVED'), 1,
+    'I-M2：辅助函数内部的局部同名 const 不应被计入顶层声明次数，应仍为 1（不是 2）');
+
+  let caught = null;
+  try { loadData(html, true); } catch (e) { caught = e; }
+  assert.equal(caught, null, `I-M2：辅助函数内部的局部同名 const 不应触发 duplicate-declaration 拒绝，实际抛错：${caught && caught.message}`);
+
+  console.log('PASS grapheme migration（I-M2：辅助函数内部局部同名 const 不触发重复）：countDeclarationOccurrences 只数括号深度为 0 的顶层声明，loadData 正常通过');
+}

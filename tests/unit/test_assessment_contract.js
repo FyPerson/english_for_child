@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const {validateAssessment, GLOBAL_POOL} = require('../../tools/validation/assessment_contract');
+const {validateAssessment, GLOBAL_POOL, collectTextParts} = require('../../tools/validation/assessment_contract');
 
 // ============================================================================
 // monthly（W4）回归——里程碑 2 第 5 步之前就存在的 16 条反例，逐字保留（方案 §0.3
@@ -675,4 +675,19 @@ console.log('PASS W4 baseline: no exposure in any prior weekly data or explanati
   assert(errors.some(e => e.includes('META.assessmentMode 缺失或非法')),
     'M1：META 是数组时应被视为"缺失或非法"，不能被当成合法配置放行：' + JSON.stringify(errors));
   console.log('PASS M1 回归：META 是数组时不被 typeof object 误判成合法配置，判「缺失或非法」');
+}
+{
+  // ---- H-M2（段 3 第九批，外审 medium，2026-09-10）：visitRedactingSelfWord 的
+  // \b...\b 词边界只挖掉完全相同的独立词元，"pits"（复数）/"spit"（另一个词，
+  // 只是恰好以 selfWord 结尾）都不应被误伤——这是刻意的正确行为，不是缺陷，这里
+  // 直接对 collectTextParts 断言锁定，防止后人"以为 \b 是疏忽"改成子串匹配。 ----
+  const emptyD = { BOOK: { pages: [] }, WALL_HINT: {}, SOUNDS: {}, G1_ROUNDS: {}, G1_THEME: {},
+    G3_PAIRS: [], G4_WORDS: [], G5_WHITELIST: [], DAYS: [],
+    W: { pit: { zh: 'a pit, some pits, and a spit — only the standalone "pit" should be redacted' } } };
+  const parts = collectTextParts(emptyD, [], { excludeDictionaryKeys: new Set(['pit']) });
+  const joined = parts.join(' ');
+  assert(/\bpits\b/.test(joined), 'H-M2：复数形式 "pits" 不应被挖掉，实际：' + JSON.stringify(joined));
+  assert(/\bspit\b/.test(joined), 'H-M2：另一个词 "spit" 不应被挖掉，实际：' + JSON.stringify(joined));
+  assert(!/\bpit\b/.test(joined), 'H-M2：独立词元 "pit" 本身应该被挖掉（自身词，art 字段惯例同款处置），实际：' + JSON.stringify(joined));
+  console.log('PASS H-M2：visitRedactingSelfWord 只挖掉与 selfWord 完全相同的独立词元，"pits"/"spit" 均不受影响（\\b 词边界是刻意的正确行为）');
 }

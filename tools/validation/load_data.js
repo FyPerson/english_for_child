@@ -1,4 +1,5 @@
 const vm = require('node:vm');
+const { maskStringsAndComments, bracketDepthAt } = require('./js_lex');
 const NAMES = 'META RESERVED SOUNDS W WALL_HINT BOOK FIRST_TEACH_DAY G1_ROUNDS G1_THEME G3_PAIRS G4_WORDS G5_WHITELIST DAYS RESERVED_RETEST PROBE_A PROBE_B GLOBAL_RESERVED ASSESS_TEXT ASSESSMENT_WORDS TAUGHT_SIGHT ANNUAL_DECODING'.split(' ');
 function declaration(raw, name) {
   // M2（外审 medium，2026-09-10）：与 META_DECLARATION_RE 同步放宽——改前要求行首
@@ -58,8 +59,9 @@ function extractScriptContents(raw) {
 }
 
 /* countDeclarationOccurrences(raw, name) -> number（L2，轮 D 复审第三轮，外审 low，
- * 2026-09-10）：与 declaration()/META_DECLARATION_RE 同一条探测正则的全局版本，
- * 数某个顶层常量名在文本里一共出现过几次行首声明。
+ * 2026-09-10；I-M2，段 3 第九批，外审 medium，2026-09-10 收紧为只数顶层声明）：与
+ * declaration()/META_DECLARATION_RE 同一条探测正则的全局版本，数某个顶层常量名在
+ * 文本里一共出现过几次**顶层**（Program 层级，不嵌套在任何 `{`/`(`/`[` 内部）声明。
  *
  * 背景：extractScriptContents 把 HTML 里全部 `<script>` 标签的内容拼接成一份文本
  * （`scripts.join('\n')`），declaration() 在这份拼接后的文本上做**第一次匹配**——
@@ -68,10 +70,25 @@ function extractScriptContents(raw) {
  * declaration('RESERVED') 会抢先匹配到那一处，而不是后面真正的课程数据声明——
  * 与"正文伪声明"是同一类问题（M1 已经处理过"正文 vs <script>"这一层），这里是
  * "<script> 与 <script> 之间"的下一层：探测/抽取的范围已经限定到 <script> 内容，
- * 但没有进一步确认"这个名字在 <script> 范围内是不是唯一声明过一次"。 */
+ * 但没有进一步确认"这个名字在 <script> 范围内是不是唯一声明过一次"。
+ *
+ * I-M2（外审 medium，2026-09-10）：改前的正则 `^[ \t]*const\s+NAME\s*=`（'mg' 标志）
+ * 只按"行首"匹配，不看这一行本身嵌套在多深的 `{}`/`()`/`[]` 里——某个辅助函数体内部
+ * 若手滑写了一个同名局部 `const RESERVED = [...]`（哪怕缩进再深也满足"行首 + 可选
+ * 缩进"这条判据），会被误计成"又一次顶层声明"，触发不该触发的 duplicate-declaration
+ * 拒绝。改法：先用 maskStringsAndComments 把字符串/模板字符串/注释里的同形文本盖成
+ * 空格（避免它们的内容干扰下面的括号深度统计——比如某个字符串字面量里恰好含花括号），
+ * 再对每个匹配位置调用 bracketDepthAt 确认括号深度恰为 0（真正的 Program 顶层），
+ * 深度不为 0 的匹配（嵌套在函数体/对象字面量/数组内部）不计入。 */
 function countDeclarationOccurrences(raw, name) {
+  const masked = maskStringsAndComments(raw);
   const re = new RegExp('^[ \\t]*const\\s+' + name + '\\s*=', 'mg');
-  return (raw.match(re) || []).length;
+  let count = 0;
+  let m;
+  while ((m = re.exec(masked))) {
+    if (bracketDepthAt(masked, m.index) === 0) count++;
+  }
+  return count;
 }
 
 function throwLegacyHtmlFallbackRejected() {

@@ -266,12 +266,19 @@ console.log('PASS wall_order gatherWeekRecordsUpTo：不在 project.json weeks �
   const realWeek01Raw = fs.readFileSync(week01Path, 'utf8');
   const originalReadFileSync = fs.readFileSync;
 
+  /* I-L1（段 3 第九批，外审 low，2026-09-10）：每例补两样此前缺失的断言——
+   *   ① caught.actual 应等于该例真实拿到的（非法）week 值本身（不是"抛错了就够了"，
+   *      要确认错误对象确实带着可供排障使用的原始值）；
+   *   ② 消息文本里出现的"实际："片段应能区分 NaN/Infinity 与 null——改前
+   *      `JSON.stringify` 把 NaN 坍缩成字符串 "null"，与真实拿到 null 时的展示
+   *      完全一样，排障时会把"META.week 手滑写成 NaN"误读成"META.week 是 null"。
+   *      NaN 这一例单独断言消息含 "NaN" 字面量、不含 "null"。 */
   const CASES = [
-    { label: "字符串 '1'", replacement: '"week": "1",' },
-    { label: '0', replacement: '"week": 0,' },
-    { label: '-1', replacement: '"week": -1,' },
-    { label: '1.5', replacement: '"week": 1.5,' },
-    { label: 'NaN', replacement: '"week": NaN,' },
+    { label: "字符串 '1'", replacement: '"week": "1",', expectedActual: '1' },
+    { label: '0', replacement: '"week": 0,', expectedActual: 0 },
+    { label: '-1', replacement: '"week": -1,', expectedActual: -1 },
+    { label: '1.5', replacement: '"week": 1.5,', expectedActual: 1.5 },
+    { label: 'NaN', replacement: '"week": NaN,', expectedActual: NaN },
   ];
   for (const c of CASES) {
     const poisonedRaw = realWeek01Raw.replace('"week": 1,', c.replacement);
@@ -288,11 +295,32 @@ console.log('PASS wall_order gatherWeekRecordsUpTo：不在 project.json weeks �
       assert(caught, `应抛错（${c.label}）`);
       assert(/不是合法正整数/.test(caught.message), `错误信息应点名"不是合法正整数"（${c.label}），实际：${caught.message}`);
       assert.equal(caught.code, 'teaching-order-week-mismatch', `错误码应为 teaching-order-week-mismatch（${c.label}），实际：${caught.code}`);
+      // I-L1 ①：caught.actual 精确核对（NaN 用 Number.isNaN，其余用 ===，避免
+      // NaN !== NaN 让这条断言恒假地"看起来"总是失败/被跳过）。
+      if (c.label === 'NaN') {
+        assert(Number.isNaN(caught.actual), `I-L1：caught.actual 应为 NaN（${c.label}），实际：${JSON.stringify(caught.actual)}`);
+      } else {
+        assert.equal(caught.actual, c.expectedActual, `I-L1：caught.actual 应等于本例真实非法值（${c.label}），实际：${JSON.stringify(caught.actual)}`);
+      }
     } finally {
       fs.readFileSync = originalReadFileSync;
     }
   }
-  console.log(`PASS wall_order M3 表驱动（${CASES.length} 例：'1'/0/-1/1.5/NaN）：历史周数据文件 META.week 非法时均被结构化报错（teaching-order-week-mismatch，点名"不是合法正整数"），不与"周次不一致"那句混为一谈`);
+  // I-L1 ②：NaN 例的消息文本应能与 null 区分——不再坍缩成 "null"。
+  {
+    const poisonedRaw = realWeek01Raw.replace('"week": 1,', '"week": NaN,');
+    fs.readFileSync = function (filePath, ...rest) {
+      if (String(filePath) === week01Path) return poisonedRaw;
+      return originalReadFileSync.call(fs, filePath, ...rest);
+    };
+    let caught = null;
+    try { gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2); } catch (e) { caught = e; }
+    finally { fs.readFileSync = originalReadFileSync; }
+    assert(caught, 'I-L1 破坏验证前提：NaN 例应抛错');
+    assert(/实际：NaN/.test(caught.message), `I-L1：NaN 例的消息应含 "实际：NaN"（能与 null 区分），实际消息：${caught.message}`);
+    assert(!/实际：null/.test(caught.message), `I-L1 破坏验证：NaN 不应被格式化成 "null"（改前 JSON.stringify(NaN) 坍缩的旧行为），实际消息：${caught.message}`);
+  }
+  console.log(`PASS wall_order M3+I-L1 表驱动（${CASES.length} 例：'1'/0/-1/1.5/NaN）：历史周数据文件 META.week 非法时均被结构化报错（teaching-order-week-mismatch，点名"不是合法正整数"，caught.actual 精确核对），且 NaN 的消息文本可与 null 区分（不再坍缩成 "null"）`);
 }
 
 // ============================================================================
