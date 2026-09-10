@@ -40,9 +40,18 @@ const META_DECLARATION_RE = /(?:^|\n)[ \t]*const\s+META\s*=/;
  * 内的文本，供 META_DECLARATION_RE 探测使用（见上方头注释「限定到 <script> 内容
  * 再探测」）。找不到任何 <script> 标签时返回空字符串——那本身就该被判定为
  * "没有内联 META"，不需要特殊处理。 */
+/* M2（轮 D 复审，外审 medium，2026-09-10）：改前正则没有 `i` 标志——`<SCRIPT>`、
+ * `<Script>` 这类大小写混排的标签会被漏收（HTML 标签名本身大小写不敏感，浏览器
+ * 一样会把它们当脚本执行，但这里的正则会当成普通文本一起漏进"探测/抽取"两处的
+ * 结果之外，等价于"这份 HTML 里没有 script"）。加 `i` 标志后恢复大小写不敏感匹配。
+ * 范围说明：属性值（如 `type="..."`）里含 `>` 字符的写法（如 `<script data-x="a>b">`）
+ * 现有四份模板与全部构建产物都不会产生这种写法（`@include` 展开的 `<script>` 标签
+ * 要么无属性要么只带简单不含 `>` 的属性），这条正则沿用"遇到第一个 `>` 就当标签
+ * 结束"的简化假设，不做完整 HTML 属性解析——若未来引入含 `>` 的属性值，需要另外
+ * 升级为真正的 HTML tokenizer，不在本次范围内。 */
 function extractScriptContents(raw) {
   const scripts = [];
-  const re = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g;
+  const re = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi;
   let m;
   while ((m = re.exec(raw))) scripts.push(m[1]);
   return scripts.join('\n');
@@ -80,12 +89,26 @@ function loadData(raw, html = true) {
    * 改法：在执行任何提取出的声明之前，先用 META_DECLARATION_RE 探测 HTML 是否含
    * 内联 META——不靠另外拍脑袋写的正则去猜"旧 HTML 大概长什么样"，用的就是
    * declaration() 自己截取声明时依赖的同一条判据。探测不通过，立即抛固定错误码，
-   * 根本不进入 vm.runInNewContext。 */
-  if (html && !META_DECLARATION_RE.test(extractScriptContents(raw))) {
+   * 根本不进入 vm.runInNewContext。
+   *
+   * M1（轮 D 复审，外审 medium，2026-09-10）：M2 只把**探测**（META_DECLARATION_RE
+   * 那一次 .test()）限定到了 <script> 内容，下面真正**抽取**声明体的
+   * `declaration(raw, n)` 调用一直传的是整份 `raw`（未经 extractScriptContents
+   * 过滤）——HTML 正文如果碰巧在行首出现字面量 `const RESERVED = [...]`（比如
+   * 页面自己展示一段代码示例，或教学材料里恰好连着写出这几个词），declaration()
+   * 的正则会在整份文档里匹配到**第一个**出现的声明，可能是正文里的伪声明，不是
+   * <script> 里那份真实数据——探测通过了（<script> 里确实有 META），但抽取到的
+   * 其他常量（RESERVED/W/SOUNDS 等）却可能来自正文，是探测限定了范围、抽取却没有
+   * 跟进的两处不一致。改法：`html===true` 时，抽取也改用同一份
+   * `extractScriptContents(raw)` 结果（只算一次，探测与抽取共用，不重复扫描、
+   * 也不会让两次调用各自看到不同的"脚本内容"），`html===false`（数据层 JS 入口，
+   * 没有 <script> 包裹）时 raw 本身就是"脚本内容"，逻辑不变。 */
+  const searchText = html ? extractScriptContents(raw) : raw;
+  if (html && !META_DECLARATION_RE.test(searchText)) {
     throwLegacyHtmlFallbackRejected();
   }
-  const chunks = NAMES.map(n => declaration(raw, n)).filter(Boolean);
-  chunks.push(...(raw.match(/^SOUNDS\.\w+ = Object\.assign\(.*?\);$/gm) || []));
+  const chunks = NAMES.map(n => declaration(searchText, n)).filter(Boolean);
+  chunks.push(...(searchText.match(/^SOUNDS\.\w+ = Object\.assign\(.*?\);$/gm) || []));
   const box = {};
   vm.runInNewContext(chunks.join('\n') + '\n' + NAMES.map(n => `if(typeof ${n} !== 'undefined') result.${n} = ${n};`).join('\n'), {result:box}, {timeout:1000});
   if (!box.META && html) {

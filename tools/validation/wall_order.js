@@ -190,11 +190,34 @@ function gatherWeekRecordsUpTo(currentBox, currentWeek) {
      * 计入"week 3"的累计教学顺序，教学顺序真相源本身就会算错，且没有任何信号
      * 提示错在哪。这里补一道断言：文件内容自称的周次必须与文件名对应的周次一致，
      * 不等就抛结构化错误，带上 file/expected（文件名对应的周次）/actual（文件内容
-     * 自称的周次），不静默信任文件名。 */
-    if (box.META && box.META.week !== w) {
+     * 自称的周次），不静默信任文件名。
+     *
+     * M3（轮 D 复审，外审 medium，2026-09-10）：改前 `box.META && box.META.week !== w`
+     * 用 `&&` 短路——`box.META` 本身缺失（falsy：undefined/null）时整个条件恒为
+     * false，不会抛错，会带着一个没有 META 的 box 悄悄往下走进
+     * `extractNewPatterns(box, w, file)`，那里如果也不做防御性检查就会在别处才
+     * 崩溃（或者更糟：静默把这份坏数据当空记录处理）。同时 `!== w` 只在类型不同或
+     * 值不同时为真——`box.META.week` 若是非整数（比如字符串 "3"、浮点数 3.5、
+     * NaN）时，`"3" !== 3` 这类比较本身能查出类型不对，但错误信息里的"与文件名
+     * 对应的周次不一致"这句措辞并不准确描述"周次字段本身不是合法整数"这类问题。
+     * 改法：拆成三段独立判断，各自给出准确措辞——① META 整体缺失；② week 字段
+     * 不是合法正整数；③ 都合法但与文件名周次不相等——全部复用同一个错误码
+     * `teaching-order-week-mismatch`（调用方按 code 分支处理的逻辑不用跟着改），
+     * 但 message 精确描述具体是哪一种情形，不再笼统地都说"不一致"。 */
+    if (!box.META) {
+      throw TeachingOrderError('teaching-order-week-mismatch',
+        `week ${w} 的历史周数据文件（file: ${file}）缺少 META 声明，无法确认它自称的周次`,
+        { week: w, file: file, expected: w, actual: undefined });
+    }
+    if (typeof box.META.week !== 'number' || !Number.isInteger(box.META.week)) {
+      throw TeachingOrderError('teaching-order-week-mismatch',
+        `week ${w} 的历史周数据文件（file: ${file}）的 META.week 不是合法整数，实际：${JSON.stringify(box.META.week)}`,
+        { week: w, file: file, expected: w, actual: box.META.week });
+    }
+    if (box.META.week !== w) {
       throw TeachingOrderError('teaching-order-week-mismatch',
         `week ${w} 的历史周数据文件（file: ${file}）自称的 META.week 是 ${box.META.week}，与文件名对应的周次不一致`,
-        { week: w, file: file, expected: w, actual: box.META && box.META.week });
+        { week: w, file: file, expected: w, actual: box.META.week });
     }
     return { week: w, newPatterns: extractNewPatterns(box, w, file) };
   });

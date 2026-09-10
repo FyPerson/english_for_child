@@ -70,16 +70,35 @@ class BuildCoursePayloadEscapingTests(unittest.TestCase):
         self.assertEqual(restored, data, 'node JSON.parse 还原后应与原始数据完全相等（含反斜杠字面量）')
 
     def test_real_built_course_html_payload_has_no_close_tag_sequences(self):
-        # 端到端确认：真实构建产物 build/course.html 的 payload script 标签内容
-        # 完全没有任何 "<" 字符，且 JSON.parse 能正常还原出完整的三周数据。
-        course_path = ROOT / 'build' / 'course.html'
-        self.assertTrue(course_path.exists(), f'{course_path} 不存在，请先跑 python tools/project.py build')
-        html = course_path.read_text(encoding='utf-8')
+        # M4（轮 D 复审，外审 medium，2026-09-10）：改前直接读 build/course.html——
+        # 若这个文件恰好过期或还没构建过（比如刚 clone 仓库、还没跑过一次
+        # `python tools/project.py build`），这条测试会假失败（"文件不存在"），
+        # 或者假通过（读到的是一份与当前 build_course.py 代码不一致的旧产物）；
+        # 两种情形都不是"验证当前代码"，是被磁盘上是否存在一份陈旧构建产物这个
+        # 外部前提左右。改法：直接调用 build_course.render_course()（与
+        # `python tools/build_course.py` 的 main() 走同一条生产路径——同样用
+        # build_lessons.expand 展开当前源码模板、同样调用 render_course），产物
+        # 只存在于内存里，不落盘、不读 build/，端到端确认的是"当前代码此刻生成的
+        # 产物"，不是"磁盘上不知道哪次构建留下的文件"。
+        sys_path_before = list(sys.path)
+        try:
+            sys.path.insert(0, str(ROOT / 'tools'))
+            from build_lessons import expand  # noqa: E402
+            from project_config import load_config, week_name  # noqa: E402
+            config = load_config()
+            lessons = {
+                week_name(n): expand((ROOT / f'frontend/src/weeks/week{n:02}.template.html').read_text(encoding='utf-8'))
+                for n in config['courseWeeks']
+            }
+        finally:
+            sys.path[:] = sys_path_before
+        html = build_course.render_course(lessons)
+
         import re
         m = re.search(r'<script id="course-payload" type="application/json">([\s\S]*?)</script>', html)
         self.assertIsNotNone(m, '应能找到 id="course-payload" 的 script 标签')
         payload_text = m.group(1)
-        self.assertNotIn('<', payload_text, '真实构建产物的 payload 文本里不应出现任何字面量 "<"')
+        self.assertNotIn('<', payload_text, '当前代码生成的 payload 文本里不应出现任何字面量 "<"')
         parsed = json.loads(payload_text)
         self.assertGreater(len(parsed.get('weeks', [])), 0, 'payload 应含至少一周数据')
         for week in parsed['weeks']:

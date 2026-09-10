@@ -214,17 +214,43 @@ head('③ 字母全在已教范围内');
  *     pos 桶词都可解码只是内容选取的巧合，不是规则要求。改为按
  *     `kinds.has('g1-rounds')` 精确匹配来源，不再关心具体是哪个桶、哪一周——
  *     覆盖范围与改前的 G1NEG ∪ "W1 pos 桶" 完全一致，但判据本身不再跟周号和
- *     词形绑死。原来独立维护的 G1NEG 常量因此不再需要，已删除。 */
-const wordSourceKinds = new Map();
+ *     词形绑死。原来独立维护的 G1NEG 常量因此不再需要，已删除。
+ *
+ * H1（外审 high，2026-09-10）：上一版按"词"聚合全部来源的 kind 集合，只要其中
+ * 任一来源命中 `g1-rounds` 就整词 `continue`——这会把同一拼写在**其他**非豁免
+ * 来源（book-page/wordforge 等）里的出现也一起放过。比如某词既在 G1 的 neg 桶
+ * （合法豁免，纯听力不要求可解码）又出现在某页书的正文里（真实阅读内容，必须
+ * 可解码），改前只要 kinds 里有 'g1-rounds' 就整词跳过，书页正文里那个真实的
+ * 未教字位/零解问题会被静默放过——"豁免"被按拼写误传染到了不该豁免的来源上。
+ *
+ * H2（外审 high，2026-09-10）：同一处的第二个问题——"G1 桶豁免"这条规则本身的
+ * 范围也判宽了。规范只豁免「全部 neg 桶」+「仅第一周的 pos 桶」（W1 的 pos 桶
+ * 词形选取还没顾得上避开未教字母，从第二周起 pos 桶就必须像其它教学内容一样
+ * 可解码），改前的 `kinds.has('g1-rounds')` 对**任何周任何桶**的 g1-rounds
+ * 来源一律豁免，W2 起的 pos 桶词若含未教字母也会被放过。
+ *
+ * 两处一并修复：豁免判定下沉到"记录"级别（`isExemptRecord`），不是"词"级别——
+ * 同一个词形在多处出现时，只要**至少有一条记录不豁免**，这个词就必须能正常
+ * 分词/落在已教字位范围内；豁免范围精确为 `bucket==='neg' || (本周===1 &&
+ * bucket==='pos')`（word_consumers.js 的 g1-rounds 记录已经带 `bucket` 与
+ * `week` 字段，不需要另外改抽取器）。分词/未教字位的判定结果本身只跟词形和
+ * 当前 SOUNDS/TAUGHT 有关、与是哪条记录触发无关，所以仍按词只算一次
+ * （避免同一个词因为出现在多处非豁免来源而被重复报错——"错误去重放在结果层"），
+ * 但失败消息里的"来源"改成列出这个词全部出现过的来源（含豁免来源），方便定位。 */
+function isExemptRecord(rec) {
+  if (rec.kind !== 'g1-rounds') return false;
+  return rec.bucket === 'neg' || (META.week === 1 && rec.bucket === 'pos');
+}
+const wordRecords = new Map(); // word -> Array<record>（含 kind，g1-rounds 记录另带 bucket/week）
 for (const rec of collectWordConsumption(box)) {
-  const kinds = wordSourceKinds.get(rec.word) || new Set();
-  kinds.add(rec.kind);
-  wordSourceKinds.set(rec.word, kinds);
+  const list = wordRecords.get(rec.word) || [];
+  list.push(rec);
+  wordRecords.set(rec.word, list);
 }
 for (const w of RESERVED) {
-  const kinds = wordSourceKinds.get(w) || new Set();
-  kinds.add('RESERVED');
-  wordSourceKinds.set(w, kinds);
+  const list = wordRecords.get(w) || [];
+  list.push({ word: w, kind: 'RESERVED' });
+  wordRecords.set(w, list);
 }
 /* M4（外审 medium，2026-09-10，对 W5 是实质问题）：改前 `[...w]` 按字符拆、与
  * TAUGHT（= Object.keys(SOUNDS)，其实是字位 ID 集合）逐字符比——W5 起 SOUNDS 里
@@ -242,9 +268,11 @@ for (const w of RESERVED) {
  * ok(false, ...) 失败并跳过这个词，不让整个进程带栈崩溃（与 H1 在
  * test_grapheme_semantics.js 里"零解/多解即数据缺陷、不允许静默放行"是同一个
  * 口径，只是这里的"放行"方式是转成失败而不是抛错终止整个检查）。 */
-for (const [w, kinds] of wordSourceKinds) {
+for (const [w, records] of wordRecords) {
   if (SIGHT.has(w.toLowerCase())) continue;
-  if (kinds.has('g1-rounds')) continue;
+  const nonExempt = records.filter(r => !isExemptRecord(r));
+  if (nonExempt.length === 0) continue; // 这个词全部出现的来源都豁免，不检查
+  const kinds = new Set(records.map(r => r.kind)); // 报告仍列出全部来源（含豁免来源），便于定位
   let ids;
   try {
     ids = idsForWord(w);
@@ -252,6 +280,17 @@ for (const [w, kinds] of wordSourceKinds) {
     ok(false, `"${w}" 无法按字位分词（${e.code || 'error'}）：${e.message}（来源：${[...kinds].sort().join(',')}）`);
     continue;
   }
+  /* L1（轮 D 复审，外审 low，2026-09-10）：这条判据当前是恒真式，不是有判别力的
+   * 检查——防御性分支，标注理由不删代码。idsForWord(w) 内部走 segmentWord(word,
+   * SOUNDS, explicit)：非显式路径的分词候选完全从 buildGraphemeIndex(SOUNDS)
+   * 派生（只会枚举 SOUNDS 自己的键），不可能返回 SOUNDS 之外的 ID；显式 segments
+   * 路径（validateExplicitSegments）同样会先校验每个 ID 都是 SOUNDS 的自有键，
+   * 不合法就直接抛错（走上面的 catch 分支，不会走到这里）。TAUGHT 本身就是
+   * `new Set(Object.keys(SOUNDS))`——ids 与 TAUGHT 同源自 SOUNDS，`bad` 恒为空
+   * 数组。只有将来"分词表"（segmentWord 允许识别的字位集合）与"已教集合"
+   * （TAUGHT，规范意义上"孩子已经学过的字位"）出现分离——比如引入"允许分词但
+   * 尚未教学"的字位表——这条判据才会有真正的判别力，届时 TAUGHT 需要换成那个
+   * 分离出来的"已教"子集，不能再直接等于 Object.keys(SOUNDS)。 */
   const bad = ids.filter(id => !TAUGHT.has(id));
   ok(bad.length === 0, `"${w}" 含未教字位 [${bad.join(',')}]（来源：${[...kinds].sort().join(',')}）`);
 }

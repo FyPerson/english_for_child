@@ -220,6 +220,69 @@ console.log('PASS wall_order gatherWeekRecordsUpTo：不在 project.json weeks �
   }
   console.log('PASS wall_order M1：历史周数据文件 META.week 与文件名对应周次不一致时被结构化报错（teaching-order-week-mismatch，带 file/expected/actual），不再静默信任文件名');
 }
+{
+  // M3（轮 D 复审，外审 medium，2026-09-10）：改前 `box.META && box.META.week !== w`
+  // 用 `&&` 短路——META 整体缺失（monkeypatch week01.data.js 返回一份完全没有
+  // META 声明、但其余顶层常量都合法的源码文本）时整个条件恒为 false，不会抛错，
+  // 会带着一个没有 META 的 box 悄悄往下走。入口级证明：gatherWeekRecordsUpTo 现在
+  // 应该在这种情形下抛 teaching-order-week-mismatch，不静默放行。
+  const week01Path = path.join(ROOT, 'frontend', 'src', 'weeks', 'week01.data.js');
+  const realWeek01Raw = fs.readFileSync(week01Path, 'utf8');
+  // 用真实文本做最小手术：把 "const META = {...};" 整段替换成一个不叫 META 的
+  // 常量声明（内容不重要，只要 loadData(raw,false) 之后 box.META 是 undefined，
+  // 且不影响其余常量正常解析——declaration() 是按常量名逐个查找的，把 META 这
+  // 个名字本身抹掉，其余常量原样保留，loadData 不会因为找不到 META 而抛
+  // legacy-html-fallback-rejected（那个错误码只在 html===true 时才检查，这里是
+  // html===false 的数据层 JS 入口）。
+  const metaDecl = /const META = \{[\s\S]*?\};\n/.exec(realWeek01Raw);
+  assert(metaDecl, '应能在 week01.data.js 里找到 "const META = {...};" 声明，检查真实文件是否已变');
+  const noMetaRaw = realWeek01Raw.replace(metaDecl[0], 'const NOT_META_ANYMORE = {};\n');
+  assert.notEqual(noMetaRaw, realWeek01Raw, '替换应生效');
+  const originalReadFileSync = fs.readFileSync;
+  fs.readFileSync = function (filePath, ...rest) {
+    if (String(filePath) === week01Path) return noMetaRaw;
+    return originalReadFileSync.call(fs, filePath, ...rest);
+  };
+  try {
+    assertThrows(() => gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2),
+      'teaching-order-week-mismatch', 'gatherWeekRecordsUpTo 历史周文件缺失 META 声明');
+    let caught = null;
+    try { gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2); } catch (e) { caught = e; }
+    assert(caught, '应抛错');
+    assert(/缺少 META 声明/.test(caught.message), `错误信息应点名"缺少 META 声明"，实际：${caught.message}`);
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+  }
+  console.log('PASS wall_order M3：历史周数据文件整体缺失 META 声明时被结构化报错（teaching-order-week-mismatch，点名"缺少 META 声明"），不再因 `&&` 短路而静默放行');
+}
+{
+  // M3 第二种情形：META 存在，但 week 字段不是合法整数（这里用字符串 "1"，
+  // 模拟手滑写成字符串而不是数字——`"1" !== 1` 本来就会触发原有的"不一致"分支，
+  // 但那句措辞是"与文件名对应的周次不一致"，不准确描述"week 字段本身类型不对"
+  // 这类问题；这里改用更贴近"类型错误"的输入：非整数的浮点数 1.5，用真实文本
+  // 做最小手术式替换）。
+  const week01Path = path.join(ROOT, 'frontend', 'src', 'weeks', 'week01.data.js');
+  const realWeek01Raw = fs.readFileSync(week01Path, 'utf8');
+  const nonIntegerRaw = realWeek01Raw.replace('"week": 1,', '"week": 1.5,');
+  assert.notEqual(nonIntegerRaw, realWeek01Raw, '替换应生效，检查 week01.data.js 里 "week": 1, 的写法是否已变');
+  const originalReadFileSync = fs.readFileSync;
+  fs.readFileSync = function (filePath, ...rest) {
+    if (String(filePath) === week01Path) return nonIntegerRaw;
+    return originalReadFileSync.call(fs, filePath, ...rest);
+  };
+  try {
+    assertThrows(() => gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2),
+      'teaching-order-week-mismatch', 'gatherWeekRecordsUpTo 历史周文件 META.week 非整数');
+    let caught = null;
+    try { gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2); } catch (e) { caught = e; }
+    assert(caught, '应抛错');
+    assert(/不是合法整数/.test(caught.message), `错误信息应点名"不是合法整数"，实际：${caught.message}`);
+    assert.equal(caught.actual, 1.5, '错误应点名 actual（文件内容自称的非法周次）为 1.5');
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+  }
+  console.log('PASS wall_order M3：历史周数据文件 META.week 非整数（1.5）时被结构化报错（teaching-order-week-mismatch，点名"不是合法整数"），不与"周次不一致"那句混为一谈');
+}
 
 // ============================================================================
 // ③ expectedWallOrder：displayOnWall:false 过滤——第五个失败 fixture。

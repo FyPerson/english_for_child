@@ -45,6 +45,18 @@ function assertCvcByGraphemes(word, d, taught, fail, label) {
     return;
   }
   if (ids.length !== 3) { fail(`${label}不是三个字位：${word}（实际 ${ids.length} 个）`); return; }
+  /* L1（轮 D 复审，外审 low，2026-09-10）：这条判据当前是恒真式，不是有判别力的
+   * 检查——防御性分支，标注理由不删代码（与 check_data.js ③ 同一处 L1 标注同一个
+   * 道理）。`ids` 来自 `segmentWord(normalized, adaptedSounds, explicitSegments)`
+   * ——非显式路径只会枚举 adaptedSounds 自己的键，显式 segments 路径同样先校验
+   * 每个 ID 都是 adaptedSounds 的自有键（不合法直接抛错，走上面的 catch 分支）。
+   * `taught` 是调用方传入的 `new Set(Object.keys(d.SOUNDS || {}))`，而
+   * `adaptedSounds = withGraphemeFallback(d.SOUNDS || {})`——withGraphemeFallback
+   * 只逐键补 grapheme 字段的值，不增删键（`Object.keys(sounds).forEach` 逐键
+   * 原样搬进 `out`），两者键集合恒等，`ids` 里的每个 ID 必然已经在 `taught` 里，
+   * `untaught` 恒为空数组。只有 taught 与 adaptedSounds 的键集合出现分离时（比如
+   * 将来引入"允许分词但尚未教学"的字位表，taught 需要换成那个更窄的"已教"子集），
+   * 这条判据才会有真正的判别力。 */
   const untaught = ids.filter(id => !taught.has(id));
   if (untaught.length) { fail(`${label}含未教字位：${word}（[${untaught.join(',')}]）`); return; }
   let types;

@@ -812,3 +812,78 @@ function scanForLegacyTrue(files) {
 
   console.log('PASS grapheme migration（M2：load_data 的 META 探测放宽缩进/等号空白形态，并限定到 <script> 内容，方案 §3.8）：缩进/无空格等号/等号后换行三类合法声明均能正确探测且端到端加载成功；<script> 之外的正文伪声明不被误判，仍正确判定缺 META');
 }
+
+// ============================================================================
+// M1（轮 D 复审，外审 medium，2026-09-10）：M2 只把"探测"（META_DECLARATION_RE
+// 那一次 .test()）限定到了 <script> 内容，真正"抽取"声明体的 declaration(raw, n)
+// 改前一直传整份 raw——HTML 正文若在行首恰好出现字面量声明（比如展示代码示例），
+// declaration() 会在整份文档里匹配到第一个出现的声明，可能是正文里的伪声明，
+// 不是 <script> 里那份真实数据。测试：正文以换行开头且行首有伪声明（RESERVED），
+// <script> 内另有一份真实合法声明——加载出来的应该是 <script> 内那份，不是正文
+// 那份伪声明。
+// ============================================================================
+{
+  const { loadData, extractScriptContents } = require('../../tools/validation/load_data');
+
+  const fakeReserved = "\nconst RESERVED = ['fake','leaked','from','body','oops'];\n";
+  const realScriptBody = [
+    "const META = {\"week\":1};",
+    "const RESERVED = ['ram','hem','rid','dam','kid'];",
+    "const SOUNDS = {};",
+    "const W = {};",
+    "const WALL_HINT = {};",
+    "const BOOK = {pages:[]};",
+    "const FIRST_TEACH_DAY = {};",
+    "const G1_ROUNDS = {};",
+    "const G1_THEME = {};",
+    "const G3_PAIRS = [];",
+    "const G4_WORDS = [];",
+    "const G5_WHITELIST = [];",
+    "const DAYS = [];"
+  ].join('\n');
+  const html = `<!doctype html><html><body>${fakeReserved}<script>\n${realScriptBody}\n</script></body></html>`;
+
+  // 先确认这份合成 HTML 真的复现了"正文行首有伪声明、且它在整份文档里排在
+  // <script> 之前"这个前提条件——不确认这一点，下面即使测试通过也可能只是没有
+  //真正构造出会触发旧 bug 的场景。
+  const { declaration } = require('../../tools/validation/load_data');
+  assert(declaration(html, 'RESERVED').includes('fake'),
+    'M1 前提：直接对整份 raw HTML 调用 declaration() 应该命中正文里的伪声明（这正是改前的行为，用来确认合成 HTML 真的复现了 bug 场景）');
+  assert(declaration(extractScriptContents(html), 'RESERVED').includes('ram'),
+    'M1 前提：对 extractScriptContents(html) 调用 declaration() 应该命中 <script> 内的真实声明');
+
+  const box = loadData(html, true);
+  // box.RESERVED 是在 loadData 内部 vm.runInNewContext 的独立上下文里构造出的数组
+  // ——跨 realm 的数组字面量与当前 realm 的 Array 原型链不是同一个对象，
+  // assert/strict 的 deepStrictEqual 会因为"结构相同但不是同一原型链"判不相等
+  // （"same structure but are not reference-equal"），不是本条断言真正关心的差异；
+  // 用 [...box.RESERVED] 把内容搬回当前 realm 的普通数组再比较。
+  assert.deepEqual([...box.RESERVED], ['ram', 'hem', 'rid', 'dam', 'kid'],
+    `M1：loadData 应该取 <script> 内的真实 RESERVED 声明，不应该被正文里排在它之前的伪声明"劫持"，实际：${JSON.stringify(box.RESERVED)}`);
+  assert.equal(box.META && box.META.week, 1, 'M1：META 仍应正确加载（探测本身在 M2 已经限定到 script，未受影响）');
+
+  console.log('PASS grapheme migration（M1：load_data 的抽取阶段同步限定到 <script> 内容）：正文行首伪声明排在 <script> 之前时，loadData 取到的仍是 <script> 内的真实声明，不会被正文伪声明劫持');
+}
+
+// ============================================================================
+// M2（轮 D 复审，外审 medium，2026-09-10）：extractScriptContents 的正则改前没有
+// `i` 标志——`<SCRIPT>`/`<Script>` 这类大小写混排的标签名会被漏收，等价于"这份
+// HTML 里没有 script"，导致探测/抽取都拿到空字符串。测试：全大写 `<SCRIPT>` 与
+// 首字母大写 `<Script>` 两种写法均应被正确识别并提取出内容；同时用一份 ID 含引号
+// 的最小场景注释说明当前范围（不含 `>` 属性值的标签才在支持范围内，见函数头注释）。
+// ============================================================================
+{
+  const { loadData, extractScriptContents } = require('../../tools/validation/load_data');
+
+  const upper = '<!doctype html><html><body><SCRIPT>\nconst META={"week":9};\n</SCRIPT></body></html>';
+  assert.equal(extractScriptContents(upper).trim(), 'const META={"week":9};',
+    'M2：全大写 <SCRIPT>...</SCRIPT> 应被正确提取内容');
+  assert.equal(loadData(upper, true).META.week, 9, 'M2：全大写 <SCRIPT> 标签应能端到端加载出 META.week===9');
+
+  const mixed = '<!doctype html><html><body><Script>\nconst META={"week":10};\n</Script></body></html>';
+  assert.equal(extractScriptContents(mixed).trim(), 'const META={"week":10};',
+    'M2：混合大小写 <Script>...</Script> 应被正确提取内容');
+  assert.equal(loadData(mixed, true).META.week, 10, 'M2：混合大小写 <Script> 标签应能端到端加载出 META.week===10');
+
+  console.log('PASS grapheme migration（M2：extractScriptContents 正则加 i 标志）：<SCRIPT>/<Script> 大小写混排标签均能被正确识别并提取内容，端到端加载正常');
+}

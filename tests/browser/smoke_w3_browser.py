@@ -51,6 +51,68 @@ DUMB_BUTTON = ("button.tile:not([data-sayph]):not([data-say])"
                ":not([data-g4-tile]):not([data-g4-slot]):not([data-g5-tile]):not([data-g5-slot])")
 
 
+def find_tile_by_grapheme_id(pg, grapheme_id):
+    """按 `dataset.graphemeId === grapheme_id` 精确筛选点亮墙积木（L2，轮 D 复审，
+    外审 low，2026-09-10）。
+
+    改前用 f-string 把 grapheme_id 直接拼进 CSS 属性选择器字符串
+    （`f'.tiles-demo .tile[data-grapheme-id="{ch}"]'`）——当前四周真实字位 ID
+    都是简单小写字母/双字母组合，恰好不含引号，问题一直没有暴露，但这个写法本身
+    没有对 CSS 选择器特殊字符（引号、反斜杠等）做任何转义，grapheme_id 若含 `"`
+    会直接破坏选择器语法（Playwright 会抛 SyntaxError，不是"找不到元素"这种清晰
+    失败）。改法：不把 id 拼进选择器字符串，整段比较逻辑挪进 page.evaluate 在
+    浏览器端执行，id 作为参数传递（Playwright 会把它安全地序列化传给浏览器，不
+    经过字符串拼接/转义），用 `element.dataset.graphemeId === id` 做精确相等比较。
+
+    返回 dict：{count, tagName, innerText}——count!=1 时 tagName/innerText 为 None
+    （调用方不应该在那种情况下继续读取单个元素的细节）。"""
+    return pg.evaluate(
+        """(id) => {
+            const matches = [...document.querySelectorAll('.tiles-demo .tile')]
+                .filter(el => el.dataset.graphemeId === id);
+            return {
+                count: matches.length,
+                tagName: matches.length === 1 ? matches[0].tagName : null,
+                innerText: matches.length === 1 ? matches[0].innerText : null
+            };
+        }""",
+        grapheme_id,
+    )
+
+
+def _verify_find_tile_by_grapheme_id_handles_quotes(br):
+    """L2 定位单测：只测 find_tile_by_grapheme_id 这个定位函数本身，不需要真实
+    课程数据含引号字符——用 page.set_content() 起一个最小合成页面（不导航到任何
+    构建产物），验证：
+      ① grapheme_id 含双引号时仍能精确定位到目标元素（改前的 CSS 字符串拼接
+         写法会在这里直接抛 SyntaxError，不是"找不到"）；
+      ② 另一个 id 也含引号、但值不同的元素不会被误命中（精确相等，不是子串匹配）。
+    用独立的 page（不是主流程那个已经导航到真实周课件的 pg），跑完关闭，不影响
+    主流程后续断言。"""
+    pg2 = br.new_page()
+    try:
+        pg2.set_content(
+            '<div class="tiles-demo">'
+            '<button class="tile" data-grapheme-id=\'ai&quot;x\'>AI</button>'
+            '<button class="tile" data-grapheme-id=\'ai&quot;y\'>AY</button>'
+            '</div>'
+        )
+        quoted_id = 'ai"x'
+        other_id = 'ai"y'
+        match = find_tile_by_grapheme_id(pg2, quoted_id)
+        ok(match["count"] == 1,
+           f"L2 定位单测：grapheme_id 含引号（{quoted_id!r}）时应精确命中 1 个元素，实际 {match['count']}")
+        if match["count"] == 1:
+            ok(match["innerText"] == "AI", f"L2 定位单测：命中元素应是 AI 那一块，实际 innerText={match['innerText']!r}")
+        other_match = find_tile_by_grapheme_id(pg2, other_id)
+        ok(other_match["count"] == 1 and other_match["innerText"] == "AY",
+           f"L2 定位单测：另一个同样含引号但值不同的 id（{other_id!r}）应精确命中 AY 那一块，不与前者混淆，实际 {other_match}")
+        no_match = find_tile_by_grapheme_id(pg2, 'ai"z')
+        ok(no_match["count"] == 0, f"L2 定位单测：不存在的 id 应精确命中 0 个元素，实际 {no_match['count']}")
+    finally:
+        pg2.close()
+
+
 with sync_playwright() as p:
     br = p.chromium.launch()
     pg = br.new_page(viewport={"width": 1280, "height": 900})
@@ -91,14 +153,14 @@ with sync_playwright() as p:
     for ch in NEW_SOUNDS:
         is_live = pg.evaluate("(ch) => hasPhoneme(ch)", ch)
         label = pg.evaluate("(ch) => graphemeLabel(ch, SOUNDS)", ch)
-        tile = pg.locator(f'.tiles-demo .tile[data-grapheme-id="{ch}"]')
-        ok(tile.count() == 1,
-           f"字位 {ch}（字形 {label}）在点亮墙上应唯一存在，实际命中 {tile.count()} 个元素")
-        if tile.count() == 1:
-            tag = tile.evaluate("el => el.tagName")
+        match = find_tile_by_grapheme_id(pg, ch)
+        ok(match["count"] == 1,
+           f"字位 {ch}（字形 {label}）在点亮墙上应唯一存在，实际命中 {match['count']} 个元素")
+        if match["count"] == 1:
+            tag = match["tagName"]
             ok(tag == ("BUTTON" if is_live else "DIV"),
                f"字位 {ch}（字形 {label}）的元素类型应与 hasPhoneme(ch)={is_live} 一致，实际 {tag}")
-            displayed = tile.inner_text()
+            displayed = match["innerText"]
             ok(displayed == label,
                f"字位 {ch} 在点亮墙上的显示文本应等于其字形 {label!r}，实际 {displayed!r}")
     ok(pg.locator(".tiles-demo " + DUMB_BUTTON).count() == 0, "点亮墙存在哑巴按钮")
@@ -471,6 +533,9 @@ with sync_playwright() as p:
     # 鼠标 / 键盘 / 触屏三种输入、右键、滑出、删存储失败、主题保留等完整用例在 smoke_parent_panel.py（三周通用）
 
     ok(not errors, "控制台报错：" + "; ".join(errors[:5]))
+
+    _verify_find_tile_by_grapheme_id_handles_quotes(br)
+
     br.close()
 
 print(f"通过 {passes} 项，失败 {len(fails)} 项")
