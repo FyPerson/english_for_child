@@ -78,8 +78,12 @@ class UntaughtLetterSourceCoverageTests(unittest.TestCase):
         _, f = count_pass_fail(result.stdout)
         self.assertGreater(f, self.baseline_fail,
             f'应比基线（{self.baseline_fail}）多至少一条失败：{result.stdout[-1500:]}')
-        self.assertIn('"zat" 含未教字母 [z]', result.stdout,
-            '失败消息应点名具体的词与未教字母')
+        # M4（外审 medium，2026-09-10）后 ③ 改按字位 ID 分词判断，'z' 这个字母本身
+        # 不对应任何已教字位，segmentWord 找不到任何可行解析（zero solution），
+        # 消息因此是"无法按字位分词"而不是逐字符列出"含未教字母 [z]"——这是 M4
+        # 修复后的正确行为（逐字符列举是字符级判据才会给出的旧形态）。
+        self.assertIn('"zat" 无法按字位分词', result.stdout,
+            '失败消息应点名具体的词无法按字位分词（z 不是任何已教字位）')
         self.assertIn('来源：book-page', result.stdout,
             '失败消息应点名来源类型 book-page——这正是 B-M2 要证明的：BOOK.pages 这条真实消费入口此前从未被③检查过')
 
@@ -94,8 +98,9 @@ class UntaughtLetterSourceCoverageTests(unittest.TestCase):
         _, f = count_pass_fail(result.stdout)
         self.assertGreater(f, self.baseline_fail,
             f'应比基线（{self.baseline_fail}）多至少一条失败：{result.stdout[-1500:]}')
-        self.assertIn('"zat" 含未教字母 [z]', result.stdout,
-            '失败消息应点名具体的词与未教字母（family: heads=[...,\'z\'] + tail=\'at\' -> \'zat\'）')
+        # 同上：M4 后按字位 ID 分词，'z' 不是任何已教字位，segmentWord 零解。
+        self.assertIn('"zat" 无法按字位分词', result.stdout,
+            "失败消息应点名具体的词无法按字位分词（family: heads=[...,'z'] + tail='at' -> 'zat'，z 不是任何已教字位）")
         self.assertIn('来源：wordforge-family', result.stdout,
             '失败消息应点名来源类型 wordforge-family——这正是 B-M2 要证明的：wordforge 这条真实消费入口此前从未被③检查过')
 

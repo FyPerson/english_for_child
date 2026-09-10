@@ -2,6 +2,63 @@ const GLOBAL_POOL = 'shelf shaft chimp chunk quilt quest moist hoist thorn north
 const tokens = text => String(text || '').replace(/<[^>]*>/g, ' ').toLowerCase().match(/[a-z]+/g) || [];
 const normalize = text => tokens(text).join(' ');
 
+const { segmentWord, soundType } = require('../../frontend/src/shared/graphemes');
+const { withGraphemeFallback } = require('./sounds_grapheme_adapter');
+
+/* assertCvcByGraphemes(word, d, taught, fail, label)（第五处，外审，2026-09-10：
+ * 抽成共享辅助函数，weekly 与 monthly/W4 两条路径共用）：
+ *
+ * 改前 weekly 路径（validateWeekly）与 monthly/W4 路径（validateMonthlyW4）里各自
+ * 独立维护一份"周检词是不是已教 CVC"的判据——weekly 那份已在上一批（W5 阻塞第三条）
+ * 改成按字位 ID 判，monthly/W4 那份（原 :244 附近 `[...d.RESERVED, ...d.RESERVED_
+ * RETEST].forEach` 那段）还停在原样的字符级正则 `/^[^aeiou][aeiou][^aeiou]$/` +
+ * 逐字符成员检查——是同一处缺陷的孪生代码，当前 W4 真实数据全单字母字位所以两条
+ * 路径结论一致、看不出问题，但结构上是同一个未来会踩的坑（W10/W20/W40 起 monthly
+ * 路径会重新可达，届时若字位表出现多字母字位，这份字符级判据会重现 weekly 路径
+ * 已经修过的那个双向误判）。
+ *
+ * 判据本体与 weekly 路径改前逐字一致，只是不再各自维护一份：
+ *   ① segmentWord 分词失败（零解/多解无 segments）→ fail("...分词失败：word（
+ *      错误码）：message")，不崩溃；
+ *   ② 字位数不是 3 → fail("...不是三个字位：word（实际 N 个）")；
+ *   ③ 含未教字位（防御性，当前恒真，理由见原 weekly 路径头注释）→
+ *      fail("...含未教字位：word（[ids]）")；
+ *   ④ 形态不是 辅音-元音-辅音（按 SOUNDS[id].type 判）→
+ *      fail("...不是已教 CVC：word（形态 X-X-X，字位 [ids]）")。
+ * `label` 是失败消息里的主语前缀（weekly 传"周检词"，monthly/W4 传"周检/复测词"），
+ * 两条路径的既有失败文案措辞保持不变，只是判据本身统一。 */
+function assertCvcByGraphemes(word, d, taught, fail, label) {
+  let adaptedSounds;
+  try {
+    adaptedSounds = withGraphemeFallback(d.SOUNDS || {});
+  } catch (e) {
+    adaptedSounds = d.SOUNDS || {};
+  }
+  const normalized = normalize(word);
+  const wEntry = d.W && Object.prototype.hasOwnProperty.call(d.W, normalized) ? d.W[normalized] : undefined;
+  const explicitSegments = wEntry && Array.isArray(wEntry.segments) ? wEntry.segments : undefined;
+  let ids;
+  try {
+    ids = segmentWord(normalized, adaptedSounds, explicitSegments);
+  } catch (e) {
+    fail(`${label}分词失败：${word}（${e.code || 'error'}）：${e.message || e}`);
+    return;
+  }
+  if (ids.length !== 3) { fail(`${label}不是三个字位：${word}（实际 ${ids.length} 个）`); return; }
+  const untaught = ids.filter(id => !taught.has(id));
+  if (untaught.length) { fail(`${label}含未教字位：${word}（[${untaught.join(',')}]）`); return; }
+  let types;
+  try {
+    types = ids.map(id => soundType(id, adaptedSounds));
+  } catch (e) {
+    fail(`${label}字位类型无法判定：${word}（${e.code || 'error'}）：${e.message || e}`);
+    return;
+  }
+  if (!(types[0] === 'c' && types[1] === 'v' && types[2] === 'c')) {
+    fail(`${label}不是已教 CVC：${word}（形态 ${types.join('-')}，字位 [${ids.join(',')}]）`);
+  }
+}
+
 /* M3（外审 medium，2026-09-09）：泄漏判据的书面边界——`visibleWordSet`/下方
  * "测评词泄漏进教学内容" 检查，判定的是**完整词元（token）精确匹配**，不是子串匹配：
  *
@@ -136,60 +193,10 @@ function validateWeekly(d, ctx) {
     owner.add(w);
   });
 
-  /* W5 阻塞第三条（外审，2026-09-10）：改前的 CVC 判据是纯字符级正则
-   * `/^[^aeiou][aeiou][^aeiou]$/` + 逐字符成员检查——`rain` 这类三个字位、四个
-   * 字符的词必然被误判成"不是 CVC"，因为正则要求字符串本身恰好三个字符。改为
-   * 用 segmentWord 先把词分成字位 ID 数组（与 check_data.js 的 idsForWord 同一
-   * 口径：优先读 d.W[word].segments 做显式消歧），判据改成三条都按 ID 判：
-   *   ① 恰好 3 个字位（不是 3 个字符）；
-   *   ② 形态是 辅音-元音-辅音（用 SOUNDS[id].type 的 'c'/'v' 字段判，不是拿
-   *     grapheme 里的字母去猜——四周 data.js 与 graphemes.js 的 SOUNDS schema
-   *     本来就要求每条有合法 type 字段，不需要"字母是否在 aeiou 里"这条过渡
-   *     规则兜底）；
-   *   ③ 每个字位 ID 都在已教字位集合（taught，即 Object.keys(d.SOUNDS)）里——
-   *     这一条在当前实现下实际上恒真：segmentWord 只能从传入的 adaptedSounds
-   *     表里挑字位，adaptedSounds 与 taught 同源于 d.SOUNDS，任何返回的 ID
-   *     必然已经是 taught 的成员；真正的"含未教字位"情形会在 segmentWord 内部
-   *     就找不到可行解析而抛 segment-unknown（归到下面的"分词失败"分支）。
-   *     保留这条显式检查是为了防御未来 adaptedSounds 的键空间与 taught 出现
-   *     分歧（比如某次重构给 adaptedSounds 派生出 taught 里没有的别名键），不是
-   *     当前就会失败的判据——如实说明，不假装它现在能独立抓到什么。
-   * adaptedSounds 的构造挪到这条检查之前（本来在下面单独的"三个字位"检查那里），
-   * 两条检查（原来是"字符级 CVC" + "字位数"两处独立判断）合并成一处，不再各自
-   * 维护一份分词/取值逻辑。分词失败时 fail(...) 报出、带错误码，不让异常冒泡。 */
-  const { segmentWord, soundType } = require('../../frontend/src/shared/graphemes');
-  const { withGraphemeFallback } = require('./sounds_grapheme_adapter');
-  let adaptedSounds;
-  try {
-    adaptedSounds = withGraphemeFallback(d.SOUNDS || {});
-  } catch (e) {
-    adaptedSounds = d.SOUNDS || {};
-  }
-  d.RESERVED.forEach(word => {
-    const normalized = normalize(word);
-    const wEntry = d.W && Object.prototype.hasOwnProperty.call(d.W, normalized) ? d.W[normalized] : undefined;
-    const explicitSegments = wEntry && Array.isArray(wEntry.segments) ? wEntry.segments : undefined;
-    let ids;
-    try {
-      ids = segmentWord(normalized, adaptedSounds, explicitSegments);
-    } catch (e) {
-      fail(`周检词分词失败：${word}（${e.code || 'error'}）：${e.message || e}`);
-      return;
-    }
-    if (ids.length !== 3) { fail(`周检词不是三个字位：${word}（实际 ${ids.length} 个）`); return; }
-    const untaught = ids.filter(id => !taught.has(id));
-    if (untaught.length) { fail(`周检词含未教字位：${word}（[${untaught.join(',')}]）`); return; }
-    let types;
-    try {
-      types = ids.map(id => soundType(id, adaptedSounds));
-    } catch (e) {
-      fail(`周检词字位类型无法判定：${word}（${e.code || 'error'}）：${e.message || e}`);
-      return;
-    }
-    if (!(types[0] === 'c' && types[1] === 'v' && types[2] === 'c')) {
-      fail(`周检词不是已教 CVC：${word}（形态 ${types.join('-')}，字位 [${ids.join(',')}]）`);
-    }
-  });
+  // W5 阻塞第三条 / 第五处（外审，2026-09-10）：CVC 判据抽成共享函数
+  // assertCvcByGraphemes（文件头部），weekly 与 monthly/W4 两条路径共用，见该
+  // 函数头注释的完整说明（改前是纯字符级正则，双字母字位场景会双向误判）。
+  d.RESERVED.forEach(word => assertCvcByGraphemes(word, d, taught, fail, '周检词'));
 
   const wKeysByLower = new Map();
   Object.keys(d.W || {}).forEach(k => wKeysByLower.set(k.toLowerCase(), k));
@@ -240,9 +247,12 @@ function validateMonthlyW4(d, ctx) {
     if (owner.has(w)) fail(`测评词冲突：${w} 同时属于 ${owner.get(w)} 与 ${key}`);
     owner.set(w, key);
   }));
-  [...d.RESERVED, ...d.RESERVED_RETEST].forEach(w => {
-    if (!/^[^aeiou][aeiou][^aeiou]$/.test(normalize(w)) || [...normalize(w)].some(c => !taught.has(c))) fail(`周检/复测词不是已教 CVC：${w}`);
-  });
+  // 第五处（外审，2026-09-10）：与 weekly 路径共用 assertCvcByGraphemes（文件头部），
+  // 不再各自维护一份字符级正则——改前这里与 weekly 改前的判据是同一处缺陷的孪生
+  // 代码，当前 W4 真实数据全单字母字位所以两条路径结论一致、看不出问题，但
+  // W10/W20/W40 起 monthly 路径重新可达后，字位表若出现多字母字位，这份字符级
+  // 判据会重现 weekly 路径已经修过的双向误判。
+  [...d.RESERVED, ...d.RESERVED_RETEST].forEach(w => assertCvcByGraphemes(w, d, taught, fail, '周检/复测词'));
   const textParts = collectTextParts(d, teachingBlocks);
   const visible = visibleWordSet(textParts);
   for (const w of owner.keys()) if (visible.has(w)) fail(`测评词泄漏进教学内容：${w}`);

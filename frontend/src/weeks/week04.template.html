@@ -1425,8 +1425,8 @@ function renderHome(){
           const cls = `tile ${soundType(c,SOUNDS)==='v'?'tile--v':'tile--c'} ${lit?'tile--wallon':'tile--walloff'}`;
           const lab = `${canHear?`听 ${SOUNDS[c].ipa} 的发音`:`字母 ${label}`}${lit?'（已点亮）':''}`;
           return canHear
-            ? `<button class="${cls}" data-sayph="${escapeHtmlAttribute(c)}" aria-label="${escapeHtmlAttribute(lab)}">${escapeHtmlText(label)}</button>`
-            : `<div class="${cls}" role="img" aria-label="${escapeHtmlAttribute(lab)}">${escapeHtmlText(label)}</div>`;
+            ? `<button class="${cls}" data-sayph="${escapeHtmlAttribute(c)}" data-grapheme-id="${escapeHtmlAttribute(c)}" aria-label="${escapeHtmlAttribute(lab)}">${escapeHtmlText(label)}</button>`
+            : `<div class="${cls}" role="img" data-grapheme-id="${escapeHtmlAttribute(c)}" aria-label="${escapeHtmlAttribute(lab)}">${escapeHtmlText(label)}</div>`;
         }).join('')}
         <span style="font-size:28px;color:var(--ink-3);margin:0 6px">→</span>
         <button class="tile tile--c" data-say="dog" style="width:auto;padding:0 22px;font-size:34px">dog</button>

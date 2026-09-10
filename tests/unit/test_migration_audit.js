@@ -336,7 +336,10 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
      printBookArtHTML 三个共享函数）八次更新：render-blocks.js 在 tileHTML 之后、
      wallTileLitState 之后新增了这三个函数（+26 行），render-blocks-tileHTML/
      render-blocks-forms-join 两处单纯因插入位置在它们之前而整体下移 +26 行
-     （113→139、116→142）；pattern 本身未变，不是消费点代码形状变化。 */
+     （113→139、116→142）；pattern 本身未变，不是消费点代码形状变化。
+     2026-09-10 外审第四批（H2：③ 豁免逻辑改写注释 +1 行）九次更新：check_data.js
+     的③附近头注释新增一行，check-data-schema-gate 单纯因这一行插入而再 +1 行
+     （105→106）；pattern 本身未变。 */
   const expectMigrated = (id, file, line) => {
     const f = lConsumerFindings.find(x => x.findingId === 'l-field-consumer:' + id);
     assert(f, `应有 l-field-consumer:${id}`);
@@ -348,7 +351,7 @@ console.log(`PASS migration_audit：真实 W1–W4 审计文档结构合法，${
   expectMigrated('render-blocks-tileHTML', 'frontend/src/shared/render-blocks.js', 139);
   expectMigrated('render-blocks-forms-join', 'frontend/src/shared/render-blocks.js', 142);
   expectMigrated('games-flash-display', 'frontend/src/shared/games.js', 1209);
-  expectMigrated('check-data-schema-gate', 'tools/validation/check_data.js', 105);
+  expectMigrated('check-data-schema-gate', 'tools/validation/check_data.js', 106);
   console.log('PASS migration_audit（H-3 验证 + H2 回归 + 4b 二次更新）：「L 字段消费点」四条全局发现已从 unknown 恢复为可判定的 pass（pattern 随 4b 消费者兼容层改动同步更新，精确定位到各自代码行）');
 }
 

@@ -188,6 +188,38 @@ console.log('PASS wall_order gatherWeekRecordsUpTo：不在 project.json weeks �
   }
   console.log('PASS wall_order M5：历史周数据文件解析失败（语法错误）被结构化报错（teaching-order-file-parse-failed），不再是未包装的原生异常');
 }
+{
+  // M1（外审 medium，2026-09-10）：gatherWeekRecordsUpTo 与 getExpectedWeeksUpTo
+  // 同源于 project.json 的 weeks 列表，历史记录的 week 字段改前直接信任"文件名
+  // 对应第几周"，从未回头校验文件内容自称的 box.META.week 是否也等于这个数——
+  // 入口级证明：monkeypatch fs.readFileSync，让 week01.data.js 这一路径返回一份
+  // META.week 被改写成 99（与文件名对应的周次 1 不一致）的真实周数据文本（在真实
+  // week01.data.js 内容基础上只替换 week 字段，不是从零手写的假数据），验证
+  // gatherWeekRecordsUpTo 会抛 teaching-order-week-mismatch 并点名 file/expected/actual，
+  // 不再静默信任文件名。
+  const week01Path = path.join(ROOT, 'frontend', 'src', 'weeks', 'week01.data.js');
+  const realWeek01Raw = fs.readFileSync(week01Path, 'utf8');
+  const mismatchedRaw = realWeek01Raw.replace('"week": 1,', '"week": 99,');
+  assert.notEqual(mismatchedRaw, realWeek01Raw, '替换应生效，检查 week01.data.js 里 "week": 1, 的写法是否已变');
+  const originalReadFileSync = fs.readFileSync;
+  fs.readFileSync = function (filePath, ...rest) {
+    if (String(filePath) === week01Path) return mismatchedRaw;
+    return originalReadFileSync.call(fs, filePath, ...rest);
+  };
+  try {
+    assertThrows(() => gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2),
+      'teaching-order-week-mismatch', 'gatherWeekRecordsUpTo 历史周文件 META.week 与文件名不一致');
+    let caught = null;
+    try { gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2); } catch (e) { caught = e; }
+    assert(caught, '应抛错');
+    assert.equal(caught.expected, 1, '错误应点名 expected（文件名对应的周次）为 1');
+    assert.equal(caught.actual, 99, '错误应点名 actual（文件内容自称的周次）为 99');
+    assert.equal(caught.file, week01Path, '错误应点名具体文件路径');
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+  }
+  console.log('PASS wall_order M1：历史周数据文件 META.week 与文件名对应周次不一致时被结构化报错（teaching-order-week-mismatch，带 file/expected/actual），不再静默信任文件名');
+}
 
 // ============================================================================
 // ③ expectedWallOrder：displayOnWall:false 过滤——第五个失败 fixture。

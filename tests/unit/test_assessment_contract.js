@@ -10,7 +10,10 @@ const {validateAssessment, GLOBAL_POOL} = require('../../tools/validation/assess
 function fixture(){
   return {
     META:{week:4, assessmentMode:'monthly', consolidation:true, wallLetters:'satipnckehrmdgoulfb'.split('')},
-    SOUNDS:Object.fromEntries('satipnckehrmdgoulfb'.split('').map(c=>[c,{}])),
+    // 第五处（外审，2026-09-10）：monthly/W4 路径的 CVC 判据改用 segmentWord + soundType
+    // 后需要每个 SOUNDS 条目有合法 grapheme（非空字符串）与 type（'c'/'v'）字段——
+    // 改前的裸 `{}` 对字符级判据够用（只查键存不存在），现在补齐，元音字母对应 'v'。
+    SOUNDS:Object.fromEntries('satipnckehrmdgoulfb'.split('').map(c=>[c,{grapheme:c,type:'aeiou'.includes(c)?'v':'c'}])),
     RESERVED:['hem','ram','rid','dam','kid'], RESERVED_RETEST:['hum','hemx','rag','rim','rot'],
     PROBE_A:[],PROBE_B:[],GLOBAL_RESERVED:GLOBAL_POOL,
     ASSESS_TEXT:Array(16).fill('A pup is up.').join(' '),TAUGHT_SIGHT:['a','i','is','see','the','to'],
@@ -41,6 +44,44 @@ reject('not consolidation',d=>d.META.consolidation=false,'巩固周');
 reject('new letter declaration',d=>d.FIRST_TEACH_DAY.z=1,'新字位');
 reject('new sight-word escape',d=>d.TAUGHT_SIGHT.push('zebra'),'六词');
 console.log('PASS assessment contract: valid fixture and 15 negative cases (monthly, W4)');
+
+// ============================================================================
+// 第五处（外审，2026-09-10）：monthly/W4 路径的 CVC 判据改用共享函数
+// assertCvcByGraphemes（与 weekly 路径的"W5 阻塞第三条"同一个函数），用同一张
+// 合成字位表（含 ai）证明两条路径现在行为一致——正例 rain（写了 segments）通过，
+// 反例 rains（四个字位）报"不是三个字位"（改前的字符级正则会因为 r/a/i/n/s
+// 都是已教字符而误判 rains 也"看起来合规"，只是恰好长度不对才被正则挡住；这里
+// 换成明确的字位数判据，不是巧合挡住）。
+// ============================================================================
+{
+  const d = structuredClone(base);
+  d.SOUNDS.ai = {grapheme:'ai', type:'v'};
+  d.RESERVED_RETEST[4] = 'rain'; // 原 'rot'
+  d.W.rain = {zh:'雨', segments:['r', 'ai', 'n']};
+  const errors = validateAssessment(d);
+  // ⚠️ 范围说明：这里不断言 errors 为空数组。给 'rain' 补一条 d.W 条目（供
+  // assertCvcByGraphemes 读取 explicitSegments）会顺带触发 monthly 路径一个与
+  // 本次修复无关的既有行为——collectTextParts(d, teachingBlocks) 在 monthly 路径
+  // 没有像 weekly 路径那样传 excludeDictionaryKeys 排除测评词自己的释义条目，
+  // 词典键本身（'rain'）会被当成"可见文本"，与同名的 RESERVED_RETEST 词形成
+  // 自己泄漏自己的假阳性——这是 monthly 路径本就存在、与"CVC 判据"无关的另一个
+  // 缺口（真实 W4 数据里 RESERVED/RESERVED_RETEST 词从不在 d.W 里声明释义，所以
+  // 从未暴露过），不在本次「第五处」任务范围内，如实记录不顺带修。断言收窄为：
+  // 不应出现任何 CVC 相关的失败（分词失败/字位数/未教字位/不是已教 CVC）。
+  const cvcRelated = errors.filter(e => e.includes('分词失败') || e.includes('不是三个字位') || e.includes('含未教字位') || e.includes('不是已教 CVC'));
+  assert.deepEqual(cvcRelated, [], 'monthly/W4 正例：rain（三个字位 r/ai/n，写了 segments）不应报任何 CVC 相关失败，实际：' + JSON.stringify(errors));
+  console.log('PASS 第五处正例：monthly/W4 路径 rain（写了 segments）的 CVC 判据本身通过（另有一条与本次修复无关的既有"词典自泄漏"行为，已如实记录，不在本次范围内）');
+}
+{
+  const d = structuredClone(base);
+  d.SOUNDS.ai = {grapheme:'ai', type:'v'};
+  d.RESERVED_RETEST[4] = 'rains'; // 原 'rot'
+  d.W.rains = {zh:'雨（复数，合成测试词）', segments:['r', 'ai', 'n', 's']};
+  const errors = validateAssessment(d);
+  assert(errors.some(e => e.includes('周检/复测词不是三个字位：rains')),
+    'monthly/W4 反例：rains（四个字位）应报"不是三个字位"，实际：' + JSON.stringify(errors));
+  console.log('PASS 第五处反例：monthly/W4 路径 rains（四个字位）报"不是三个字位"（不是被字符级正则的长度巧合挡住）');
+}
 
 // ---- M1 回归：方案 §0.3「原样提取」要求逐字保留重构前的判据顺序，重构后
 //      `checkConsolidation` 一度被挪到了 `week===4` 块之后（重构前在之前）。

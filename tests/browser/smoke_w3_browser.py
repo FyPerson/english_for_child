@@ -76,15 +76,14 @@ with sync_playwright() as p:
     # 自己的块"（比如未来墙上插入一个不对应任何字位的元素、或渲染顺序改变，下标错位
     # 后这条断言依然会照常通过，因为它比的是同一个错位下标下的两侧，不是真实身份）。
     #
-    # 改法：按 DOM 身份定位每个本周新音的块，不依赖下标对齐。墙块渲染就两种形态
-    # （见 frontend/src/weeks/week03.template.html hero 积木墙拼接逻辑）：
-    #   - 有真人录音（hasPhoneme(ch) 为真）：<button data-sayph="ID">字形</button>——
-    #     data-sayph 就是字位 ID 本身，是最稳的身份属性，直接精确匹配。
-    #   - 无录音：<div role="img">字形</div>，DOM 里没有任何属性直接携带字位 ID
-    #     （这是模板本身的限制，不是测试能绕过的），只能退而用"显示字形文本"这个
-    #     次稳属性——graphemeLabel(ch, SOUNDS) 对当前四周数据（全部单字母字位）
-    #     是逐字位唯一的，用精确文本匹配（:text-is，不是子串命中）加"唯一存在"
-    #     断言合起来钉住身份，比原来的下标对齐更接近"按这个块本身认出它"。
+    # 改法：按 DOM 身份定位每个本周新音的块，不依赖下标对齐，也不依赖显示字形文本。
+    # L2（外审 low，2026-09-10）：上一版无录音块只能退而用 `:text-is(字形)` 精确
+    # 文本匹配定位——这套判据隐含"字形在墙上逐字位唯一"这个前提，Playwright 的
+    # `:text-is` 参数也没有对特殊字符转义（字形若含引号/反斜杠这类字符会让选择器
+    # 语法本身出错）。四份模板 hero 墙渲染处（button/div 两个分支）现在统一加了
+    # `data-grapheme-id="<ID>"` 属性（与 data-sayph 语义不同：data-sayph 只在有
+    # 录音的 button 分支才有，data-grapheme-id 两个分支都有），改用这个属性精确
+    # 定位，不再需要文本匹配这条退路。
     wall_letters = pg.evaluate("assertIdList(META.wallLetters, SOUNDS)")
     all_tiles = pg.locator(".tiles-demo .tile")
     ok(all_tiles.count() == len(wall_letters) + 1,
@@ -92,10 +91,7 @@ with sync_playwright() as p:
     for ch in NEW_SOUNDS:
         is_live = pg.evaluate("(ch) => hasPhoneme(ch)", ch)
         label = pg.evaluate("(ch) => graphemeLabel(ch, SOUNDS)", ch)
-        if is_live:
-            tile = pg.locator(f'.tiles-demo .tile[data-sayph="{ch}"]')
-        else:
-            tile = pg.locator(f'.tiles-demo .tile:text-is("{label}")')
+        tile = pg.locator(f'.tiles-demo .tile[data-grapheme-id="{ch}"]')
         ok(tile.count() == 1,
            f"字位 {ch}（字形 {label}）在点亮墙上应唯一存在，实际命中 {tile.count()} 个元素")
         if tile.count() == 1:

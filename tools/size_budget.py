@@ -27,13 +27,18 @@ WARN_MARGIN_FRACTION = 0.15  # T8②：余量低于预算的这个比例时打�
 def check(products_dir=None, config=None):
     """Raise SystemExit when any counted product exceeds its budget; print every measured size.
 
-    T8②（外审 medium，2026-09-10）：硬失败判据不变（size > limit 才 SystemExit）。
-    新增分级预警——不改退出码，只是把"交付末端才发现触线"提前到每次 check 都能看见：
-    每个产物额外打印余量（MB）；余量低于预算的 15%（即 size > 0.85×limit）时，
-    在 ok/OVER 那一行之外再打一行 `SIZE WARN <name>: 余量 X.XX MB (Y%)`。
-    余量本身已经 <= 0（即 size >= limit，含恰好等于预算的边界）的产物只走 OVER/
-    硬失败分支，不重复打 WARN——WARN 是"还没触线但快了"的提前提醒，已经触线或
-    超线的产物已经有更明确的 OVER 信号，两条同时打反而让人分不清严重程度。
+    T8②（外审 medium，2026-09-10；L1，2026-09-10 修正本段注释与代码的偏差）：
+    硬失败判据不变，仍然只有 `size > limit`（严格大于）才 SystemExit——`size ===
+    limit`（恰好等于预算）按既有契约通过，不算 OVER。新增分级预警不改这条判据，
+    只是把"交付末端才发现触线"提前到每次 check 都能看见：每个产物额外打印余量
+    （MB）；`size > limit` 时走硬失败分支（打印 verdict=OVER 并计入 failures，
+    不重复打 WARN——OVER 本身已经是更明确的信号）；`size <= limit` 且余量低于
+    预算的 15%（即 size > 0.85×limit）时，在 ok 那一行之外再打一行
+    `SIZE WARN <name>: 余量 X.XX MB (Y%)`——**`size === limit`（余量恰好为零）
+    这个边界会落进这一支**：verdict 仍是 ok（因为不满足 `size > limit`），但
+    margin_bytes===0 必然小于 `WARN_MARGIN_FRACTION * limit`（除非 limit 本身是
+    0），所以恰好等于预算的产物是"ok + 打 WARN"，不是"OVER"——上一版注释曾把这
+    个边界错写成"size >= limit 走 OVER"，与代码的 `>` 判据不一致，这里改正。
     """
     config = config or load_config()
     directory = Path(products_dir) if products_dir is not None else BUILD

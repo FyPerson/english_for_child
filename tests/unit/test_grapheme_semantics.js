@@ -194,9 +194,12 @@ console.log('PASS grapheme semantics: 四类预期差异（字位数/首字位/�
  *   - segment-ambiguous 但 box.W[word].segments 有显式声明 → 交给
  *     assertWordSemantics 验证表面串还原与每个 ID 在 SOUNDS 里存在，计入 executed
  *     （resolved，非独占地额外记入 explicitResolvedWords 供报告可见性）。
- *   - segment-unknown（零解，真的含未教字位）→ 单独计入 skippedUnknown，不算失败
- *     （这是教学设计的正常产物，比如 G1 听音找开头的图片干扰词、认读词，见方案
- *     §3.9「跳过必须分两类」）。
+ *   - segment-unknown（零解，真的含未教字位）→ **按记录来源精确豁免**（H1，外审
+ *     high，2026-09-10）：改前无条件把全部 segment-unknown 归 skippedUnknown，
+ *     严格消费来源（book-page/words/sentences/wordforge-* 等）里真出现零解也会
+ *     被悄悄放过——那是数据错误（词形超纲或漏写 explicitSegments），不是"教学
+ *     设计的正常产物"。改为只允许两类记录豁免，其余一律直接 FAIL（见
+ *     isZeroSolutionExemptRecord 头注释）。
  *   - segment-ambiguous 且 box.W[word].segments 缺失 → **必须 FAIL**（方案 §3.4：
  *     多解且无 segments 即校验器必须失败，本套件与生产校验器同一口径）。
  * 按 §3.9「逐来源守恒」：每个 word_consumers 来源（kind）各自断言
@@ -273,6 +276,64 @@ function verifyClassifyOneWordForSemanticsMustFailOnAmbiguity() {
     '传入正确 explicitSegments 后同一个多解词仍能正常放行');
 }
 
+/* isZeroSolutionExemptRecord(rec, sightWordsThisWeek, normalizedWord) -> boolean
+ * （H1，外审 high，2026-09-10）：判定某条 word_consumers 记录的零解
+ * （segment-unknown）是否属于教学设计的正常产物、可以豁免，而不是数据缺陷。
+ * 只允许两类：
+ *   - 认读词：不是"kind === 'sight' 的记录才豁免"，而是"这个词本周有没有被
+ *     声明为认读词"——认读词教会之后会作为已知词继续出现在 sentences/
+ *     book-page 等其他来源的句子里（实测：W1 的 see 同时以 sight/sentences/
+ *     book-page 三种 kind 出现），那些位置的零解同样是设计本身，不是数据缺陷。
+ *     用调用方按本周 kind==='sight' 记录预先收集的 sightWordsThisWeek 集合按
+ *     词（不是按当前记录的 kind）判定。
+ *   - kind === 'g1-rounds'：G1"声音抓抓乐"整场是听力辨音游戏，孩子只听不看不
+ *     拼读，pos（目标音正例）与 neg（干扰词反例）两个桶都不要求可解码——实测
+ *     W1 真实数据：a 轮的 pos 桶 cat/hat/map/bat、s 轮的 pos 桶 sun/sock/snake
+ *     在 W1 字位表下同样是零解（本周只教 s a t i p n，这些词的其余字母都还没
+ *     教），与 neg 桶（如 dog/bag/milk/fish）是同一种"只听不判断拼写"的性质——
+ *     不是只有 neg 桶才该豁免，W2+ 恰好 pos 桶词都可解码只是内容选取的巧合，
+ *     不是规则要求。
+ * 其余来源（book-page/words/sentences/wordforge-family/wordforge-swap/blend/
+ * initialpick/pair/flash/g3-pairs/g4-words/g5-whitelist/wall-hint）零解一律不
+ * 豁免——这些位置的词按数据设计恒由当周已教字位组成，零解就是数据错误
+ * （词形超纲，或该给的 W[word].segments 没给）。 */
+function isZeroSolutionExemptRecord(rec, sightWordsThisWeek, normalizedWord) {
+  if (sightWordsThisWeek && sightWordsThisWeek.has(normalizedWord)) return true;
+  return rec.kind === 'g1-rounds';
+}
+
+/* H1 正反测试（外审 high，2026-09-10）：直接验证 isZeroSolutionExemptRecord 本身的
+ * 判定力，不依赖真实周数据里恰好存在哪些零解词（真实数据会随内容变化，这里用
+ * 构造的 rec 对象钉死判据本身）。 */
+function verifyIsZeroSolutionExemptRecordDiscriminates() {
+  const noSightWords = new Set();
+  const withSee = new Set(['see']);
+
+  // 正例①：G1 记录（pos 或 neg 桶皆可）应豁免，与是否在认读词集合无关。
+  assert.equal(isZeroSolutionExemptRecord({ kind: 'g1-rounds', bucket: 'pos' }, noSightWords, 'cat'), true,
+    'H1 正例：G1 pos 桶记录的零解应豁免');
+  assert.equal(isZeroSolutionExemptRecord({ kind: 'g1-rounds', bucket: 'neg' }, noSightWords, 'dog'), true,
+    'H1 正例：G1 neg 桶记录的零解应豁免');
+
+  // 正例②：认读词在非 sight 来源（如 sentences/book-page）里出现时也应豁免——
+  // 豁免身份跟的是"这个词本周是不是认读词"，不是"这条记录自己的 kind 是不是 sight"。
+  assert.equal(isZeroSolutionExemptRecord({ kind: 'sentences' }, withSee, 'see'), true,
+    'H1 正例：认读词 see 出现在 sentences 记录里也应豁免');
+  assert.equal(isZeroSolutionExemptRecord({ kind: 'book-page' }, withSee, 'see'), true,
+    'H1 正例：认读词 see 出现在 book-page 记录里也应豁免');
+
+  // 反例：book-page（严格消费来源）的零解，词不在认读词集合里，必须不豁免——
+  // 这是本次要堵住的口子：改前无条件豁免全部 segment-unknown，这类真实数据错误
+  // 会被静默放过。
+  assert.equal(isZeroSolutionExemptRecord({ kind: 'book-page' }, noSightWords, 'zzq'), false,
+    'H1 反例：book-page 记录的零解（词不是认读词）不应豁免');
+  assert.equal(isZeroSolutionExemptRecord({ kind: 'wordforge-family' }, noSightWords, 'zzq'), false,
+    'H1 反例：wordforge-family 记录的零解（词不是认读词）不应豁免');
+
+  console.log('PASS grapheme semantics H1 分辨力验证：isZeroSolutionExemptRecord 对 G1 记录（pos/neg 皆豁免）与' +
+    '"认读词跨来源出现"两类正例正确放行，对 book-page/wordforge-family 等严格消费来源的非认读词零解正确拒绝');
+}
+
 function classifyStrictConsumptionWordsFromRealWeeks() {
   const bySource = new Map();
   const statFor = kind => {
@@ -288,6 +349,14 @@ function classifyStrictConsumptionWordsFromRealWeeks() {
     const box = loadData(raw, false);
     const sounds = withGraphemeFallback(box.SOUNDS);
     const records = collectWordConsumption(box); // 不去重：来源统计要按原始记录逐条计数（同 test_migration_diff.js tallySourceCoverage 的做法）
+    // 认读词是"整词记忆、不走解码"的一次性豁免身份，不是"只有 sight 这个 kind 的
+    // 记录才豁免"——同一个认读词（如 W1 的 see）教会之后，会作为已知词继续出现在
+    // sentences/book-page 等其他来源的句子里，那里同样不该被判成零解数据缺陷。
+    // 按本周 kind==='sight' 的记录预先收集"本周认读词集合"，供下面按词（不是按
+    // 当前记录的 kind）豁免。
+    const sightWordsThisWeek = new Set(
+      records.filter(r => r.kind === 'sight').map(r => r.word.toLowerCase())
+    );
 
     records.forEach(rec => {
       const word = rec.word.toLowerCase();
@@ -304,7 +373,18 @@ function classifyStrictConsumptionWordsFromRealWeeks() {
         }
         throw e;
       }
-      if (result.status === 'zero') { stat.skippedUnknown++; zeroSolutionWords.add(word); return; }
+      if (result.status === 'zero') {
+        if (!isZeroSolutionExemptRecord(rec, sightWordsThisWeek, word)) {
+          const err = new Error(
+            `H1：来源 "${rec.kind}" 的词 "${word}"（week ${n}，file: ${file}）分词零解` +
+            `（含未教字位）——这个来源不在豁免清单（sight/g1-rounds）里，零解是数据缺陷` +
+            `（词形超纲，或漏写 W["${word}"].segments），不允许静默跳过`
+          );
+          err.code = 'zero-solution-not-exempt';
+          throw err;
+        }
+        stat.skippedUnknown++; zeroSolutionWords.add(word); return;
+      }
       if (result.status === 'explicit') {
         assertWordSemantics({ week: n, file: file, word: word, segments: explicitSegments, sounds: sounds });
         explicitResolvedWords.push({ week: n, word: word, kind: rec.kind });
@@ -444,6 +524,7 @@ function verifyAssertWordSemanticsHasDiscriminatingPower() {
 function realWeekDataSemanticsSuite() {
   verifyAssertWordSemanticsHasDiscriminatingPower();
   verifyClassifyOneWordForSemanticsMustFailOnAmbiguity();
+  verifyIsZeroSolutionExemptRecordDiscriminates();
 
   // H2：不再按"语料是否含多字母字位"分 SKIP/执行两支——真实严格消费词语料
   // （word_consumers 的全部 15 个来源）恒非空，四分类（唯一解/显式消歧解/零解/

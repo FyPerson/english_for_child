@@ -182,6 +182,20 @@ function gatherWeekRecordsUpTo(currentBox, currentWeek) {
         `week ${w} 的历史周数据文件解析失败（file: ${file}）：${e.message}`,
         { week: w, file: file, cause: e });
     }
+    /* M1（外审 medium，2026-09-10）：gatherWeekRecordsUpTo 与 getExpectedWeeksUpTo
+     * 同源于 project.json 的 weeks 列表，历史记录的 week 字段改前直接写成"这份记录
+     * 是从 week0N.data.js 这个文件名读出来的"里的 N，从未回头校验文件内容自己
+     * 声明的 box.META.week 是否也等于 N——如果某份历史文件被误放错了文件名（比如
+     * week03.data.js 里的 META.week 手滑写成了 2），这里会把它的 newPatterns 悄悄
+     * 计入"week 3"的累计教学顺序，教学顺序真相源本身就会算错，且没有任何信号
+     * 提示错在哪。这里补一道断言：文件内容自称的周次必须与文件名对应的周次一致，
+     * 不等就抛结构化错误，带上 file/expected（文件名对应的周次）/actual（文件内容
+     * 自称的周次），不静默信任文件名。 */
+    if (box.META && box.META.week !== w) {
+      throw TeachingOrderError('teaching-order-week-mismatch',
+        `week ${w} 的历史周数据文件（file: ${file}）自称的 META.week 是 ${box.META.week}，与文件名对应的周次不一致`,
+        { week: w, file: file, expected: w, actual: box.META && box.META.week });
+    }
     return { week: w, newPatterns: extractNewPatterns(box, w, file) };
   });
 }

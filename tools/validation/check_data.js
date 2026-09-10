@@ -72,7 +72,8 @@ for (const d of DAYS) {
 }
 Object.values(G1_ROUNDS).forEach(r => [...r.pos, ...r.neg].forEach(w => usedWords.add(w)));
 G4_WORDS.forEach(w => usedWords.add(w));
-const G1NEG = new Set(Object.values(G1_ROUNDS).flatMap(r => r.neg));
+// H2（外审 high，2026-09-10）：G1NEG（G1 neg 桶专用集合）已随③的豁免逻辑改为
+// 按来源 kind 精确匹配而不再需要，见③附近头注释；不再单独维护。
 console.log(`第 ${META.week} 周 · 累计 ${TAUGHT.size} 音 · 教学词 ${wallWords.length} · `
           + `保留词 ${RESERVED.length} · 积木架 G4/${META.rackG4.length} G5/${META.rackG5.length}`);
 
@@ -186,13 +187,25 @@ head('③ 字母全在已教范围内');
  * tools/validation/word_consumers.js 的 collectWordConsumption（15 类来源，见该
  * 文件的 ENTRY_KINDS），枚举全部真实消费入口，不再是这里手写的一份更窄的子集
  * （feedback_dont_relist_what_source_already_lists：源头已经有权威清单，不用自己
- * 再挑一份）。按词分组保留全部出现过的来源类型（kind），豁免逻辑不变：认读词
- * （SIGHT）、G1 干扰词（G1NEG，以及 W1 的 pos 桶）、W1 的 'nat'（沿用①的历史豁免，
- * 与 collectWordConsumption 收录 wordforge 后 'nat' 会首次出现在这里保持一致）
- * 按原语义处理；collectWordConsumption 自己标为"不消费"的类别（W/RESERVED 池/
+ * 再挑一份）。collectWordConsumption 自己标为"不消费"的类别（W/RESERVED 池/
  * ASSESS_TEXT/SOUNDS.demo 等，见该文件头排除清单）本就不会出现在它的返回结果里，
  * 不需要在这里另行处理。失败消息带上具体来源类型，便于定位是哪一类入口漏教了
- * 字母。 */
+ * 字母。
+ *
+ * H2（外审 high，2026-09-10）二次修订豁免逻辑：
+ *   - 删掉 `META.week === 1 && w.toLowerCase() === 'nat'` 这条豁免——它是从①
+ *     （引用完整性，查"词是否在 W 里有释义"）抄过来的，③查的是完全不同的问题
+ *     （未教字母）；'nat' 的 n/a/t 三个字母 W1 全教了，本来就不该出现在③的
+ *     失败列表里，不需要任何豁免。
+ *   - G1 桶的豁免改按记录来源（kind）精确匹配，不再按"周号 + 词形是否出现在
+ *     某个 pos 桶里"：实测 G1_ROUNDS 的 pos（目标音正例）与 neg（干扰词反例）
+ *     两个桶本质都是"孩子只听不看不拼读"的听力辨音素材（G1 是纯听力游戏），
+ *     不是只有 neg 桶才该豁免——W1 的 a 轮 pos 桶（cat/hat/map/bat）与 s 轮
+ *     pos 桶（sun/sock/snake）在 W1 字位表下同样是"含未教字母"，W2 起恰好
+ *     pos 桶词都可解码只是内容选取的巧合，不是规则要求。改为按
+ *     `kinds.has('g1-rounds')` 精确匹配来源，不再关心具体是哪个桶、哪一周——
+ *     覆盖范围与改前的 G1NEG ∪ "W1 pos 桶" 完全一致，但判据本身不再跟周号和
+ *     词形绑死。原来独立维护的 G1NEG 常量因此不再需要，已删除。 */
 const wordSourceKinds = new Map();
 for (const rec of collectWordConsumption(box)) {
   const kinds = wordSourceKinds.get(rec.word) || new Set();
@@ -204,12 +217,34 @@ for (const w of RESERVED) {
   kinds.add('RESERVED');
   wordSourceKinds.set(w, kinds);
 }
+/* M4（外审 medium，2026-09-10，对 W5 是实质问题）：改前 `[...w]` 按字符拆、与
+ * TAUGHT（= Object.keys(SOUNDS)，其实是字位 ID 集合）逐字符比——W5 起 SOUNDS 里
+ * 出现多字母字位（比如 `ai`）后，这个判据双向出错：
+ *   - `ai` 未教而 a、i 已教时，含 `ai` 的词（如 rain）按字符拆成 r/a/i/n 逐个
+ *     查 TAUGHT 全部命中，会被误判"字母全在已教范围内"——但 rain 实际上无法
+ *     用当周字位表分词（`ai` 不存在，`a`+`i` 拼不出词形里的 "ai" 这个字位）。
+ *   - 反过来，只教了 `ai` 没有分别教 a/i 时，字符级拆分会把 "a"/"i" 当成两个
+ *     独立字符去查 TAUGHT，即使这两个字符从未作为独立字位教过，也可能因为
+ *     TAUGHT 里恰好有别的原因命中 "a"/"i" 键而被误判为"未教"（假阳性）。
+ * 改为非豁免词一律走 idsForWord(w)（下方④已定义，function 声明提升到模块顶部，
+ * 这里可以直接调用）取字位 ID 数组，逐 ID 与 TAUGHT（字位 ID 集合）比——TAUGHT
+ * 的语义本来就是"已教字位 ID 集合"，改成按 ID 比才是它原本该有的用法。零解/
+ * 多解无 segments 时 idsForWord 会抛错，这里同 T5 的处置：转成清晰的
+ * ok(false, ...) 失败并跳过这个词，不让整个进程带栈崩溃（与 H1 在
+ * test_grapheme_semantics.js 里"零解/多解即数据缺陷、不允许静默放行"是同一个
+ * 口径，只是这里的"放行"方式是转成失败而不是抛错终止整个检查）。 */
 for (const [w, kinds] of wordSourceKinds) {
-  if (SIGHT.has(w.toLowerCase())) continue;          // 认读词不按规则拼，豁免
-  if (G1NEG.has(w) || (META.week === 1 && Object.values(G1_ROUNDS).some(r=>r.pos.includes(w)))) continue;                        // G1 干扰词只听不读，允许含未教字母
-  if (META.week === 1 && w.toLowerCase() === 'nat') continue; // 沿用①的历史豁免（见上方头注释）
-  const bad = [...w.toLowerCase()].filter(c => !TAUGHT.has(c));
-  ok(bad.length === 0, `"${w}" 含未教字母 [${bad}]（来源：${[...kinds].sort().join(',')}）`);
+  if (SIGHT.has(w.toLowerCase())) continue;
+  if (kinds.has('g1-rounds')) continue;
+  let ids;
+  try {
+    ids = idsForWord(w);
+  } catch (e) {
+    ok(false, `"${w}" 无法按字位分词（${e.code || 'error'}）：${e.message}（来源：${[...kinds].sort().join(',')}）`);
+    continue;
+  }
+  const bad = ids.filter(id => !TAUGHT.has(id));
+  ok(bad.length === 0, `"${w}" 含未教字位 [${bad.join(',')}]（来源：${[...kinds].sort().join(',')}）`);
 }
 
 head('④ 积木架能摆出题库里的词（字位安全，方案 §2.2「摆词比较/积木架」行）');

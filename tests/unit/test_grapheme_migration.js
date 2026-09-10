@@ -741,3 +741,69 @@ function scanForLegacyTrue(files) {
 
   console.log('PASS grapheme migration（B-M1：load_data 固定错误码不再被更早的 VM 异常截断，方案 §3.8）：真实历史产物（226e619，未改动）内联 META 时正常加载；缺 META + 其他声明语法不兼容的合成变体（基于同一份真实产物做最小手术式修改）在进入 vm 之前就被前置探测拦下，抛出固定的 legacy-html-fallback-rejected，不是未包装的原生 SyntaxError');
 }
+
+// ============================================================================
+// M2（外审 medium，2026-09-10）：load_data.js 的 META_DECLARATION_RE 改前只认
+// 行首字面量 "const META = "（零缩进、等号两侧各恰一个空格），把"有没有一处内联
+// META 声明"这件事判得比它该有的宽容度更严——缩进、`const META=`（等号不带空格）、
+// `const META =\n{`（等号后换行）都是合法 JS，也都表达"这里有一个 META 声明"，
+// 不该被判定成"缺 META"。改法：
+//   - META_DECLARATION_RE 放宽为 `const\s+META\s*=`（配合 [ \t]* 容纳缩进）；
+//   - declaration() 同步放宽（否则探测说"找到了"，但真正截取声明体的 declaration()
+//     还是按老的严格正则找不到，box.META 最终仍是 undefined，等于探测的放宽只是
+//     好看不管用）；
+//   - 探测限定到 <script> 内容再执行（extractScriptContents），避免 HTML 正文里
+//     偶然出现的字面量 "const META = {...}"（比如页面自己展示一段代码示例）被
+//     误判成"找到了内联 META"。
+// 四类测试：缩进、无空格等号、换行等号、正文伪声明（应判"缺 META"不误命中）。
+// ============================================================================
+{
+  const { loadData, META_DECLARATION_RE, extractScriptContents } = require('../../tools/validation/load_data');
+
+  const wrapInScript = body => `<!doctype html><html><body>\n<script>\n${body}\n</script>\n</body></html>`;
+
+  // 反例①（正例，改前会被误判成"缺 META"）：缩进的 META 声明。
+  {
+    const html = wrapInScript('  const META = {"week":1};\nconst RESERVED=["a","b","c"];');
+    assert(META_DECLARATION_RE.test(extractScriptContents(html)),
+      'M2：缩进的 "const META = " 声明应被探测为存在，不应判定"缺 META"');
+    const box = loadData(html, true);
+    assert.equal(box.META && box.META.week, 1, 'M2：缩进的 META 声明应能被完整加载出 META.week===1（declaration() 同步放宽后端到端可用）');
+  }
+
+  // 反例②：等号两侧没有空格（`const META={`）。
+  {
+    const html = wrapInScript('const META={"week":2};\nconst RESERVED=["a","b","c"];');
+    assert(META_DECLARATION_RE.test(extractScriptContents(html)),
+      'M2：无空格等号的 "const META={" 声明应被探测为存在');
+    const box = loadData(html, true);
+    assert.equal(box.META && box.META.week, 2, 'M2：无空格等号的 META 声明应能被完整加载出 META.week===2');
+  }
+
+  // 反例③：等号后换行（`const META =\n{`，闭合括号独占一行——与真实周数据文件的
+  // 常见换行风格一致，declaration() 靠"闭合括号独占一行"识别多行声明的收尾）。
+  {
+    const html = wrapInScript('const META =\n{\n  "week": 3\n};\nconst RESERVED=["a","b","c"];');
+    assert(META_DECLARATION_RE.test(extractScriptContents(html)),
+      'M2：等号后换行的 META 声明应被探测为存在');
+    const box = loadData(html, true);
+    assert.equal(box.META && box.META.week, 3, 'M2：等号后换行的 META 声明应能被完整加载出 META.week===3');
+  }
+
+  // 反例④：正文伪声明——字面量 "const META = {...}" 出现在 <script> 之外（比如页面
+  // 展示一段代码示例），不应被误判成"找到了内联 META"；这份 HTML 真正的 <script>
+  // 里没有任何 META 声明，应该正确判定"缺 META"并拒绝。
+  {
+    const html = '<!doctype html><html><body><pre>示例代码：const META = {"week":1};</pre>' +
+      '<script>const RESERVED=["a","b","c"];</script></body></html>';
+    assert(!META_DECLARATION_RE.test(extractScriptContents(html)),
+      'M2：正文（<script> 之外）里的字面量 "const META = " 不应被探测为存在');
+    let caught = null;
+    try { loadData(html, true); } catch (e) { caught = e; }
+    assert(caught, 'M2：正文伪声明、<script> 内确实没有 META 时应该抛错');
+    assert.equal(caught.code, 'legacy-html-fallback-rejected',
+      `M2：正文伪声明不应让探测误判为"找到了"，应正常判定为缺 META 并拒绝，实际 code=${caught.code}`);
+  }
+
+  console.log('PASS grapheme migration（M2：load_data 的 META 探测放宽缩进/等号空白形态，并限定到 <script> 内容，方案 §3.8）：缩进/无空格等号/等号后换行三类合法声明均能正确探测且端到端加载成功；<script> 之外的正文伪声明不被误判，仍正确判定缺 META');
+}

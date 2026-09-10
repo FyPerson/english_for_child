@@ -46,6 +46,22 @@ class SizeBudgetTests(unittest.TestCase):
             products(temp, {'week01.html': 8 * MB, 'week02.html': 8 * MB, 'course.html': 20 * MB, 'index.html': 10**9 // 10})
             size_budget.check(temp, config())
 
+    def test_equal_to_budget_is_ok_not_over_but_still_warns(self):
+        # L1（外审 low，2026-09-10）：注释曾把"size === limit"这个边界错写成
+        # "size >= limit 走 OVER"，与代码的 `>` 硬失败判据不一致。这里显式断言
+        # 恰好等于预算时的真实行为：verdict 是 (ok) 不是 (OVER)，但因为余量恰好
+        # 为零（0 < 15% 预算），仍然会打一行 SIZE WARN——通过但不安静地通过。
+        with tempfile.TemporaryDirectory() as temp:
+            products(temp, {'week01.html': 8 * MB, 'week02.html': 100, 'course.html': 100})
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                size_budget.check(temp, config())  # 不应抛出——恰好等于预算按既有契约通过
+            out = buf.getvalue()
+            self.assertIn('SIZE week01.html: 8.00 MB of 8 MB budget (ok), margin 0.00 MB (0.0%)', out,
+                '恰好等于预算的产物 verdict 应是 (ok) 不是 (OVER)')
+            self.assertIn('SIZE WARN week01.html: 余量 0.00 MB (0.0%)', out,
+                '恰好等于预算时余量为零，应该打 WARN 提醒——"通过"不等于"安全，不用管"')
+
     def test_missing_product_is_reported(self):
         with tempfile.TemporaryDirectory() as temp:
             products(temp, {'week01.html': 100, 'course.html': 100})
