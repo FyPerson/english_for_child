@@ -13,8 +13,9 @@
   "sap",
   "tan",
   "pip",
-  "spit"
+  "pit"
  ],
+ "expected_items": 55,
  "items": [
   {
    "key": "at",
@@ -61,13 +62,6 @@
    "type": "word",
    "group": "A",
    "file": "pat.mp3"
-  },
-  {
-   "key": "pit",
-   "text": "pit",
-   "type": "word",
-   "group": "A",
-   "file": "pit.mp3"
   },
   {
    "key": "sip",
