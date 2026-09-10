@@ -57,6 +57,23 @@ function extractScriptContents(raw) {
   return scripts.join('\n');
 }
 
+/* countDeclarationOccurrences(raw, name) -> number（L2，轮 D 复审第三轮，外审 low，
+ * 2026-09-10）：与 declaration()/META_DECLARATION_RE 同一条探测正则的全局版本，
+ * 数某个顶层常量名在文本里一共出现过几次行首声明。
+ *
+ * 背景：extractScriptContents 把 HTML 里全部 `<script>` 标签的内容拼接成一份文本
+ * （`scripts.join('\n')`），declaration() 在这份拼接后的文本上做**第一次匹配**——
+ * 如果排在前面的 `<script>` 标签（比如某个与课程数据无关的前置脚本）恰好在行首
+ * 出现一句 `const RESERVED = [...]`（哪怕只是巧合同名，或是历史遗留的调试代码），
+ * declaration('RESERVED') 会抢先匹配到那一处，而不是后面真正的课程数据声明——
+ * 与"正文伪声明"是同一类问题（M1 已经处理过"正文 vs <script>"这一层），这里是
+ * "<script> 与 <script> 之间"的下一层：探测/抽取的范围已经限定到 <script> 内容，
+ * 但没有进一步确认"这个名字在 <script> 范围内是不是唯一声明过一次"。 */
+function countDeclarationOccurrences(raw, name) {
+  const re = new RegExp('^[ \\t]*const\\s+' + name + '\\s*=', 'mg');
+  return (raw.match(re) || []).length;
+}
+
 function throwLegacyHtmlFallbackRejected() {
   /* 里程碑 2 第 8 步（方案 §3.8）：此处曾在缺内联 META 时用正则从旧版 HTML 结构
    * 里重建 rackG4/rackG5/wallLetters——三审 M-9 指出这是"两条入口拒绝旧格式"判据
@@ -107,6 +124,26 @@ function loadData(raw, html = true) {
   if (html && !META_DECLARATION_RE.test(searchText)) {
     throwLegacyHtmlFallbackRejected();
   }
+  /* L2（轮 D 复审第三轮，外审 low，2026-09-10）：declaration() 在多个 <script>
+   * 拼接后的文本上只取"第一次匹配"——如果同一个常量名在 <script> 范围内被声明了
+   * 不止一次（前置脚本的伪声明 + 后置脚本的真实声明，或者数据本身手滑重复声明），
+   * 静默取第一次匹配可能选到错误的那一份，且完全没有任何信号提示"其实有两份"。
+   * 这里在抽取之前先做一轮"每个 NAME 是否唯一声明过一次"的普查，多于一次就显式
+   * 拒绝——不去猜哪一份才是"真的"，把决定权交还给人工核实数据源头。 */
+  for (const n of NAMES) {
+    const count = countDeclarationOccurrences(searchText, n);
+    if (count > 1) {
+      const err = new Error(
+        `loadData: 顶层常量 "${n}" 在 <script> 范围内出现了 ${count} 次声明（预期至多 1 次）——` +
+        '可能是前置 <script> 里的伪声明与真实数据声明重名，declaration() 只取第一次匹配会悄悄选到' +
+        '错误的那一份。拒绝加载，不猜哪份是真的，请先核实数据源头。'
+      );
+      err.code = 'duplicate-declaration';
+      err.declarationName = n;
+      err.count = count;
+      throw err;
+    }
+  }
   const chunks = NAMES.map(n => declaration(searchText, n)).filter(Boolean);
   chunks.push(...(searchText.match(/^SOUNDS\.\w+ = Object\.assign\(.*?\);$/gm) || []));
   const box = {};
@@ -119,4 +156,4 @@ function loadData(raw, html = true) {
   }
   return box;
 }
-module.exports = {loadData, declaration, NAMES, META_DECLARATION_RE, extractScriptContents};
+module.exports = {loadData, declaration, NAMES, META_DECLARATION_RE, extractScriptContents, countDeclarationOccurrences};

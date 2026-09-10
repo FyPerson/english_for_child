@@ -309,41 +309,48 @@ function verifyClassifyOneWordForSemanticsMustFailOnAmbiguity() {
  * 其余组合（非阅读文本类来源的零解、或阅读文本类来源但词形本身根本不是认读词）
  * 一律不豁免——这些位置的词按数据设计恒由当周已教字位组成，零解就是数据错误
  * （词形超纲，或该给的 W[word].segments 没给）。 */
-const SIGHT_EXEMPT_READING_KINDS = new Set(['sight', 'sentences', 'book-page']);
-function isZeroSolutionExemptRecord(rec, cumulativeSightWords, normalizedWord) {
-  if (rec.kind === 'g1-rounds') return true;
-  if (SIGHT_EXEMPT_READING_KINDS.has(rec.kind) && cumulativeSightWords && cumulativeSightWords.has(normalizedWord)) return true;
-  return false;
+/* H1+H2 同根修复（轮 D 复审第三轮，外审 high，2026-09-10）：本文件原有的 G1 判据
+ * （`rec.kind === 'g1-rounds'` 无条件豁免，不分桶不分周）与
+ * tools/validation/check_data.js ③ 原有的 G1 判据（只精确处理 `bucket==='neg' ||
+ * (week===1 && bucket==='pos')`，但另有一条独立的整词 SIGHT 跳过）各自只改对了
+ * 一半、互相矛盾。两处已统一抽到共享模块 tools/validation/exemptions.js 的
+ * `isExemptConsumptionRecord`，本文件不再维护本地判据，直接 require 共享实现。
+ * `isZeroSolutionExemptRecord` 这个名字保留作薄包装（沿用本文件既有调用点的
+ * 三/四参数调用习惯：`(rec, cumulativeSightWords, normalizedWord, week?)`），
+ * 内部转调共享函数，不重新实现判据本体。 */
+const { isExemptConsumptionRecord, SIGHT_EXEMPT_READING_KINDS } = require('../../tools/validation/exemptions');
+function isZeroSolutionExemptRecord(rec, cumulativeSightWords, normalizedWord, week) {
+  return isExemptConsumptionRecord(Object.assign({}, rec, { word: normalizedWord }), { cumulativeSightWords, week });
 }
 
-/* H1 正反测试（外审 high，2026-09-10）：直接验证 isZeroSolutionExemptRecord 本身的
- * 判定力，不依赖真实周数据里恰好存在哪些零解词（真实数据会随内容变化，这里用
- * 构造的 rec 对象钉死判据本身）。 */
+/* H1+H2 表驱动测试（轮 D 复审第三轮，外审 high，2026-09-10）：直接验证共享模块
+ * `isExemptConsumptionRecord`（经 isZeroSolutionExemptRecord 薄包装）本身的判定
+ * 力，不依赖真实周数据里恰好存在哪些零解词（真实数据会随内容变化，这里用构造
+ * 的 rec 对象钉死判据本身）。覆盖任务点名的六种情形（W1 pos / W2 pos / 任意周
+ * neg / 认读词在 book-page / 认读词在 wordforge-family / 认读词在 words），
+ * G1 部分是本轮新增的核心修复点——改前本文件的 G1 判据不分桶不分周，与
+ * check_data.js 早前已经修好的"仅 W1 pos 豁免"矛盾。 */
 function verifyIsZeroSolutionExemptRecordDiscriminates() {
   const noSightWords = new Set();
   const withSee = new Set(['see']);
 
-  // 正例①：G1 记录（pos 或 neg 桶皆可）应豁免，与是否在认读词集合无关。
-  assert.equal(isZeroSolutionExemptRecord({ kind: 'g1-rounds', bucket: 'pos' }, noSightWords, 'cat'), true,
-    'H1 正例：G1 pos 桶记录的零解应豁免');
-  assert.equal(isZeroSolutionExemptRecord({ kind: 'g1-rounds', bucket: 'neg' }, noSightWords, 'dog'), true,
-    'H1 正例：G1 neg 桶记录的零解应豁免');
-
-  // 正例②：认读词在"阅读文本类来源"（sentences/book-page，含 sight 声明本身）
-  // 里出现时应豁免——豁免身份跟的是"这个词是不是认读词"，不是"这条记录自己的
-  // kind 是不是 sight"，但仅限于这三类阅读场景，不是任意 kind。
-  assert.equal(isZeroSolutionExemptRecord({ kind: 'sentences' }, withSee, 'see'), true,
-    'H3 正例：认读词 see 出现在 sentences 记录里应豁免');
-  assert.equal(isZeroSolutionExemptRecord({ kind: 'book-page' }, withSee, 'see'), true,
-    'H3 正例：认读词 see 出现在 book-page 记录里应豁免');
-  assert.equal(isZeroSolutionExemptRecord({ kind: 'sight' }, withSee, 'see'), true,
-    'H3 正例：认读词自己的 sight 声明记录应豁免（认读词豁免的最基本情形）');
-
-  // 反例①：book-page（阅读文本类来源）的零解，词不在认读词集合里，必须不豁免——
-  // 这是 H1 要堵住的口子：改前无条件豁免全部 segment-unknown，这类真实数据错误
-  // 会被静默放过。
-  assert.equal(isZeroSolutionExemptRecord({ kind: 'book-page' }, noSightWords, 'zzq'), false,
-    'H1 反例：book-page 记录的零解（词不是认读词）不应豁免');
+  const TABLE = [
+    { label: 'W1 pos', rec: { kind: 'g1-rounds', bucket: 'pos' }, sight: noSightWords, word: 'cat', week: 1, expect: true },
+    { label: 'W2 pos', rec: { kind: 'g1-rounds', bucket: 'pos' }, sight: noSightWords, word: 'cat', week: 2, expect: false },
+    { label: '任意周 neg（W1）', rec: { kind: 'g1-rounds', bucket: 'neg' }, sight: noSightWords, word: 'dog', week: 1, expect: true },
+    { label: '任意周 neg（W3）', rec: { kind: 'g1-rounds', bucket: 'neg' }, sight: noSightWords, word: 'dog', week: 3, expect: true },
+    { label: '认读词在 book-page', rec: { kind: 'book-page' }, sight: withSee, word: 'see', week: 2, expect: true },
+    { label: '认读词在 sentences', rec: { kind: 'sentences' }, sight: withSee, word: 'see', week: 2, expect: true },
+    { label: '认读词在 sight 声明本身', rec: { kind: 'sight' }, sight: withSee, word: 'see', week: 1, expect: true },
+    { label: '认读词在 wordforge-family', rec: { kind: 'wordforge-family' }, sight: withSee, word: 'see', week: 2, expect: false },
+    { label: '认读词在 words', rec: { kind: 'words' }, sight: withSee, word: 'see', week: 2, expect: false },
+    { label: '非认读词在 book-page', rec: { kind: 'book-page' }, sight: noSightWords, word: 'zzq', week: 2, expect: false },
+  ];
+  for (const t of TABLE) {
+    assert.equal(isZeroSolutionExemptRecord(t.rec, t.sight, t.word, t.week), t.expect,
+      `H1+H2 表驱动「${t.label}」：期望 ${t.expect}，实际相反（rec=${JSON.stringify(t.rec)}, week=${t.week}, word=${t.word}）`);
+  }
+  console.log(`PASS grapheme semantics H1+H2 表驱动（${TABLE.length} 例）：W1 pos 豁免 / W2 pos 不豁免 / 任意周 neg 豁免 / 认读词在阅读文本类来源豁免 / 认读词在字位操作类来源不豁免，全部与共享判据 isExemptConsumptionRecord 一致`);
 
   // 反例②（H3 新增，堵住"判宽"的方向）：即使词形是认读词，出现在**字位操作类
   // 来源**（wordforge-family/wordforge-swap/blend/initialpick/pair/flash/
@@ -371,57 +378,102 @@ function verifyIsZeroSolutionExemptRecordDiscriminates() {
  * 数据（不读真实四周文件——真实数据当前没有触发这两条分支的场景，只能用合成语料
  * 直接证明）。合成字位表只含 's'（type:'c'），'see' 因此在任何一"周"都零解
  * （s 已教，e 未教），用来做零解载体。 */
+/* M2（轮 D 复审第三轮，外审 medium，2026-09-10）：改前这里自建 cumulativeSightWords
+ * 并重写了一份"按周顺序处理、累计认读词、逐条分类"的循环——与
+ * classifyConsumptionRecordsForWeeks（生产路径真正的核心循环）各自独立维护，两份
+ * 逻辑一旦分叉，这个测试验证的就不是真实生产路径。改法：喂合成两周数据直接走
+ * classifyConsumptionRecordsForWeeks 这个真实入口，不在测试里复制循环。 */
 function verifyCumulativeSightWordsAndReadingKindScope() {
   const sounds = { s: { grapheme: 's', type: 'c' } };
 
   // 场景①：同一"周"里，'see' 既被声明为 sight（本身豁免，符合预期），又被塞进
   // wordforge-family（字位操作类来源）——即便认读词集合已经包含 'see'，
-  // wordforge-family 不在 SIGHT_EXEMPT_READING_KINDS 里，必须不豁免、判定失败。
+  // wordforge-family 不在 SIGHT_EXEMPT_READING_KINDS 里，必须不豁免：走真实入口
+  // classifyConsumptionRecordsForWeeks 应该直接抛出 zero-solution-not-exempt。
   {
-    const cumulativeSightWords = new Set(['see']);
-    const sightRec = { kind: 'sight' };
-    const wordforgeRec = { kind: 'wordforge-family' };
-    const sightResult = classifyOneWordForSemantics('see', sounds, null);
-    assert.equal(sightResult.status, 'zero', '合成表下 see 应零解（e 未教）');
-    assert.equal(isZeroSolutionExemptRecord(sightRec, cumulativeSightWords, 'see'), true,
-      'H3 集成①：see 自己的 sight 声明记录应豁免');
-    assert.equal(isZeroSolutionExemptRecord(wordforgeRec, cumulativeSightWords, 'see'), false,
-      'H3 集成①：认读词 see 同拼写出现在 wordforge-family 时必须不豁免（须判定失败），不能因为它在别处是认读词就放行');
+    const weekSources = [{
+      week: 1,
+      records: [{ word: 'see', kind: 'sight' }, { word: 'see', kind: 'wordforge-family' }],
+      sounds: sounds,
+      wEntries: {},
+      label: '合成场景①（同周 sight + wordforge-family）'
+    }];
+    const caught = assertThrows(
+      () => classifyConsumptionRecordsForWeeks(weekSources),
+      e => assert.equal(e.code, 'zero-solution-not-exempt'),
+      'H3 集成①：认读词 see 同拼写出现在 wordforge-family 时，真实入口应该抛出 zero-solution-not-exempt（不能因为它在别处是认读词就放行）'
+    );
+    assert(/wordforge-family/.test(caught.message), `抛错信息应点名来源 wordforge-family，实际：${caught.message}`);
+  }
+
+  // 场景①b（入口级配对，2026-09-10）：与 tests/unit/test_check_data_g1_exemption_
+  // granularity.py 的 test_sight_word_in_sight_and_words_block_unspellable_still_checked
+  // 同一个场景（认读词同时在 sight 与 words 块、且不可分词），改用 kind='words'
+  // 而不是 'wordforge-family'，证明两个入口（check_data.js 真实 CLI + 本语义
+  // 套件）对同一场景给出一致的结论——words 同样是"字位操作类来源"，不在
+  // SIGHT_EXEMPT_READING_KINDS 里，理应同样不豁免、同样抛错。
+  {
+    const weekSources = [{
+      week: 1,
+      records: [{ word: 'see', kind: 'sight' }, { word: 'see', kind: 'words' }],
+      sounds: sounds,
+      wEntries: {},
+      label: '合成场景①b（同周 sight + words，与 check_data 入口级测试同一场景）'
+    }];
+    const caught = assertThrows(
+      () => classifyConsumptionRecordsForWeeks(weekSources),
+      e => assert.equal(e.code, 'zero-solution-not-exempt'),
+      'H3 集成①b：认读词 see 同拼写出现在 words 块时，真实入口应该抛出 zero-solution-not-exempt——与 check_data.js 入口级测试（words 块场景）结论一致'
+    );
+    assert(/words/.test(caught.message), `抛错信息应点名来源 words，实际：${caught.message}`);
   }
 
   // 场景②：模拟两"周"顺序处理——第 1 周只有一条 sight 记录声明 'see'；第 2 周
   // （历史周之后）只有一条 book-page 记录引用 'see'，第 2 周自己完全没有声明过
-  // 'see' 是 sight。用与 classifyStrictConsumptionWordsFromRealWeeks 相同的
-  // "累计集合在周循环外声明、每周先并入本周 sight 记录再处理本周记录"的顺序，
-  // 证明第 2 周的 book-page 记录能正确读到第 1 周留下的累计认读词身份而被豁免
-  // ——这是 H3 要修的"判窄"方向：改前的 sightWordsThisWeek 每周重新构造，历史周
-  // 教过的认读词到了后续周会被误判为不豁免。
+  // 'see' 是 sight。走真实入口，证明第 2 周的 book-page 记录能正确读到第 1 周
+  // 留下的累计认读词身份而被豁免——这是 H3 要修的"判窄"方向：改前的
+  // sightWordsThisWeek 每周重新构造，历史周教过的认读词到了后续周会被误判为
+  // 不豁免。不抛错即视为豁免生效，再核对 book-page 那条确实被计入 skippedUnknown
+  // （零解但豁免），而不是被判定失败或误判成 executed。
   {
-    const weeks = [
-      { records: [{ word: 'see', kind: 'sight' }] },
-      { records: [{ word: 'see', kind: 'book-page' }] }
+    const weekSources = [
+      { week: 1, records: [{ word: 'see', kind: 'sight' }], sounds: sounds, wEntries: {}, label: '合成场景②·W1（sight 声明）' },
+      { week: 2, records: [{ word: 'see', kind: 'book-page' }], sounds: sounds, wEntries: {}, label: '合成场景②·W2（book-page 引用）' }
     ];
-    const cumulativeSightWords = new Set();
-    const outcomes = [];
-    for (const week of weeks) {
-      week.records.filter(r => r.kind === 'sight').forEach(r => cumulativeSightWords.add(r.word.toLowerCase()));
-      for (const rec of week.records) {
-        const result = classifyOneWordForSemantics(rec.word, sounds, null);
-        assert.equal(result.status, 'zero', `合成表下 ${rec.word} 应零解`);
-        outcomes.push({ kind: rec.kind, exempt: isZeroSolutionExemptRecord(rec, cumulativeSightWords, rec.word) });
-      }
-    }
-    assert.deepEqual(outcomes, [
-      { kind: 'sight', exempt: true },
-      { kind: 'book-page', exempt: true }
-    ], 'H3 集成②：第 1 周教的认读词 see，第 2 周的 book-page 引用应沿用累计集合正确豁免');
+    const result = classifyConsumptionRecordsForWeeks(weekSources);
+    const bookPageStat = result.bySource.get('book-page');
+    assert(bookPageStat, 'book-page 来源应该出现在统计里');
+    assert.equal(bookPageStat.skippedUnknown, 1, 'H3 集成②：第 2 周 book-page 的 see 应被计入 skippedUnknown（零解但豁免），不是失败也不是 executed');
+    assert.equal(bookPageStat.executed, 0, 'book-page 那条是零解豁免，不应计入 executed');
+    const sightStat = result.bySource.get('sight');
+    assert.equal(sightStat.skippedUnknown, 1, '第 1 周 sight 声明本身也是零解（e 未教），豁免生效');
   }
 
-  console.log('PASS grapheme semantics H3 集成验证：① 认读词同拼写出现在 wordforge-family 必须不豁免（判定失败）；' +
-    '② 第 1 周声明的认读词在第 2 周的 book-page 引用里正确沿用累计集合豁免（不受"仅本周"范围限制）');
+  console.log('PASS grapheme semantics H3 集成验证（M2 改走真实入口 classifyConsumptionRecordsForWeeks）：① 认读词同拼写出现在 wordforge-family 时真实入口直接抛 zero-solution-not-exempt；' +
+    '② 第 1 周声明的认读词在第 2 周的 book-page 引用里正确沿用累计集合豁免（不受"仅本周"范围限制），且被正确计入 skippedUnknown');
 }
 
-function classifyStrictConsumptionWordsFromRealWeeks() {
+/* classifyConsumptionRecordsForWeeks(weekSources) -> {bySource, zeroSolutionWords,
+ * explicitResolvedWords, totalWords}（M2，轮 D 复审第三轮，外审 medium，
+ * 2026-09-10）：真正的分类核心循环，从 classifyStrictConsumptionWordsFromRealWeeks
+ * 里抽出来——改前 `verifyCumulativeSightWordsAndReadingKindScope` 自己又写了一份
+ * "累计认读词集合 + 逐条分类判定"的循环去跑合成两周数据，与这里的生产循环各自
+ * 独立维护，两份逻辑一旦分叉（比如这里改了累计集合的更新时机，那边没跟着改），
+ * 测试验证的就不是真实生产路径，而是另一份平行实现。改法：把"喂周数据、按周
+ * 顺序处理、维护累计认读词集合、逐条分类+豁免判定"这套核心逻辑抽成本函数，
+ * 输入改为调用方注入的 `weekSources`（不在函数内部读文件），真实四周与合成
+ * 周（测试用）都走这同一份实现。
+ *
+ * weekSources: 按周号升序排列的数组，每项 {week, records, sounds, wEntries, label}：
+ *   - week: 周号（number），豁免判据里"仅 W1 pos 桶豁免"需要用到。
+ *   - records: word_consumers.collectWordConsumption(box) 的输出（或等价合成记录，
+ *     形如 [{word, kind, ...}]）。
+ *   - sounds: 已经过 withGraphemeFallback 的 SOUNDS 表。
+ *   - wEntries: 该周的词典（取 segments 用），形如 {word: {segments: [...]}}，可选，
+ *     缺省当作 {}。
+ *   - label: 失败信息里用来指代这一周的标签（真实周传 "file: <path>"，合成周传
+ *     调用方自定义的字符串）。 */
+function classifyConsumptionRecordsForWeeks(weekSources) {
   const bySource = new Map();
   const statFor = kind => {
     if (!bySource.has(kind)) bySource.set(kind, { total: 0, executed: 0, skippedUnknown: 0 });
@@ -429,42 +481,41 @@ function classifyStrictConsumptionWordsFromRealWeeks() {
   };
   const zeroSolutionWords = new Set();
   const explicitResolvedWords = [];
-  // H3（轮 D 复审，2026-09-10）：改成累计集合，声明在四周循环之外——认读词身份
-  // 一旦在某一周被声明（kind==='sight'），从那周起对后续所有周都持续有效（历史周
-  // 教过的 see 出现在 W3 的 book-page 里，应该仍然豁免），不是"只在教它的那一周
-  // 内有效"。每周处理前先把这一周新增的 sight 记录并入累计集合，再处理这一周的
-  // 全部记录（含本周新教的认读词自己第一次出现在同一周 sentences/book-page 里的
-  // 情形，这是改前就支持的、保留不变）。
+  // H3：累计集合，声明在周循环之外——认读词身份一旦在某一周被声明
+  // （kind==='sight'），从那周起对后续所有周都持续有效（历史周教过的 see 出现在
+  // 后续周的 book-page 里，应该仍然豁免），不是"只在教它的那一周内有效"。
   const cumulativeSightWords = new Set();
 
-  for (let n = 1; n <= 4; n++) {
-    const file = 'frontend/src/weeks/week0' + n + '.data.js';
-    const raw = fs.readFileSync(path.join(ROOT, file), 'utf8');
-    const box = loadData(raw, false);
-    const sounds = withGraphemeFallback(box.SOUNDS);
-    const records = collectWordConsumption(box); // 不去重：来源统计要按原始记录逐条计数（同 test_migration_diff.js tallySourceCoverage 的做法）
+  for (const weekSource of weekSources) {
+    const n = weekSource.week;
+    const records = weekSource.records;
+    const sounds = weekSource.sounds;
+    const wEntries = weekSource.wEntries || {};
+    const label = weekSource.label || `week ${n}`;
     records.filter(r => r.kind === 'sight').forEach(r => cumulativeSightWords.add(r.word.toLowerCase()));
 
     records.forEach(rec => {
       const word = rec.word.toLowerCase();
       const stat = statFor(rec.kind);
       stat.total++;
-      const entry = box.W && box.W[word];
+      const entry = wEntries[word];
       const explicitSegments = entry && Array.isArray(entry.segments) ? entry.segments : null;
       let result;
       try {
         result = classifyOneWordForSemantics(word, sounds, explicitSegments);
       } catch (e) {
         if (e && e.code === 'segment-ambiguous-missing-segments') {
-          e.message = `week ${n}，来源 "${rec.kind}"，file: ${file}：` + e.message;
+          e.message = `week ${n}，来源 "${rec.kind}"，${label}：` + e.message;
         }
         throw e;
       }
       if (result.status === 'zero') {
-        if (!isZeroSolutionExemptRecord(rec, cumulativeSightWords, word)) {
+        // H1+H2：豁免判据改传 week（G1 pos 桶仅第一周豁免需要它），不再是改前
+        // 缺 week 参数、G1 判据不分桶不分周的旧行为。
+        if (!isZeroSolutionExemptRecord(rec, cumulativeSightWords, word, n)) {
           const err = new Error(
-            `H1：来源 "${rec.kind}" 的词 "${word}"（week ${n}，file: ${file}）分词零解` +
-            `（含未教字位）——这个来源不在豁免清单（sight/g1-rounds）里，零解是数据缺陷` +
+            `H1：来源 "${rec.kind}" 的词 "${word}"（week ${n}，${label}）分词零解` +
+            `（含未教字位）——这个来源不在豁免清单（阅读文本类来源的认读词/G1 neg 桶/仅第一周的 G1 pos 桶）里，零解是数据缺陷` +
             `（词形超纲，或漏写 W["${word}"].segments），不允许静默跳过`
           );
           err.code = 'zero-solution-not-exempt';
@@ -473,23 +524,38 @@ function classifyStrictConsumptionWordsFromRealWeeks() {
         stat.skippedUnknown++; zeroSolutionWords.add(word); return;
       }
       if (result.status === 'explicit') {
-        assertWordSemantics({ week: n, file: file, word: word, segments: explicitSegments, sounds: sounds });
+        assertWordSemantics({ week: n, file: label, word: word, segments: explicitSegments, sounds: sounds });
         explicitResolvedWords.push({ week: n, word: word, kind: rec.kind });
       }
       stat.executed++;
     });
   }
 
+  let totalWords = 0;
+  for (const [, stat] of bySource) totalWords += stat.total;
+  return { bySource: bySource, zeroSolutionWords: zeroSolutionWords, explicitResolvedWords: explicitResolvedWords, totalWords: totalWords };
+}
+
+function classifyStrictConsumptionWordsFromRealWeeks() {
+  const weekSources = [];
+  for (let n = 1; n <= 4; n++) {
+    const file = 'frontend/src/weeks/week0' + n + '.data.js';
+    const raw = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const box = loadData(raw, false);
+    const sounds = withGraphemeFallback(box.SOUNDS);
+    const records = collectWordConsumption(box); // 不去重：来源统计要按原始记录逐条计数（同 test_migration_diff.js tallySourceCoverage 的做法）
+    weekSources.push({ week: n, records: records, sounds: sounds, wEntries: box.W || {}, label: 'file: ' + file });
+  }
+  const { bySource, zeroSolutionWords, explicitResolvedWords, totalWords } = classifyConsumptionRecordsForWeeks(weekSources);
+
   assert.deepEqual([...bySource.keys()].sort(), ENTRY_KINDS.slice().sort(),
     'H2：来源分布实际收到的 kind 集合应与 word_consumers.ENTRY_KINDS 逐字相等——' +
     '某个来源整类消失会让"executed+skippedUnknown===total"逐来源守恒抓不住（该来源根本不出现在统计里）');
 
-  let totalWords = 0;
   for (const [kind, stat] of bySource) {
     assert.equal(stat.executed + stat.skippedUnknown, stat.total,
       `H2：来源 "${kind}" 的 executed(${stat.executed}) + skippedUnknown(${stat.skippedUnknown}) 应等于 total(${stat.total})——` +
       '逐来源守恒，防止"抽取器少收一类"或"判定写错误跳一大批"被更宽松的总量阈值掩盖');
-    totalWords += stat.total;
   }
   assert(totalWords > 50, `H2：真实四周严格消费词语料太少（仅 ${totalWords} 条），怀疑抽取器没吃到真实数据`);
 

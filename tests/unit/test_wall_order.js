@@ -256,32 +256,43 @@ console.log('PASS wall_order gatherWeekRecordsUpTo：不在 project.json weeks �
   console.log('PASS wall_order M3：历史周数据文件整体缺失 META 声明时被结构化报错（teaching-order-week-mismatch，点名"缺少 META 声明"），不再因 `&&` 短路而静默放行');
 }
 {
-  // M3 第二种情形：META 存在，但 week 字段不是合法整数（这里用字符串 "1"，
-  // 模拟手滑写成字符串而不是数字——`"1" !== 1` 本来就会触发原有的"不一致"分支，
-  // 但那句措辞是"与文件名对应的周次不一致"，不准确描述"week 字段本身类型不对"
-  // 这类问题；这里改用更贴近"类型错误"的输入：非整数的浮点数 1.5，用真实文本
-  // 做最小手术式替换）。
+  // M3（轮 D 复审第三轮，外审 medium，2026-09-10）表驱动：week 字段"是数字/整数，
+  // 但不是合法正整数"的判据改前漏了 `week > 0` 这一半——0、负数会被旧判据放过，
+  // 只能靠"与文件名周次不相等"这条巧合兜底，报出的措辞却说成"周次不一致"而不是
+  // "周次本身不合法"。五个反例逐一覆盖：字符串 '1'（类型错）、0（非正）、-1（非正）、
+  // 1.5（非整数）、NaN（不是有限数字）——用真实 week01.data.js 文本做最小手术式
+  // 替换（"week": NaN 是合法 JS，vm 执行时 NaN 是全局标识符，不是字面量语法错误）。
   const week01Path = path.join(ROOT, 'frontend', 'src', 'weeks', 'week01.data.js');
   const realWeek01Raw = fs.readFileSync(week01Path, 'utf8');
-  const nonIntegerRaw = realWeek01Raw.replace('"week": 1,', '"week": 1.5,');
-  assert.notEqual(nonIntegerRaw, realWeek01Raw, '替换应生效，检查 week01.data.js 里 "week": 1, 的写法是否已变');
   const originalReadFileSync = fs.readFileSync;
-  fs.readFileSync = function (filePath, ...rest) {
-    if (String(filePath) === week01Path) return nonIntegerRaw;
-    return originalReadFileSync.call(fs, filePath, ...rest);
-  };
-  try {
-    assertThrows(() => gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2),
-      'teaching-order-week-mismatch', 'gatherWeekRecordsUpTo 历史周文件 META.week 非整数');
-    let caught = null;
-    try { gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2); } catch (e) { caught = e; }
-    assert(caught, '应抛错');
-    assert(/不是合法整数/.test(caught.message), `错误信息应点名"不是合法整数"，实际：${caught.message}`);
-    assert.equal(caught.actual, 1.5, '错误应点名 actual（文件内容自称的非法周次）为 1.5');
-  } finally {
-    fs.readFileSync = originalReadFileSync;
+
+  const CASES = [
+    { label: "字符串 '1'", replacement: '"week": "1",' },
+    { label: '0', replacement: '"week": 0,' },
+    { label: '-1', replacement: '"week": -1,' },
+    { label: '1.5', replacement: '"week": 1.5,' },
+    { label: 'NaN', replacement: '"week": NaN,' },
+  ];
+  for (const c of CASES) {
+    const poisonedRaw = realWeek01Raw.replace('"week": 1,', c.replacement);
+    assert.notEqual(poisonedRaw, realWeek01Raw, `替换应生效（${c.label}），检查 week01.data.js 里 "week": 1, 的写法是否已变`);
+    fs.readFileSync = function (filePath, ...rest) {
+      if (String(filePath) === week01Path) return poisonedRaw;
+      return originalReadFileSync.call(fs, filePath, ...rest);
+    };
+    try {
+      assertThrows(() => gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2),
+        'teaching-order-week-mismatch', `gatherWeekRecordsUpTo 历史周文件 META.week 非法（${c.label}）`);
+      let caught = null;
+      try { gatherWeekRecordsUpTo({ META: { week: 2, newPatterns: [] } }, 2); } catch (e) { caught = e; }
+      assert(caught, `应抛错（${c.label}）`);
+      assert(/不是合法正整数/.test(caught.message), `错误信息应点名"不是合法正整数"（${c.label}），实际：${caught.message}`);
+      assert.equal(caught.code, 'teaching-order-week-mismatch', `错误码应为 teaching-order-week-mismatch（${c.label}），实际：${caught.code}`);
+    } finally {
+      fs.readFileSync = originalReadFileSync;
+    }
   }
-  console.log('PASS wall_order M3：历史周数据文件 META.week 非整数（1.5）时被结构化报错（teaching-order-week-mismatch，点名"不是合法整数"），不与"周次不一致"那句混为一谈');
+  console.log(`PASS wall_order M3 表驱动（${CASES.length} 例：'1'/0/-1/1.5/NaN）：历史周数据文件 META.week 非法时均被结构化报错（teaching-order-week-mismatch，点名"不是合法正整数"），不与"周次不一致"那句混为一谈`);
 }
 
 // ============================================================================

@@ -203,15 +203,24 @@ function gatherWeekRecordsUpTo(currentBox, currentWeek) {
      * 改法：拆成三段独立判断，各自给出准确措辞——① META 整体缺失；② week 字段
      * 不是合法正整数；③ 都合法但与文件名周次不相等——全部复用同一个错误码
      * `teaching-order-week-mismatch`（调用方按 code 分支处理的逻辑不用跟着改），
-     * 但 message 精确描述具体是哪一种情形，不再笼统地都说"不一致"。 */
+     * 但 message 精确描述具体是哪一种情形，不再笼统地都说"不一致"。
+     *
+     * M3（轮 D 复审第三轮，外审 medium，2026-09-10）：上一版②的判据只查
+     * `typeof === 'number' && Number.isInteger`，没有排除 `week <= 0`（0、负数）
+     * 这类"是数字、是整数，但不是合法周次"的情形——0/-1 会被这条判据放过，只能
+     * 依赖③"与文件名周次不相等"这条巧合兜底（文件名对应的 w 恒为正整数，
+     * 0/-1 几乎必然不等于它），报出的错误信息却说成"周次不一致"，不是"周次本身
+     * 不合法"，措辞不准确。改为 `typeof week === 'number' && Number.isInteger(week)
+     * && week > 0`，让②真正覆盖"数字但不是合法正整数"的全部情形（0/负数/浮点数/
+     * NaN/非 number 类型），不再依赖与 w 恰好不等这个巧合。 */
     if (!box.META) {
       throw TeachingOrderError('teaching-order-week-mismatch',
         `week ${w} 的历史周数据文件（file: ${file}）缺少 META 声明，无法确认它自称的周次`,
         { week: w, file: file, expected: w, actual: undefined });
     }
-    if (typeof box.META.week !== 'number' || !Number.isInteger(box.META.week)) {
+    if (!(typeof box.META.week === 'number' && Number.isInteger(box.META.week) && box.META.week > 0)) {
       throw TeachingOrderError('teaching-order-week-mismatch',
-        `week ${w} 的历史周数据文件（file: ${file}）的 META.week 不是合法整数，实际：${JSON.stringify(box.META.week)}`,
+        `week ${w} 的历史周数据文件（file: ${file}）的 META.week 不是合法正整数，实际：${JSON.stringify(box.META.week)}`,
         { week: w, file: file, expected: w, actual: box.META.week });
     }
     if (box.META.week !== w) {

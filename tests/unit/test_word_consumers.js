@@ -15,6 +15,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { ENTRY_KINDS, BLOCK_TYPE_CATALOG, collectWordConsumption, usedWordSet, findConsumptionOf } = require('../../tools/validation/word_consumers');
 const { loadData } = require('../../tools/validation/load_data');
+const { isExemptConsumptionRecord } = require('../../tools/validation/exemptions');
 
 // ---- ① 正例：合成 box，覆盖 ENTRY_KINDS 列出的全部入口 ----
 function syntheticBox() {
@@ -93,6 +94,62 @@ assert(usedWordSet(box2).has('xyzblend'), 'usedWordSet 应包含 collectWordCons
 assert.equal(findConsumptionOf(box2, 'XYZBLEND').length, 1, 'findConsumptionOf 应大小写不敏感地定位到消费记录');
 assert.equal(findConsumptionOf(box2, 'xyzreserved').length, 0, 'RESERVED 词理应查无消费记录');
 console.log('PASS word_consumers: usedWordSet / findConsumptionOf 基础行为');
+
+// ---- M1（轮 D 复审第三轮，外审 medium，2026-09-10）：g1-rounds 记录的
+// bucket/week 字段存在性直测 ----
+// tools/validation/exemptions.js 的 isExemptConsumptionRecord 依赖 g1-rounds
+// 记录带 bucket（'pos'/'neg'）与调用方另传的 week 才能正确判定豁免——这里直接
+// 断言 collectWordConsumption 产出的 g1-rounds 记录确实带着这些字段，不是"恰好
+// 目前豁免判据用不到就没人发现字段丢了"。
+{
+  const syntheticRecords = collectWordConsumption(syntheticBox());
+  const posRec = syntheticRecords.find(r => r.kind === 'g1-rounds' && r.word.toLowerCase() === 'xyzg1pos');
+  const negRec = syntheticRecords.find(r => r.kind === 'g1-rounds' && r.word.toLowerCase() === 'xyzg1neg');
+  assert(posRec, '合成 box 的 G1 pos 桶词应产出一条 g1-rounds 记录');
+  assert(negRec, '合成 box 的 G1 neg 桶词应产出一条 g1-rounds 记录');
+  assert.equal(posRec.bucket, 'pos', `pos 桶记录的 bucket 字段应为 'pos'，实际：${JSON.stringify(posRec.bucket)}`);
+  assert.equal(negRec.bucket, 'neg', `neg 桶记录的 bucket 字段应为 'neg'，实际：${JSON.stringify(negRec.bucket)}`);
+  assert.equal(posRec.week, 99, `pos 桶记录的 week 字段应等于 META.week（99），实际：${JSON.stringify(posRec.week)}`);
+  assert.equal(negRec.week, 99, `neg 桶记录的 week 字段应等于 META.week（99），实际：${JSON.stringify(negRec.week)}`);
+  console.log('PASS word_consumers（M1）：合成 box 的 G1 pos/neg 桶记录均带正确的 bucket 与 week 字段');
+}
+{
+  // 真实 W1 数据同样核实一遍——不是只有合成 box 才恰好带对，真实生产数据的
+  // g1-rounds 记录也必须带 bucket/week，两者都要能对上。
+  const fs2 = require('node:fs'), path2 = require('node:path');
+  const root2 = path2.resolve(__dirname, '..', '..');
+  const week01Raw = fs2.readFileSync(path2.join(root2, 'frontend', 'src', 'weeks', 'week01.data.js'), 'utf8');
+  const week01Box = loadData(week01Raw, false);
+  const week01Records = collectWordConsumption(week01Box);
+  const g1Records = week01Records.filter(r => r.kind === 'g1-rounds');
+  assert(g1Records.length > 0, '真实 W1 数据应该有 g1-rounds 记录，检查 week01.data.js 是否已变');
+  const posSample = g1Records.find(r => r.bucket === 'pos');
+  const negSample = g1Records.find(r => r.bucket === 'neg');
+  assert(posSample, '真实 W1 数据应该至少有一条 bucket==="pos" 的 g1-rounds 记录');
+  assert(negSample, '真实 W1 数据应该至少有一条 bucket==="neg" 的 g1-rounds 记录');
+  assert.equal(posSample.week, 1, `真实 W1 pos 记录的 week 应为 1，实际：${JSON.stringify(posSample.week)}`);
+  assert.equal(negSample.week, 1, `真实 W1 neg 记录的 week 应为 1，实际：${JSON.stringify(negSample.week)}`);
+  g1Records.forEach(r => assert(r.bucket === 'pos' || r.bucket === 'neg',
+    `真实 W1 数据的每条 g1-rounds 记录都应该带合法 bucket（'pos'/'neg'），实际有一条：${JSON.stringify(r)}`));
+  console.log(`PASS word_consumers（M1）：真实 W1 数据的 ${g1Records.length} 条 g1-rounds 记录均带合法 bucket（'pos'/'neg'）与 week（1）字段`);
+}
+{
+  // 反例：bucket 缺失/非法时，isExemptConsumptionRecord 必须显式抛结构化错误
+  // （code: 'g1-rounds-missing-bucket'），不能因为字段缺失就静默落到"不豁免"——
+  // 那样看起来像是"碰巧判定正确"，掩盖了 word_consumers.js 抽取器本身的契约缺陷。
+  let caught = null;
+  try { isExemptConsumptionRecord({ kind: 'g1-rounds', word: 'xyz' }, { week: 1 }); }
+  catch (e) { caught = e; }
+  assert(caught, 'bucket 字段缺失时应该抛错，不是碰巧返回某个布尔值');
+  assert.equal(caught.code, 'g1-rounds-missing-bucket', `抛错的 code 应为 'g1-rounds-missing-bucket'，实际：${caught.code}`);
+
+  let caught2 = null;
+  try { isExemptConsumptionRecord({ kind: 'g1-rounds', word: 'xyz', bucket: 'not-a-real-bucket' }, { week: 1 }); }
+  catch (e) { caught2 = e; }
+  assert(caught2, 'bucket 字段是非法值（既不是 pos 也不是 neg）时同样应该抛错');
+  assert.equal(caught2.code, 'g1-rounds-missing-bucket', `抛错的 code 应为 'g1-rounds-missing-bucket'，实际：${caught2.code}`);
+  console.log('PASS word_consumers（M1 反例）：g1-rounds 记录 bucket 缺失/非法值时，isExemptConsumptionRecord 显式抛出结构化错误（g1-rounds-missing-bucket），不是碰巧不豁免');
+}
 
 // ---- ③ 真实数据回归：week02 的 wordforge 与 BOOK.pages 内容确实被收录 ----
 const week02Path = path.resolve(__dirname, '..', '..', 'frontend/src/weeks/week02.data.js');

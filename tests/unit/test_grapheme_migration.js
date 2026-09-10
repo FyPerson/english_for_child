@@ -887,3 +887,48 @@ function scanForLegacyTrue(files) {
 
   console.log('PASS grapheme migration（M2：extractScriptContents 正则加 i 标志）：<SCRIPT>/<Script> 大小写混排标签均能被正确识别并提取内容，端到端加载正常');
 }
+
+// ============================================================================
+// L2（轮 D 复审第三轮，外审 low，2026-09-10）：extractScriptContents 把多个
+// <script> 标签的内容拼接成一份文本，declaration() 在拼接后的文本上只取第一次
+// 匹配——如果前置 <script>（与课程数据无关的普通脚本）里恰好在行首出现一句
+// `const RESERVED = [...]`（伪声明，同名巧合），会抢先于后置 <script> 里真正的
+// 课程数据声明被匹配到。测试：前置 script 含伪 RESERVED、后置 script 含真实完整
+// 声明集合——loadData 应该显式拒绝（duplicate-declaration），不悄悄选中伪声明。
+// ============================================================================
+{
+  const { loadData, countDeclarationOccurrences, extractScriptContents } = require('../../tools/validation/load_data');
+
+  const fakeScript = "<script>\nconst RESERVED = ['fake','from','leading','script'];\n</script>";
+  const realScriptBody = [
+    "const META = {\"week\":1};",
+    "const RESERVED = ['ram','hem','rid','dam','kid'];",
+    "const SOUNDS = {};",
+    "const W = {};",
+    "const WALL_HINT = {};",
+    "const BOOK = {pages:[]};",
+    "const FIRST_TEACH_DAY = {};",
+    "const G1_ROUNDS = {};",
+    "const G1_THEME = {};",
+    "const G3_PAIRS = [];",
+    "const G4_WORDS = [];",
+    "const G5_WHITELIST = [];",
+    "const DAYS = [];"
+  ].join('\n');
+  const html = `<!doctype html><html><body>${fakeScript}\n<script>\n${realScriptBody}\n</script></body></html>`;
+
+  // 前提检查：确认这份合成 HTML 真的在 <script> 范围内把 RESERVED 声明了两次
+  // （不是只有一次、没有真正复现"前置伪声明"这个场景）。
+  const scriptText = extractScriptContents(html);
+  assert.equal(countDeclarationOccurrences(scriptText, 'RESERVED'), 2,
+    'L2 前提：合成 HTML 应该在 <script> 范围内出现 2 次 RESERVED 声明（前置伪声明 + 后置真声明），检查合成文本是否已变');
+
+  let caught = null;
+  try { loadData(html, true); } catch (e) { caught = e; }
+  assert(caught, 'L2：前置 script 含伪 RESERVED、后置 script 含真实 RESERVED 时，loadData 应该抛错，不应该悄悄选中前置的伪声明');
+  assert.equal(caught.code, 'duplicate-declaration', `L2：错误码应为 duplicate-declaration，实际：${caught.code}`);
+  assert.equal(caught.declarationName, 'RESERVED', `L2：错误应点名具体是哪个常量重复声明（RESERVED），实际：${caught.declarationName}`);
+  assert.equal(caught.count, 2, `L2：错误应带上实际重复次数（2），实际：${caught.count}`);
+
+  console.log('PASS grapheme migration（L2：多 script 前置伪声明检测）：前置 script 的伪 RESERVED 声明与后置 script 的真实声明重名时，loadData 显式拒绝（duplicate-declaration），不悄悄选中前置的伪声明');
+}

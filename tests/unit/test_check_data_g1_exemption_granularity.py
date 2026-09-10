@@ -105,6 +105,41 @@ class G1ExemptionGranularityTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0,
             f'纯 G1 neg 桶不应因不可分词被误报：{result.stdout[-1500:]}')
 
+    def test_sight_word_in_sight_and_words_block_unspellable_still_checked(self):
+        # 入口级测试（轮 D 复审第三轮，H1+H2，2026-09-10）：认读词同时在 sight
+        # 声明本身（阅读文本类来源，合法豁免）与 words 块（词卡墙，字位操作类
+        # 来源）两处出现，且这个词本身在 week02 字位表下无法分词（合成词 'low'：
+        # l/o/w 均未教）。改前 check_data.js ③ 循环开头有一条独立的
+        # `if (SIGHT.has(w.toLowerCase())) continue;`——只要词在认读词集合里就
+        # 整词跳过，不管当前记录的 kind，words 块这处真实的"字位操作类来源"
+        # 会被一起放过。改后 words 块这条记录必须被查出。
+        raw = self.baseline_text
+        sight_needle = "{b:'sight', items:[['the','这个 / 那个'],['is','是']]},"
+        self.assertIn(sight_needle, raw, 'fixture 里找不到目标 sight 块声明，检查 fixture 是否已变')
+        poisoned = raw.replace(
+            sight_needle,
+            "{b:'sight', items:[['the','这个 / 那个'],['is','是'],['low','低']]},",
+            1
+        )
+        self.assertNotEqual(poisoned, raw)
+        words_needle = "{b:'words', items:['cat','cap','can','kit']}"
+        self.assertIn(words_needle, poisoned, 'fixture 里找不到目标 words 块声明，检查 fixture 是否已变')
+        poisoned = poisoned.replace(
+            words_needle,
+            "{b:'words', items:['cat','cap','can','kit','low']}",
+            1
+        )
+        target = Path(self.tmpdir.name) / 'week02-data-sight-and-words-unspellable.js'
+        target.write_text(poisoned, encoding='utf-8')
+
+        result = run_check_data(target)
+        self.assertNotEqual(result.returncode, 0,
+            '认读词 "low" 同时出现在 sight 声明（豁免）与 words 块（不豁免）时，words 块这条应该被查出，不应被整词跳过放行')
+        self.assertIn('"low"', result.stdout)
+        self.assertIn('无法按字位分词', result.stdout)
+        self.assertIn('words', result.stdout,
+            f'失败消息应点名 words 这个非豁免来源，实际：{result.stdout[-1500:]}')
+
     def test_g1_pos_bucket_in_week1_still_exempt(self):
         # 正例回归：第一周的 pos 桶依然豁免（规范原文允许的那一条）。用 week01
         # 真实数据核对：若 week01 的 G1 pos 桶本就没有不可分词的词，这条测试至少

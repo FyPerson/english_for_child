@@ -29,6 +29,7 @@ const {validateAssessment} = require('./assessment_contract');
 const {assertIdList, segmentWord, surfaceOf, validateSoundsSchema} = require('../../frontend/src/shared/graphemes');
 const {computeTeachingOrder, gatherWeekRecordsUpTo, getExpectedWeeksUpTo, expectedWallOrder, diffWallLetters, setsEqual} = require('./wall_order');
 const {collectWordConsumption} = require('./word_consumers');
+const {isExemptConsumptionRecord} = require('./exemptions');
 let box;
 try { box = loadData(raw, isHTML); } catch(e) { console.error(e.message); process.exit(2); }
 const { RESERVED, RESERVED_RETEST, SOUNDS, W, WALL_HINT, BOOK, FIRST_TEACH_DAY, G1_ROUNDS, G1_THEME, G3_PAIRS, G4_WORDS, G5_WHITELIST, DAYS, META } = box;
@@ -241,18 +242,25 @@ head('③ 字母全在已教范围内');
  * 可解码），改前的 `kinds.has('g1-rounds')` 对**任何周任何桶**的 g1-rounds
  * 来源一律豁免，W2 起的 pos 桶词若含未教字母也会被放过。
  *
- * 两处一并修复：豁免判定下沉到"记录"级别（`isExemptRecord`），不是"词"级别——
- * 同一个词形在多处出现时，只要**至少有一条记录不豁免**，这个词就必须能正常
- * 分词/落在已教字位范围内；豁免范围精确为 `bucket==='neg' || (本周===1 &&
- * bucket==='pos')`（word_consumers.js 的 g1-rounds 记录已经带 `bucket` 与
- * `week` 字段，不需要另外改抽取器）。分词/未教字位的判定结果本身只跟词形和
- * 当前 SOUNDS/TAUGHT 有关、与是哪条记录触发无关，所以仍按词只算一次
- * （避免同一个词因为出现在多处非豁免来源而被重复报错——"错误去重放在结果层"），
- * 但失败消息里的"来源"改成列出这个词全部出现过的来源（含豁免来源），方便定位。 */
-function isExemptRecord(rec) {
-  if (rec.kind !== 'g1-rounds') return false;
-  return rec.bucket === 'neg' || (META.week === 1 && rec.bucket === 'pos');
-}
+ * 两处一并修复：豁免判定下沉到"记录"级别，不是"词"级别——同一个词形在多处
+ * 出现时，只要**至少有一条记录不豁免**，这个词就必须能正常分词/落在已教字位
+ * 范围内；分词/未教字位的判定结果本身只跟词形和当前 SOUNDS/TAUGHT 有关、与是
+ * 哪条记录触发无关，所以仍按词只算一次（避免同一个词因为出现在多处非豁免来源
+ * 而被重复报错——"错误去重放在结果层"），但失败消息里的"来源"改成列出这个词
+ * 全部出现过的来源（含豁免来源），方便定位。
+ *
+ * H1+H2 同根修复（轮 D 复审第三轮，外审 high，2026-09-10）：豁免判据本身（G1
+ * 桶规则 + 认读词规则）已抽到共享模块 tools/validation/exemptions.js 的
+ * `isExemptConsumptionRecord`，与 tests/unit/test_grapheme_semantics.js 的语义
+ * 套件共用同一份判据，不再各自维护、各自只改对一半。原本紧跟在这段注释后面的
+ * 本地 `isExemptRecord` 函数已删除，改为直接调用共享模块。
+ * 原③循环开头还有一条独立的 `if (SIGHT.has(w.toLowerCase())) continue;`——按
+ * "词"整词跳过，不看当前记录的 kind，认读词出现在 words/wordforge/blend 等
+ * **字位操作类来源**也会被豁免，与"认读词豁免只对阅读文本类来源（sight/
+ * sentences/book-page）生效"这条规则（H3，语义套件已有的判据）直接冲突。这条
+ * 独立跳过也已删除——认读词豁免现在完全由 `isExemptConsumptionRecord` 按记录
+ * 的 kind 精确判定，`SIGHT` 集合改为通过 `cumulativeSightWords` 选项传入（本
+ * 文件目前只处理单周数据，传入的是"本周 sight 记录"这个子集，不是跨周累计）。 */
 const wordRecords = new Map(); // word -> Array<record>（含 kind，g1-rounds 记录另带 bucket/week）
 for (const rec of collectWordConsumption(box)) {
   const list = wordRecords.get(rec.word) || [];
@@ -280,16 +288,26 @@ for (const w of RESERVED) {
  * ok(false, ...) 失败并跳过这个词，不让整个进程带栈崩溃（与 H1 在
  * test_grapheme_semantics.js 里"零解/多解即数据缺陷、不允许静默放行"是同一个
  * 口径，只是这里的"放行"方式是转成失败而不是抛错终止整个检查）。 */
+/* L1（轮 D 复审第三轮，外审 low，2026-09-10）：失败消息改前只列"这个词全部出现
+ * 过的来源 kind 集合"（含豁免来源，因为豁免来源不是这条失败的原因，混在一起
+ * 反而不利于第一时间定位"到底是哪条记录导致了这次失败"）。改为优先列出
+ * **非豁免记录**（真正触发这次失败的记录）各自的 kind/bucket/week（g1-rounds
+ * 记录额外带 bucket，供人核对是不是豁免判据本身有问题），全部来源集合降级为
+ * 补充信息。 */
+function describeRecord(r) {
+  if (r.kind === 'g1-rounds') return `g1-rounds(bucket=${r.bucket},week=${r.week})`;
+  return r.kind;
+}
 for (const [w, records] of wordRecords) {
-  if (SIGHT.has(w.toLowerCase())) continue;
-  const nonExempt = records.filter(r => !isExemptRecord(r));
+  const nonExempt = records.filter(r => !isExemptConsumptionRecord(r, { cumulativeSightWords: SIGHT, week: META.week }));
   if (nonExempt.length === 0) continue; // 这个词全部出现的来源都豁免，不检查
-  const kinds = new Set(records.map(r => r.kind)); // 报告仍列出全部来源（含豁免来源），便于定位
+  const kinds = new Set(records.map(r => r.kind)); // 全部来源（含豁免来源），仅作补充定位
+  const nonExemptDescr = nonExempt.map(describeRecord).join('；');
   let ids;
   try {
     ids = idsForWord(w);
   } catch (e) {
-    ok(false, `"${w}" 无法按字位分词（${e.code || 'error'}）：${e.message}（来源：${[...kinds].sort().join(',')}）`);
+    ok(false, `"${w}" 无法按字位分词（${e.code || 'error'}）：${e.message}（非豁免来源：${nonExemptDescr}；全部来源：${[...kinds].sort().join(',')}）`);
     continue;
   }
   /* L1（轮 D 复审，外审 low，2026-09-10）：这条判据当前是恒真式，不是有判别力的
@@ -304,7 +322,7 @@ for (const [w, records] of wordRecords) {
    * 尚未教学"的字位表——这条判据才会有真正的判别力，届时 TAUGHT 需要换成那个
    * 分离出来的"已教"子集，不能再直接等于 Object.keys(SOUNDS)。 */
   const bad = ids.filter(id => !TAUGHT.has(id));
-  ok(bad.length === 0, `"${w}" 含未教字位 [${bad.join(',')}]（来源：${[...kinds].sort().join(',')}）`);
+  ok(bad.length === 0, `"${w}" 含未教字位 [${bad.join(',')}]（非豁免来源：${nonExemptDescr}；全部来源：${[...kinds].sort().join(',')}）`);
 }
 
 head('④ 积木架能摆出题库里的词（字位安全，方案 §2.2「摆词比较/积木架」行）');
