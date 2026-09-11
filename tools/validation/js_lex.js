@@ -1,22 +1,37 @@
-/* 最小 JS 词法扫描（里程碑 2 段 3 第九批，I-M2/H-M1 共用底层实现）。
+/* 退役说明（2026-09-11，段 4 U1，轮 J M 根因；2026-09-11 第三轮 ③ 收口：唯一消费者
+ * 收窄为真）：本模块已从 load_data.js 的顶层声明/作用域判定路径退役——它不识别
+ * 正则字面量（`/\{/` 这类合法正则里的未配对括号会让 bracketDepthAt 的净深度永久
+ * 漂移，正则里的引号/反引号会让 scanState 误入字符串状态），且"计数"与"抽取"曾是
+ * 两套独立近似实现，可能对同一份输入给出不一致的判断（H1：局部同名 const 排在
+ * 真实顶层声明之前时，计数正确但抽取选错）。不得再用于任何安全级判定。
+ * U1（第二轮）当时其实还留了一条尾巴：load_data.js 仍借 maskStringsAndComments 给
+ * hasInlineMeta 的 META_DECLARATION_RE 文本旁证做掩码（M-B 修复），上面这句"现存
+ * 唯一消费者是 migration_audit.js"在当时并不成立。第三轮 ③ 主会话裁定移除了那条
+ * 旁证（它本身被正则字面量双向骗倒，見 load_data.js hasInlineMeta 头注释），
+ * load_data.js 现在真正做到零消费（grep 确认）——这句话现在才是真的：现存唯一
+ * 消费者是 tools/validation/migration_audit.js 的 scanState 启发式扫描
+ * （isLikelyCommentMatch，用于跳过注释里的诱饵匹配，不是安全判定）。新增顶层
+ * 声明/作用域判定一律走 tools/validation/js_ast.js（底层是 vendor 的 acorn，真正的
+ * JS 解析器，不是正则近似）。
  *
- * 不是完整的 JS 解析器——只做两件事，供 load_data.js 与 migration_audit.js 各自的
- * "字符串/注释会不会干扰正则匹配"问题共用同一套状态机，不各自维护一份近似实现：
+ * 最小 JS 词法扫描（里程碑 2 段 3 第九批，I-M2/H-M1 共用底层实现）。
+ *
+ * 不是完整的 JS 解析器——只做两件事，供 migration_audit.js 的"字符串/注释会不会
+ * 干扰正则匹配"问题使用，不用近似实现重复造轮子：
  *   ① maskStringsAndComments(src)：把字符串/模板字符串/行注释/块注释的内容原样替换成
  *      空格（保留换行与总长度），后续基于正则的行首匹配、括号深度统计不会被字符串里的
- *      巧合文本或注释里的诱饵文本影响。
+ *      巧合文本或注释里的诱饵文本影响。第三轮 ③ 收口后本函数已无生产消费者（导出仅为
+ *      历史兼容/可能的未来用途保留），migration_audit.js 只用下面的 scanState。
  *   ② scanState(src, index)：返回 index 位置落在哪种词法状态（'code'/'line-comment'/
  *      'block-comment'/'string-single'/'string-double'/'template'），供"这个匹配是不是
- *      落在注释或字符串里"这类判断直接用状态而不是零散的启发式正则。
+ *      落在注释或字符串里"这类判断直接用状态而不是零散的启发式正则——
+ *      migration_audit.js 的唯一实际消费者。
  *
- * 已知简化（maskStringsAndComments/bracketDepthAt 当前的真实调用方 load_data.js
- * 不会触发，见该文件调用点头注释）：
+ * 已知简化：
  *   - maskStringsAndComments 对模板字符串仍按"整段——含 `${...}` 插值表达式——都
- *     视为不透明文本"处理，不单独识别插值内部的真代码；load_data.js 处理的是
- *     数据层 JS（顶层 const 声明用普通数组/对象字面量，不使用带插值的模板字符串），
- *     这条简化不影响它的实际输入。
- *   - 不处理正则字面量（/.../）与字符串边界的歧义（除号 vs 正则开始）——两处调用方
- *     处理的都是数据/审计脚本源码，不依赖这条边界判断。
+ *     视为不透明文本"处理，不单独识别插值内部的真代码。
+ *   - 不处理正则字面量（/.../）与字符串边界的歧义（除号 vs 正则开始）——唯一调用方
+ *     migration_audit.js 处理的是审计脚本源码，不依赖这条边界判断。
  *
  * scanState（H-M1，段 3 第九批，外审 medium，2026-09-10 升级为帧栈模型）：改前与
  * maskStringsAndComments 同款简化——整段模板字符串（含 `${...}` 插值）一律按

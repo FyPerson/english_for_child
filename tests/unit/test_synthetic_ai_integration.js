@@ -551,7 +551,15 @@ function testTemplateRoundTrip() {
   };
   const declarations = Object.keys(box).map(k => `const ${k} = ${JSON.stringify(box[k])};`).join('\n');
   const html = `<!doctype html><html><body><script>\n${declarations}\n</script></body></html>`;
-  const reparsed = loadData(html, false);
+  // 段 4 U1（2026-09-11，AST 迁移）修正：这里构造的 html 确实是一份完整 HTML 文档
+  // （见上方注释"套一层 <script> 外壳更贴近真实 HTML 产物"），历史上传 `false` 能
+  // "碰巧工作"是因为改前 loadData 的 html=false 分支只是把 raw 原样交给纯文本正则
+  // （不关心是不是真的有 HTML 外壳）；AST 版本的 html=false 分支会把 raw 整份当一份
+  // 脚本直接喂给 acorn 解析，`<!doctype html>` 不是合法 JS，会在位置 0 直接报
+  // script-parse-failed。这里改传 `true`，与这份输入的真实形状（一份带 <script>
+  // 包裹的 HTML 文档）一致，也是 collectScriptSources(raw, html) 的文档化契约本身
+  // 要求的用法。
+  const reparsed = loadData(html, true);
   // loadData 内部用 vm.runInNewContext 求值声明文本（tools/validation/load_data.js:19），
   // 反解析出的数组/对象因此来自另一个 vm realm，[[Prototype]] 与本进程的 Array.prototype
   // 不是同一个对象——assert.deepEqual（node:assert/strict 下等价于 deepStrictEqual）

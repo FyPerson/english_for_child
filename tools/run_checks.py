@@ -88,6 +88,10 @@ def build_jobs(temp, quick, skip_baseline, reproducible_fn=reproducible):
             ('synthetic ai integration contract', ['node', 'tests/unit/test_synthetic_ai_integration.js']),
             ('migration audit contract', ['node', 'tests/unit/test_migration_audit.js']),
             ('grapheme migration contract', ['node', 'tests/unit/test_grapheme_migration.js']),
+            # 段 4 U1（2026-09-11）：load_data.js 顶层声明发现/抽取改走 AST（tools/validation/js_ast.js）
+            # 后新增的专项回归——段 3 有七份测试写了、跑了、绿了，但没登记进这份清单，导致
+            # `python tools/project.py check` 从未真的跑到它们（"改了什么就确认验收档位覆盖它"）。
+            ('load data ast contract', ['node', 'tests/unit/test_load_data_ast.js']),
             ('assessment contract', ['node', 'tests/unit/test_assessment_contract.js']),
             # M4（轮 D 复审第二轮，2026-09-10）补挂：读真实 build/week04.html 产物做负向
             # 核实（测评词未泄漏进音频清单/词卡插画/教学消费记录），'build' 是本列表第一个

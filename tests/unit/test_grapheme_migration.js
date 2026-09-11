@@ -242,7 +242,16 @@ function excludedKey(file, patternId) { return file + '\u0000' + patternId; }
 const EXCLUDED_SET = new Set(EXCLUDED_ENTRIES.map(e => excludedKey(e.file, e.patternId)));
 
 // 归档 / 第三方 / 构建产物目录整体排除（与仓库既有约定一致：build/、tmp/ 均 gitignore）。
-const EXCLUDED_DIR_PREFIXES = ['node_modules/', 'build/', 'tmp/', '.git/'];
+// tools/vendor/（段 4 U1，2026-09-11 新增）：第三方 vendor 代码（acorn.js，238KB，
+// 见 tools/vendor/README.md），非本项目源码，不参与 L→grapheme 迁移——它必须被
+// git 跟踪（listTrackedJsFiles 的护栏要求 tools/ 下任何 .js 文件都不能是未跟踪
+// 状态，见该函数头注释），一旦被跟踪就会被下面的源码扫描扫到，里面必然有形如
+// 单字母变量 `L` 的写法（压缩后的第三方代码，变量名与本项目"字位字段 L"的语义
+// 毫无关系）。用整目录排除而不是 {file, patternId, count} 精确计数：vendor 代码
+// 不应该被手工修改（升级方式是整份重新下载，见 README.md），逐条命中计数在这里
+// 没有意义——真正的"该不该动这份第三方代码"判断在于要不要升级版本，不在于本文件
+// 这套面向手写代码残留检测设计的计数机制。
+const EXCLUDED_DIR_PREFIXES = ['node_modules/', 'build/', 'tmp/', '.git/', 'tools/vendor/'];
 
 /* M1 修复（预筛 medium：「源码扫描不扫 .html」）：四个 frontend/src/weeks/
  * week0N.template.html 受版本控制且含真实取数代码（如 week04 模板 7 处 SOUNDS[...]
@@ -761,6 +770,18 @@ function scanForLegacyTrue(files) {
 //     偶然出现的字面量 "const META = {...}"（比如页面自己展示一段代码示例）被
 //     误判成"找到了内联 META"。
 // 四类测试：缩进、无空格等号、换行等号、正文伪声明（应判"缺 META"不误命中）。
+//
+// ⚠️ L-5 修复（预筛 low，第四轮，2026-09-11，仅补记现状，不改断言）：本节写于
+// AST 迁移（里程碑 2 段 4 U1）之前，当时 META_DECLARATION_RE/extractScriptContents
+// 确实是 load_data.js 生产读取路径的一部分。AST 迁移后，生产探测已改走
+// tools/validation/load_data.js 的 hasInlineMeta（AST 语义，见其头注释），
+// META_DECLARATION_RE 与 extractScriptContents 现在是**只为本节测试而活的历史
+// 保留导出**（该文件里两处定义都已标注"测试专用 / 历史保留"）——下面 M2a-M2d 四条
+// 测试的 `META_DECLARATION_RE.test(extractScriptContents(html))` 断言测的是这份
+// 历史保留正则自身的判定口径，不代表 loadData()/hasInlineMeta 现在的真实探测行为
+// （两者判定逻辑不保证同步，M2 本身"探测限定到 <script> 内容"这条也早已被 AST 天然
+// 满足，不再是这条正则要单独承担的职责）。断言与 fixture 均不改——它们仍然是这份
+// 正则本身的有效回归——只更正下面 PASS 文案与本段描述，避免读者把它误当生产路径。
 // ============================================================================
 {
   const { loadData, META_DECLARATION_RE, extractScriptContents } = require('../../tools/validation/load_data');
@@ -810,7 +831,7 @@ function scanForLegacyTrue(files) {
       `M2：正文伪声明不应让探测误判为"找到了"，应正常判定为缺 META 并拒绝，实际 code=${caught.code}`);
   }
 
-  console.log('PASS grapheme migration（M2：load_data 的 META 探测放宽缩进/等号空白形态，并限定到 <script> 内容，方案 §3.8）：缩进/无空格等号/等号后换行三类合法声明均能正确探测且端到端加载成功；<script> 之外的正文伪声明不被误判，仍正确判定缺 META');
+  console.log('PASS grapheme migration（M2：⚠️ 测试专用/历史保留的 META_DECLARATION_RE 放宽缩进/等号空白形态，并限定到 <script> 内容，方案 §3.8——AST 迁移后生产探测已改走 load_data.js 的 hasInlineMeta，本节测的是这份历史保留正则自身，不代表生产行为，见 L-5/第四轮 注记）：缩进/无空格等号/等号后换行三类合法声明均能正确探测且端到端加载成功；<script> 之外的正文伪声明不被误判，仍正确判定缺 META');
 }
 
 // ============================================================================
@@ -845,10 +866,21 @@ function scanForLegacyTrue(files) {
 
   // 先确认这份合成 HTML 真的复现了"正文行首有伪声明、且它在整份文档里排在
   // <script> 之前"这个前提条件——不确认这一点，下面即使测试通过也可能只是没有
-  //真正构造出会触发旧 bug 的场景。
+  // 真正构造出会触发旧 bug 的场景。
+  //
+  // 段 4 U1（2026-09-11，AST 迁移）附带改变：declaration() 改前是纯文本正则，对
+  // 整份 raw 直接 .exec()，完全不知道"这段文字是不是在 <script> 标签里"——这正是
+  // M1 这个 bug 的根源（会命中正文里排在前面的伪声明）。AST 版本的 declaration()
+  // 先尝试把 raw 整份当一份脚本解析，失败（真实 HTML 文档必然失败，`<!doctype`
+  // 不是合法 JS）后才退回按 <script> 标签逐个提取、逐个尝试——这个退回路径天然
+  // 只看 <script> 标签内部，不会再命中 <script> 之外的正文伪声明。也就是说，
+  // declaration() 本身现在直接对整份 raw HTML 调用也不会再被这个 bug 场景"骗到"，
+  // 不再需要靠 loadData() 内部另外限定搜索范围来规避——下面这条断言从"确认 declaration()
+  // 复现旧行为"改成"确认 declaration() 已经不会被正文伪声明劫持"，用同一份合成
+  // HTML 验证的是同一件事的两个阶段（AST 迁移前/后）。
   const { declaration } = require('../../tools/validation/load_data');
-  assert(declaration(html, 'RESERVED').includes('fake'),
-    'M1 前提：直接对整份 raw HTML 调用 declaration() 应该命中正文里的伪声明（这正是改前的行为，用来确认合成 HTML 真的复现了 bug 场景）');
+  assert(declaration(html, 'RESERVED').includes('ram') && !declaration(html, 'RESERVED').includes('fake'),
+    'M1（AST 迁移后）：直接对整份 raw HTML 调用 declaration() 应该正确跳过正文伪声明，命中 <script> 内的真实声明，不应该像改前的纯文本正则那样被正文伪声明劫持');
   assert(declaration(extractScriptContents(html), 'RESERVED').includes('ram'),
     'M1 前提：对 extractScriptContents(html) 调用 declaration() 应该命中 <script> 内的真实声明');
 
@@ -897,7 +929,7 @@ function scanForLegacyTrue(files) {
 // 声明集合——loadData 应该显式拒绝（duplicate-declaration），不悄悄选中伪声明。
 // ============================================================================
 {
-  const { loadData, countDeclarationOccurrences, extractScriptContents } = require('../../tools/validation/load_data');
+  const { loadData, collectScriptEntries, findAllTopLevelDeclarations } = require('../../tools/validation/load_data');
 
   const fakeScript = "<script>\nconst RESERVED = ['fake','from','leading','script'];\n</script>";
   const realScriptBody = [
@@ -917,11 +949,29 @@ function scanForLegacyTrue(files) {
   ].join('\n');
   const html = `<!doctype html><html><body>${fakeScript}\n<script>\n${realScriptBody}\n</script></body></html>`;
 
-  // 前提检查：确认这份合成 HTML 真的在 <script> 范围内把 RESERVED 声明了两次
-  // （不是只有一次、没有真正复现"前置伪声明"这个场景）。
-  const scriptText = extractScriptContents(html);
-  assert.equal(countDeclarationOccurrences(scriptText, 'RESERVED'), 2,
-    'L2 前提：合成 HTML 应该在 <script> 范围内出现 2 次 RESERVED 声明（前置伪声明 + 后置真声明），检查合成文本是否已变');
+  // 前提检查：确认这份合成 HTML 真的有两个独立 <script>，各自顶层声明了一次
+  // RESERVED（不是只有一次、没有真正复现"前置伪声明"这个场景）。
+  //
+  // 段 4 U1（2026-09-11，AST 迁移）：改前用 extractScriptContents 把两个 <script>
+  // 拼接成一份文本再数——这里改用 collectScriptEntries + findAllTopLevelDeclarations
+  // 直接验证新架构本身的产出（两个 script 分别解析，不拼接，见 load_data.js 顶部
+  // 架构说明）：Map 里 RESERVED 应该有 2 条记录，scriptIndex 分别是 0（伪声明）和
+  // 1（真实声明）——这也顺带验证了"不拼接"这个设计决定本身没有破坏"发现两次声明"
+  // 这件事（拼接是会制造虚假冲突的老问题，不是保留跨 script 计数能力的必要条件）。
+  //
+  // 收口 A（2026-09-11）：这份合成 HTML 里两个 <script> 都没有被静默跳过，标签
+  // 原始序号与"过滤后数组下标"这两种口径在这个 fixture 里恰好重合（都是 0、1），
+  // 不足以证明口径统一本身——分辨力更强的用例见 tests/unit/test_load_data_ast.js
+  // 「10」（第 0 个标签被静默跳过时两种口径才会给出不同的数字）；这里只是顺带把
+  // scriptIndex 的值也断言上，不再只断言条数。
+  const entries = collectScriptEntries(html, true);
+  assert.equal(entries.length, 2, 'L2 前提：合成 HTML 应该有 2 个 <script> 标签（前置伪声明 + 后置真实声明），检查合成文本是否已变');
+  const decls = findAllTopLevelDeclarations(entries);
+  const reservedOcc = decls.get('RESERVED') || [];
+  assert.equal(reservedOcc.length, 2,
+    'L2 前提：两个 <script> 应该各自独立顶层声明了一次 RESERVED，Map 里应累计 2 条记录');
+  assert.deepEqual(reservedOcc.map(o => o.scriptIndex), [0, 1],
+    `L2：两条 RESERVED 记录的 scriptIndex 应分别是 0（前置伪声明所在标签）和 1（后置真实声明所在标签），实际：${JSON.stringify(reservedOcc.map(o => o.scriptIndex))}`);
 
   let caught = null;
   try { loadData(html, true); } catch (e) { caught = e; }
@@ -934,17 +984,27 @@ function scanForLegacyTrue(files) {
 }
 
 // ============================================================================
-// I-M2（段 3 第九批，外审 medium，2026-09-10）：countDeclarationOccurrences 改前
-// 按"行首 + 可选缩进"匹配 `const NAME = `，不看这一行嵌套在多深的括号里——某个辅助
-// 函数体内部若手滑写了一个同名局部 const（哪怕缩进再深也满足"行首"这条判据），会被
-// 误计成"又一次顶层声明"，触发不该触发的 duplicate-declaration 拒绝。改用
-// maskStringsAndComments + bracketDepthAt 只数括号深度为 0（真正 Program 顶层）的
-// 匹配。测试：一个辅助函数体内部有同名局部 const RESERVED（深度 > 0），顶层只有一份
-// 真实 RESERVED 声明（深度 0）——应计数为 1，不是 2；loadData 应该正常通过，不应该
-// 因为这个局部变量而误报 duplicate-declaration。
+// I-M2（段 3 第九批，外审 medium，2026-09-10；段 4 U1 追加 H1 根治，2026-09-11）：
+// countDeclarationOccurrences 改前按"行首 + 可选缩进"匹配 `const NAME = `，不看
+// 这一行嵌套在多深的括号里——某个辅助函数体内部若手滑写了一个同名局部 const（哪怕
+// 缩进再深也满足"行首"这条判据），会被误计成"又一次顶层声明"，触发不该触发的
+// duplicate-declaration 拒绝。段 3 第九批改用 maskStringsAndComments + bracketDepthAt
+// 只数括号深度为 0（真正 Program 顶层）的匹配，但只修了"计数"，没有同步检查
+// "抽取"——declaration() 仍是纯文本第一次匹配，不看深度。
+//
+// H1（轮 J 外审 high，2026-09-10）：这份合成 HTML 里局部 shadow 声明的**文本**恰好
+// 排在真实顶层声明*之前*（辅助函数写在文件开头），这正是会触发 H1 的顺序——计数
+// （深度感知）说"只有 1 个顶层声明"（判断正确），但抽取（纯文本第一次匹配）却会
+// 选中排在前面的局部 shadow 声明，不是后面真正的顶层声明。改前这里只断言
+// "loadData 不抛错"，没有断言 loadData 返回的值到底是哪一份——"不抛错"和"值是对的"
+// 是两件事，前者成立不代表后者成立，这个 bug 曾经被这条只测前者的断言放行。段 4
+// U1 补上返回值断言，同时把发现/抽取机制换成 AST（js_ast.js）——AST 从结构上就
+// 不可能把嵌套在函数体内的局部声明当成顶层声明，H1 描述的"计数与抽取用不同判据、
+// 可能互相矛盾"这条根因不复存在（两者现在共用同一个 Map，见 load_data.js
+// findAllTopLevelDeclarations 头注释）。
 // ============================================================================
 {
-  const { loadData, countDeclarationOccurrences, extractScriptContents } = require('../../tools/validation/load_data');
+  const { loadData, collectScriptEntries, findAllTopLevelDeclarations } = require('../../tools/validation/load_data');
 
   const scriptBody = [
     "function helperWithLocalShadow() {",
@@ -968,13 +1028,72 @@ function scanForLegacyTrue(files) {
   ].join('\n');
   const html = `<!doctype html><html><body><script>\n${scriptBody}\n</script></body></html>`;
 
-  const scriptText = extractScriptContents(html);
-  assert.equal(countDeclarationOccurrences(scriptText, 'RESERVED'), 1,
-    'I-M2：辅助函数内部的局部同名 const 不应被计入顶层声明次数，应仍为 1（不是 2）');
+  // 前提检查：AST 视角下，这个 <script> 顶层只声明了 1 次 RESERVED（局部 shadow
+  // 嵌套在 helperWithLocalShadow 函数体内部，不在 ast.body 顶层，天然不计入）。
+  const entries = collectScriptEntries(html, true);
+  const decls = findAllTopLevelDeclarations(entries);
+  const reservedOcc = decls.get('RESERVED') || [];
+  assert.equal(reservedOcc.length, 1,
+    'I-M2 前提：辅助函数内部的局部同名 const 不应被 AST 视为顶层声明，Map 里 RESERVED 应仍只有 1 条记录');
+  // 收口 A（2026-09-11）：这份合成 HTML 只有 1 个 <script> 标签，顺带断言其
+  // scriptIndex 就是这唯一标签的原始序号 0。
+  assert.equal(reservedOcc[0].scriptIndex, 0,
+    `I-M2：唯一一条 RESERVED 记录的 scriptIndex 应为 0（文档里唯一的 <script> 标签），实际：${reservedOcc[0].scriptIndex}`);
 
   let caught = null;
-  try { loadData(html, true); } catch (e) { caught = e; }
+  let box = null;
+  try { box = loadData(html, true); } catch (e) { caught = e; }
   assert.equal(caught, null, `I-M2：辅助函数内部的局部同名 const 不应触发 duplicate-declaration 拒绝，实际抛错：${caught && caught.message}`);
+  // H1 核心断言（改前只测"不抛错"，漏掉了这一步）：返回值必须是真实顶层声明的值，
+  // 不能是排在文本前面的局部 shadow 值——[...box.RESERVED] 见 M1 节头注释，box.RESERVED
+  // 是 vm 独立 realm 里的数组，deepStrictEqual 需要先搬回当前 realm 的普通数组再比较。
+  // L-2 修复（2026-09-11）：改前紧跟着一条 `assert.notDeepEqual(..., ['local',
+  // 'shadow', ...])`——只要上面这条 deepEqual（真实值 ['ram','hem',...]）已经通过，
+  // 这条 notDeepEqual 必然也通过（两个字面量本身就不相等），是恒真式，删掉，把
+  // "不应是 shadow 值"的意思并进 deepEqual 自己的断言消息里。
+  assert.deepEqual([...box.RESERVED], ['ram', 'hem', 'rid', 'dam', 'kid'],
+    `I-M2/H1：loadData(...).RESERVED 应该等于真实顶层声明的值 ['ram','hem','rid','dam','kid']，` +
+    `不应该被排在文本前面的局部 shadow 声明"劫持"（不应等于 ['local','shadow','not','top','level']），` +
+    `实际：${JSON.stringify(box.RESERVED)}`);
 
-  console.log('PASS grapheme migration（I-M2：辅助函数内部局部同名 const 不触发重复）：countDeclarationOccurrences 只数括号深度为 0 的顶层声明，loadData 正常通过');
+  console.log('PASS grapheme migration（I-M2/H1：辅助函数内部局部同名 const 不触发重复、且不劫持抽取结果）：AST 只把 ast.body 顶层的声明视为顶层声明，计数与抽取共用同一份 Map，loadData 返回真实顶层值');
+}
+
+// ============================================================================
+// H1 补充用例（段 4 U1，2026-09-11）：上面的 I-M2 场景里局部 shadow 声明的文本恰好
+// 排在真实顶层声明*之前*——这是轮 J 外审点名的触发顺序，但为了不遗漏"顺序反过来"
+// 是否也正确，这里再构造一份真实顶层声明在前、局部 shadow 声明（在另一个辅助函数
+// 体内部）在后的版本，断言同样能正确抽取到真实顶层值。两个方向都覆盖，不依赖
+// 文本顺序——这正是 AST 语义（只看 ast.body，不看文本先后）该有的性质。
+// ============================================================================
+{
+  const { loadData } = require('../../tools/validation/load_data');
+
+  const scriptBody = [
+    "const META = {\"week\":1};",
+    "const RESERVED = ['ram','hem','rid','dam','kid'];",
+    "const SOUNDS = {};",
+    "const W = {};",
+    "const WALL_HINT = {};",
+    "const BOOK = {pages:[]};",
+    "const FIRST_TEACH_DAY = {};",
+    "const G1_ROUNDS = {};",
+    "const G1_THEME = {};",
+    "const G3_PAIRS = [];",
+    "const G4_WORDS = [];",
+    "const G5_WHITELIST = [];",
+    "const DAYS = [];",
+    "function helperWithLocalShadowAfter() {",
+    "  // 局部同名 const，这次排在真实顶层声明之后，同样不应被计成顶层声明",
+    "  const RESERVED = ['local', 'shadow', 'declared', 'after', 'real'];",
+    "  return RESERVED;",
+    "}"
+  ].join('\n');
+  const html = `<!doctype html><html><body><script>\n${scriptBody}\n</script></body></html>`;
+
+  const box = loadData(html, true);
+  assert.deepEqual([...box.RESERVED], ['ram', 'hem', 'rid', 'dam', 'kid'],
+    `H1 补充（顺序反过来）：loadData(...).RESERVED 应该等于真实顶层声明的值，实际：${JSON.stringify(box.RESERVED)}`);
+
+  console.log('PASS grapheme migration（H1 补充：局部 shadow 声明排在真实顶层声明之后）：AST 判定与文本先后顺序无关，两种顺序都能正确抽取到真实顶层值');
 }
