@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
- "takenAt": "2026-09-10",
- "sourceCommit": "06479cd77e78ca005707d2ac8cf407f181dadfc5",
+ "takenAt": "2026-09-11",
+ "sourceCommit": "9032a7bf4a7869cddd8bae9daf819aa6c6f994df",
  "form": "single-file",
  "toolVersions": {
   "python": "3.12.0",
@@ -10,8 +10,8 @@
  },
  "weeks": {
   "week01.html": {
-   "sha256": "4124bb555b7bb009af838255ab8981e7eff87ea2679331d18431ababfff7de9c",
-   "skeletonSha256": "dbe300d5340470baa4a7390c9fe3731f193ad99fc9f037a349ec5ddf860eba8b",
+   "sha256": "7310772ecab78cdd1d808771d4003344b68c380285cf75baac5599880add8ae7",
+   "skeletonSha256": "ab599df88c38396ff78047f0c8f752b4dbf9f09b236e699a2959bdaf651ec6f1",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -564,8 +564,8 @@
    }
   },
   "week02.html": {
-   "sha256": "8fad17452aa5a0e5b5200d2e50daa133837aa48451ce3738ae58304479ecf8c9",
-   "skeletonSha256": "36641810bf620faae9f091c6045e31c2f4b09c8908f8e37cf15d8cd9d639d03c",
+   "sha256": "207f0b12fc4d8fc54850094dafd96a92a262f9c3d5e0d0aa05fd1133d56da182",
+   "skeletonSha256": "da3ec295c53469f984170596a40fe87d0486dbd1f9e6558cedf28ae8fccc3226",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -1257,8 +1257,8 @@
    }
   },
   "week03.html": {
-   "sha256": "05dc8c104929676795ab4546b117a1c9f568a4f9168e1ac3177d0baa6a16c552",
-   "skeletonSha256": "94e35b83ceebb8363d3a11ce0f06af65ccdaf44afd31dbefc195504b22a0d8e6",
+   "sha256": "c1b2c2c9ec78c74fae11ee5acb9df3837c8a23f7bdb2f6a2e3dbc46551b93efc",
+   "skeletonSha256": "3c185d50418dbb3100a1d1302d18384ceeae8593c3a7eb0bb9df1e9e66bbbb13",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -2355,8 +2355,8 @@
    }
   },
   "week04.html": {
-   "sha256": "fc6574187d81925fcbc379636ff75dea2afa5edb0ec421bd955f484ca80c3109",
-   "skeletonSha256": "df9ae3310b1969860c7d23ca9715cf0f0a42eaa4bb9c7cc6f484f076a1ca0864",
+   "sha256": "ac66b260eca0044f1d9e7ddeca6f6d69e7e93df89892732143afcd585b064692",
+   "skeletonSha256": "a2442188be8db6b49b7cbc7c0cad7c4cf4db3328c204553882c091f0bfad6706",
    "declarationOrder": [
     "PHONEME_ILL",
     "BOOK_IMG",
@@ -3945,6 +3945,6 @@
   }
  },
  "course": {
-  "sha256": "0555e664bfe3a8309dc2c393c106525ef17fc6d4539c3f4972c20baf4b256d28"
+  "sha256": "d674e70c7cc9ff21fa22845db70bf3449b1fdb98bc1dc942230c2ac87b755bc3"
  }
 }
