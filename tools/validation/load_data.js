@@ -31,15 +31,66 @@ const NAMES = 'META RESERVED SOUNDS W WALL_HINT BOOK FIRST_TEACH_DAY G1_ROUNDS G
  * acorn 是完整的 ES 解析器，正则字面量、任意缩进/换行都是它的常规输入。
  *
  * 架构决定：loadData() 逐个 <script> 分别解析，不拼接后再解析。
- *   ① 每个 <script> 在浏览器里是独立 Program、独立顶层作用域，拼接会把源文件里
- *      根本不存在的"重复声明"或"语法冲突"制造出来（两个 script 各自声明一个
- *      同名 `let x` 本来完全合法，拼接后就成了同一作用域内的重复声明）。
+ *   ① 保留逐脚本独立的解析边界，使每个 <script> 内部的语法错误与声明位置都能被
+ *      独立定位到原始文档里的具体标签，不会因为拼接而报出"拼接后大文本第几行"
+ *      这种脱离原始文档结构的坐标。跨脚本的同名顶层声明该不该算重复，交给应用层
+ *      （findAllTopLevelDeclarations 的 Map 归并）统一检测、统一报告结构化的
+ *      duplicate-declaration 错误码，不靠拼接后让 JS 引擎自己去发现冲突。
+ *      （R-4 修复，轮 K 外审，2026-09-11：这一条改前的理由是错的——原文写"两个
+ *      script 各自声明一个同名 `let x` 本来完全合法"、"每个 <script> 是独立顶层
+ *      作用域"。事实并非如此：普通经典脚本虽然各自解析为独立的 Program，但在浏览器
+ *      里共享同一个页面级全局环境，后执行的脚本再次声明同名顶层 `let`/`const` 会
+ *      触发真实的声明冲突（SyntaxError），不是"完全合法"。这里已删除这条错误理由，
+ *      换成上面"保留独立解析边界，让错误定位与重复检测各司其职"这条站得住的理由——
+ *      逐脚本解析的实现本身没有错，错的只是原来给它编的那条理由。）
  *   ② acorn 遇到同一作用域内重复 `const` 会直接抛 SyntaxError——拼接后解析会把
  *      "跨 script 同名声明"这件我们正要检测并报 duplicate-declaration 的事，变成
- *      一个语法错误，错误码就对不上契约了。
+ *      一个语法错误，错误码就对不上契约了（与①同一件事的另一面：我们自己的结构化
+ *      错误分类职责，不该外包给 JS 引擎的原生报错机制）。
  * 因此 loadData() 按 collectScriptSources() 拿到的每个 <script> 分别喂给 js_ast，
  * 用 Map（findAllTopLevelDeclarations）在应用层归并"哪个 NAME 在哪些 script 里各
  * 出现了几次"，不靠"拼一份大文本、让 JS 引擎自己去发现冲突"这种取巧方式。
+ * ============================================================================ */
+
+/* ============================================================================
+ * 已知限制（轮 K 外审 2026-09-11，转下段处理，用户拍板不在本轮修复）：以下三条是
+ * 外审指出、明确保留到下一段处理的既有行为，写在这里是为了不被误读成"没发现"或
+ * "忘了修"——本轮只做了记录，没有改动对应的实现。
+ *
+ * 1. 加载器与导出器的执行顺序不一致。loadData() 先按 NAMES 顺序把全部声明推入
+ *    chunks，再把全部 <script> 里的顶层 SOUNDS 赋值统一追加在最后（本文件下方
+ *    loadData() 内"收口 B"注释处）；export_data.js 则是在按 NAMES 顺序处理到
+ *    SOUNDS 这一项时，立即把该脚本的 SOUNDS 赋值插入到 SOUNDS 声明紧后面。两者对
+ *    "声明与赋值的相对顺序会不会影响最终求值结果"这件事可能给出不同答案，触发
+ *    输入：`const META={}; const SOUNDS={}; SOUNDS.a=1; const W=SOUNDS.a;`——
+ *    原始脚本按源码顺序执行，W 的值是 1；loadData() 里 SOUNDS.a=1 被移到 W 的声明
+ *    *之后* 才执行，W 是 undefined；export_data.js 导出的文件里 SOUNDS.a=1 仍在
+ *    SOUNDS 声明后紧跟着（还在 W 之前），求值结果又与原始脚本一致——三者可能互不
+ *    相同，是静默的值差异，不报错。这是既有行为（改前 loadData 就把 SOUNDS 赋值
+ *    追加在最后、export_data 就在 SOUNDS 声明后立即插入，本轮 R-1 的修复没有触碰
+ *    这个顺序），不是本轮引入的新问题。彻底修法是按源码位置把声明与 SOUNDS 赋值
+ *    组装成同一个执行序列，加载器与导出器共用同一份组装逻辑，不是两边各自维护一套
+ *    顺序规则。
+ *
+ * 2. 外层仍然用正则（SCRIPT_TAG_RE）在整份原始文本上扫描 <script> 标签，不理解
+ *    HTML 注释、不理解带引号属性值内部的字符、也不区分源码位置。触发输入：
+ *    `<!-- <script>const META={week:99};</script> --><script>const RESERVED=['a'];</script>`
+ *    ——注释里的假 <script> 标签会被当成一份真实的数据来源，META 会被这份注释里
+ *    的假声明覆盖，而不是被当成"整段都在注释里，不该参与扫描"。开始标签属性值里
+ *    带引号的 `>`、合法但结束标签内部带空白的 `</script >`，这条正则同样没有正确
+ *    处理。这也是既有行为（改前同样用正则扫整份 HTML，不是本轮引入的回归）。彻底
+ *    修法是引入一个能保留源码位置信息的 HTML 解析器，或者实现一套引号感知的边界
+ *    扫描器，对不支持的形态显式拒绝而不是给出一个看似合理、实际错误的结果。
+ *
+ * 3. AST 切片只保证抽取到的文本是一条完整合法的语句，不保证这条语句除了给 NAMES
+ *    里的名字赋值之外，不会顺带执行别的东西。触发输入：
+ *    `const META={week:1}, extra=(()=>{META.week=99;})();`——META 与 extra 是同一
+ *    条 VariableDeclaration 语句里的两个 declarator，NAMES 只关心 META，但因为
+ *    META 被选中，整条语句（含 extra 那个立即执行的箭头函数，它会把 META.week
+ *    改写成 99）都会被原样推入 chunks 交给 vm 执行。这个加载器的前置条件是"输入
+ *    必须可信"（它读的是自家构建产物，不是任意用户输入）——不要把"AST 切片保证
+ *    语句边界完整"或"vm.runInNewContext 带 timeout"当成对不可信输入的安全隔离
+ *    证明，这两者从来没有打算提供这种保证。
  * ============================================================================ */
 
 /* declaration(raw, name) -> string（导出 API，找不到返回 ''）
@@ -106,6 +157,23 @@ const NAMES = 'META RESERVED SOUNDS W WALL_HINT BOOK FIRST_TEACH_DAY G1_ROUNDS G
 function declaration(raw, name) {
   const direct = extractTopLevelDeclarationText(raw, name);
   if (direct.status === 'found') return direct.text;
+  /* R-3 修复（轮 K 外审，2026-09-11）：direct.status === 'absent' 必须在这里立即
+   * 返回 ''，不能像改前那样只写在下面 "sources.length === 0" 分支里——'absent' 只
+   * 表示"raw 本身作为一份独立脚本解析成功、只是没有这个顶层声明"，不代表 raw 不含
+   * 任何看起来像 <script> 标签的文本。外审反例：
+   *   const template = "<script>const RESERVED=['fake'];</script>";
+   * 这本身是一份能成功解析的纯 JS（direct.status==='absent'，顶层只有 template 一
+   * 个声明），但下面 collectScriptSources(raw, true) 是纯正则扫描整份原始文本、不
+   * 理解字符串字面量的边界，会从这个字符串*内容*里"提取"出一个虚假的 <script> 来
+   * 源——sources.length 因此是 1，根本进不了 "sources.length === 0" 分支，改前那句
+   * "if (direct.status === 'absent') return '';" 完全没有机会被执行到，后面的 for
+   * 循环会真的去解析这份假来源，找到假的 RESERVED 声明并当真返回（外审用它证明这
+   * 条旁路不经过 legacyTextDeclaration，现有用例 17、21 也没覆盖到 sources.length>0
+   * 的这种场景）。现在提前到这里短路：raw 本身已经用 AST 从头到尾解析成功、确认过
+   * 没有这个顶层声明时，根本不再尝试把 raw 当 HTML 扫描——'unparsable'（raw 本身不
+   * 是一份可独立解析的脚本，比如真实 HTML 文档）才是唯一允许继续往下试 HTML 路径
+   * 的状态。 */
+  if (direct.status === 'absent') return '';
   let sources;
   try {
     sources = collectScriptSources(raw, true);
@@ -114,12 +182,9 @@ function declaration(raw, name) {
     sources = [];
   }
   if (sources.length === 0) {
-    /* raw 本身不含任何 <script> 标签——要么 raw 就是上面 direct 已经尝试过的独立
-     * 脚本文本（数据层 JS 入口的常见形态），要么是既不是 HTML 也不是可独立解析
-     * 脚本的其它文本。这种情况下能依据的只有 direct 自己的状态：direct 已经用
-     * AST 把这份文本从头到尾看过一遍，'absent' 就是"确实没有"，不需要也不该再
-     * 退回纯文本猜测；'unparsable' 才走原有的兜底路径。 */
-    if (direct.status === 'absent') return '';
+    /* 到这里 direct.status 恒为 'unparsable'——'found'/'absent' 都已经在上面提前
+     * 返回，raw 既不是一份可独立解析的脚本，也不含任何 <script> 标签，没有更多
+     * 信息可用，退回纯文本兜底。 */
     return legacyTextDeclaration(raw, name);
   }
   /* direct 对"把整份 raw 当一份独立脚本解析"这一步，遇到真实 HTML 文档几乎总会
@@ -253,8 +318,18 @@ function extractScriptContents(raw) {
  * 后立即是 `>`，`<scriptx>` 依旧不被当作 <script> 标签（回归见
  * tests/unit/test_load_data_ast.js「M-2」，同时钉死这条护栏没有被削弱）。
  * extractScriptContents 的独立正则**不**同步这条放宽——见该函数头注释，它是专为
- * test_grapheme_migration.js 保留的历史行为，不参与生产读取路径。 */
-const SCRIPT_TAG_RE = /<script((?:[\s/][^>]*)?)>([\s\S]*?)<\/script>/gi;
+ * test_grapheme_migration.js 保留的历史行为，不参与生产读取路径。
+ *
+ * R-2 修复（轮 K 外审 MEDIUM·按 HIGH 优先级对待，2026-09-11）：属性捕获组里的分隔
+ * 字符类改前用的是 JS 正则的 `\s`（`[\s/]`），下面 parseStartTagAttributes 头注释
+ * 「R-2 修复」一节详细说明了为什么这是错的——`\s` 比 HTML 规范定义的属性分隔空白
+ * 宽，会把 NBSP（U+00A0）这类字符误判成分隔符，从而"切"出一个真实浏览器根本不
+ * 认为存在的属性、掩盖标签后面真正的 JS 内容，方向是静默漏读，不是本文件其它地方
+ * 反复论证过的"方向安全"（那条论证本身是错的，同一节详细说明）。改为 HTML 规范的
+ * ASCII 空白字符类 `[\t\n\f\r ]`（TAB/LF/FF/CR/SPACE，**不含**垂直制表符 `\v`，也
+ * 不含 NBSP、全角空格等 Unicode 空白）。`([\s\S]*?)` 这个捕获 <script> 标签内容的
+ * 分组是"任意字符"的惯用写法，与"空白字符"无关，不受这条修复影响。 */
+const SCRIPT_TAG_RE = /<script((?:[\t\n\f\r /][^>]*)?)>([\s\S]*?)<\/script>/gi;
 
 /* JS_MIME_TYPES / KNOWN_NON_JS_SCRIPT_TYPES（H-1 修复，2026-09-11，收口 C）：
  * 改前的 ALLOWED_SCRIPT_TYPES 只有三个精确串 `''`/`text/javascript`/
@@ -332,17 +407,25 @@ const REJECTED_SCRIPT_TYPES = new Set(['module']);
  * 单独导出（下方 module.exports），供测试直接喂属性串做穷举覆盖，不必每次都拼一份
  * 完整 <script> 标签。
  *
- * L-2 修复（预筛 low，第四轮，2026-09-11，仅补记口径差，不改行为）：上面与下方
- * 用到的 `\s`（JS 正则的空白类）是 HTML 规范 before-attribute-name 状态定义的空白
- * （TAB/LF/FF/CR/SPACE）的**超集**——还额外匹配 NBSP（U+00A0）、全角空格
- * （U+3000）等 Unicode 空白/分隔符，浏览器的 HTML 分词器不认这些字符为属性分隔符。
- * 方向是安全的：本函数只会比真实浏览器多切出一次"新属性"（把 NBSP/全角空格误当
- * 分隔符），失败模式是把它们连带前后文本切成一个奇怪的属性名/值，最终大概率查不到
- * 想要的 `type` 或查到一个不会命中任何已知清单的怪异 type 串，从而在
- * collectScriptEntries 里响亮报错（unsupported-script-type）——不会导致真实 JS 被
- * 静默漏读，只会比浏览器更容易产生一次可见的拒绝，与本文件"漏读比报错危险得多"的
- * 一贯取向一致。四周现役产物的 <script> 标签属性串里不含这类字符（grep 确认），
- * 不影响现役路径。 */
+ * R-2 修复（轮 K 外审 MEDIUM·按 HIGH 优先级对待，2026-09-11，取代并更正改前的
+ * L-2 修复）：改前这里的判断是"方向是安全的：本函数只会比真实浏览器多切出一次
+ * '新属性'……不会导致真实 JS 被静默漏读"——这个论证是错的，外审给出了反例：
+ *   <script data-x="v" type="application/json">const RESERVED=['real'];</script>
+ * 两个属性之间是 NBSP（U+00A0），不是普通空格。真实浏览器不把 NBSP 当属性分隔
+ * 空白，所以这里根本不存在一个独立的 "type" 属性，整段标签内容就是普通 JS，会被
+ * 执行。但改前用 JS 正则的 `\s`（HTML 规范 before-attribute-name 状态定义的空白
+ * ——TAB/LF/FF/CR/SPACE——的**超集**，额外匹配 NBSP、全角空格等 Unicode 空白/
+ * 分隔符）扫描属性串时，会把这个 NBSP 误判成分隔符，凭空"切"出一个本不存在的
+ * `type="application/json"` 属性，命中 KNOWN_NON_JS_SCRIPT_TYPES，走进"已知非 JS
+ * → 静默跳过"分支——这份真实 JS 来源因此被整段静默漏读，不会报错，若文档另有正常
+ * META，loadData() 会成功返回但漏掉这个 <script> 里的 RESERVED。方向不是"更容易
+ * 产生一次可见拒绝的安全"，是"静默漏读"，与本文件"漏读比报错危险得多"的一贯取向
+ * 正相反。修法：标签与属性扫描统一改用 HTML 规范定义的 ASCII 空白字符集合
+ * `[\t\n\f\r ]`（TAB/LF/FF/CR/SPACE，**不含**垂直制表符 `\v`，也不含 NBSP、全角
+ * 空格等 Unicode 空白），不再用 JS 正则的 `\s`——下面函数体内全部空白判定，以及
+ * 上方 SCRIPT_TAG_RE 的属性捕获组（见该常量「R-2 修复」一节），均已同步改用这个
+ * 字符类。`[\s\S]` 那种"任意字符"惯用法（SCRIPT_TAG_RE 捕获标签内容的分组）与
+ * "空白字符"判定无关，不在这条修复范围内。 */
 function parseStartTagAttributes(attrs) {
   const s = attrs || '';
   const n = s.length;
@@ -350,12 +433,12 @@ function parseStartTagAttributes(attrs) {
   let i = 0;
   while (i < n) {
     // before-attribute-name 状态：跳过空白与 '/'（③ 的斜杠前缀在这里被吞掉）。
-    while (i < n && (/\s/.test(s[i]) || s[i] === '/')) i++;
+    while (i < n && (/[\t\n\f\r ]/.test(s[i]) || s[i] === '/')) i++;
     if (i >= n) break;
     const nameStart = i;
     // attribute-name 状态：名字段在遇到 '='、空白、'/' 或串尾时结束——引号是值
     // 字段的事，名字段扫描根本不会跨进引号内部去看引号里的内容。
-    while (i < n && !/[\s=\/]/.test(s[i])) i++;
+    while (i < n && !/[\t\n\f\r =\/]/.test(s[i])) i++;
     /* L-1 修复（预筛 low，第四轮，2026-09-11）：改前这里写"防御性：理论上不会触发"，
      * 但实测会触发——跳过空白/'/' 后唯一能让名字段零宽（nameStart===i）的字符是
      * '='（它不满足上面 while 的跳过条件，也满足下面 attribute-name 状态的终止
@@ -369,10 +452,10 @@ function parseStartTagAttributes(attrs) {
     if (i === nameStart) { i += 1; continue; }
     const name = s.slice(nameStart, i).toLowerCase();
     let j = i;
-    while (j < n && /\s/.test(s[j])) j++;
+    while (j < n && /[\t\n\f\r ]/.test(s[j])) j++;
     if (j < n && s[j] === '=') {
       j++;
-      while (j < n && /\s/.test(s[j])) j++;
+      while (j < n && /[\t\n\f\r ]/.test(s[j])) j++;
       let value = '';
       if (j < n && (s[j] === '"' || s[j] === "'")) {
         const quote = s[j];
@@ -383,7 +466,7 @@ function parseStartTagAttributes(attrs) {
         if (j < n) j++; // 跳过闭合引号
       } else {
         const valStart = j;
-        while (j < n && !/\s/.test(s[j])) j++;
+        while (j < n && !/[\t\n\f\r ]/.test(s[j])) j++;
         value = s.slice(valStart, j);
       }
       out.push({ name: name, value: value, hasValue: true });
@@ -726,6 +809,41 @@ function throwLegacyHtmlFallbackRejected() {
   throw err;
 }
 
+/* nameToDeclarationText(decls, name, pushedDeclNodes) -> string|null（导出 API，
+ * R-1 修复，轮 K 外审 HIGH，2026-09-11）
+ *
+ * decls：findAllTopLevelDeclarations() 的返回值。
+ * pushedDeclNodes：调用方在"组装一份 chunks"的整个过程里共享的同一个 Set——跨
+ *   NAME 去重必须共享同一把 Set 才有意义，本函数不持有任何模块级状态，每次调用
+ *   只读写调用方传进来的这个 Set。
+ *
+ * 返回该 NAME 对应的顶层声明文本（顶层只出现一次时）；顶层没有这个声明，或者
+ * 有但对应的语句节点已经被同一条语句的另一个 NAME 消费过（`const META = {...},
+ * RESERVED = [...];` 这种一条语句声明多个 NAME 的写法，两个 NAME 的 occ[0] 指向
+ * 同一个语句节点，text 完全相同），均返回 null——调用方不需要（也不应该）区分
+ * 这两种 null 的成因，两种情况都不该把这段文本再推入 chunks 一次。
+ *
+ * 这是 loadData() 自己的 H-2 修复（"一条语句声明多个 NAMES 时不应把同一条语句
+ * 重复推入 chunks，否则 vm 对同一条 const 语句求值两次会触发裸 SyntaxError"）与
+ * tools/validation/export_data.js 共用的唯一实现——export_data.js 改前直接对每个
+ * NAME 调用 declaration(raw,name) 各自取值，没有这层跨 NAME 去重：外审反例
+ * `<script>const META={week:1}, RESERVED=['a'];</script>` 能通过 loadData（H-2
+ * 已经在 loadData 内部去重），但导出时 declaration(raw,'META') 与
+ * declaration(raw,'RESERVED') 各自返回整条语句文本、被同一条语句重复推入导出
+ * 文件的 chunks 两次，导出文件因此含两条相同的 const 语句、无法被 loadData()
+ * 再次解析——用例 13 只检查 loadData 本身，即使导出路径一直损坏也会通过。现在两边
+ * 都改走同一个 decls Map + 同一把去重 Set 语义，不在两处各写一份"scriptIndex+start
+ * 去重"判据（这正是本项目反复栽跟头的"两套判据互不知道对方存在"的形态）。 */
+function nameToDeclarationText(decls, name, pushedDeclNodes) {
+  const occ = decls.get(name);
+  if (!occ || occ.length !== 1) return null;
+  const node = occ[0];
+  const nodeKey = node.scriptIndex + ':' + node.start;
+  if (pushedDeclNodes.has(nodeKey)) return null;
+  pushedDeclNodes.add(nodeKey);
+  return node.text;
+}
+
 function loadData(raw, html = true) {
   /* L-4（预筛 low，2026-09-11，主会话裁定：不改，仅记录取舍）：collectScriptEntries
    * 这一步一旦遇到 module（或任何未知）script type 会立即抛
@@ -787,20 +905,19 @@ function loadData(raw, html = true) {
    * js_ast.js 头注释）——META 与 RESERVED 各自的 occ[0].text 因此完全相同。改前
    * 按 NAMES 逐个 push occ[0].text，会把同一条语句重复推入 chunks 两次，vm 执行
    * 时对同一条 const 语句求值两次，触发裸 SyntaxError（"Identifier 'META' has
-   * already been declared"）逃逸。这里按声明节点去重：key 用
-   * "scriptIndex + ':' + start"（同一条语句的所有 declarator 记录 start 相同，
-   * 见 findAllTopLevelDeclarations 里的说明），同一条语句不管被几个 NAME 命中，
-   * 只推入 chunks 一次。 */
+   * already been declared"）逃逸。
+   * R-1 修复（轮 K 外审 HIGH，2026-09-11）：按声明节点去重这一步抽成了下方独立
+   * 导出的 nameToDeclarationText（key 用 "scriptIndex + ':' + start"，同一条语句
+   * 的所有 declarator 记录 start 相同，见 findAllTopLevelDeclarations 里的说明），
+   * 供本函数与 tools/validation/export_data.js 共用——export_data.js 改前直接对
+   * 每个 NAME 调用 declaration(raw,name) 各自取值，没有这层跨 NAME 去重，一条语句
+   * 声明多个 NAME 时会被同一条语句重复推入导出文件的 chunks 两次，无法被 loadData()
+   * 再次解析（外审复现用例：`<script>const META={week:1}, RESERVED=['a'];</script>`
+   * 能通过 loadData，导出后却是一份无法解析的文件）。该函数头注释有完整说明。 */
   const pushedDeclNodes = new Set();
   for (const n of NAMES) {
-    const occ = decls.get(n);
-    if (occ && occ.length === 1) {
-      const node = occ[0];
-      const nodeKey = node.scriptIndex + ':' + node.start;
-      if (pushedDeclNodes.has(nodeKey)) continue;
-      pushedDeclNodes.add(nodeKey);
-      chunks.push(node.text);
-    }
+    const text = nameToDeclarationText(decls, n, pushedDeclNodes);
+    if (text) chunks.push(text);
   }
   /* 收口 B（2026-09-11）：下面对每个 entry.text 再跑一次 findTopLevelSoundsAssignments，
    * 是同一份脚本文本的第二次 acorn 解析——上面 findAllTopLevelDeclarations 已经用
@@ -855,8 +972,12 @@ function loadData(raw, html = true) {
  * 用例 23 做的是两层比对，**不是**直接遍历这里导出的值再喂给自己。第一层是拿一份
  * **写死**在测试文件里的期望成员清单（expectedJsTypes/expectedNonJsTypes 字面量，
  * 抄自这两份清单当前内容）与这里导出的值做 deepEqual，专门拦"清单本身被静默缩水
- * /误改"；第二层再把期望清单里的每个 type 逐个真的喂给 collectScriptSources/
- * loadData，验证分类行为本身没有跟着漂移。**不能**把第一层改成"直接遍历这里导出
+ * /误改"；第二层再把期望清单里的每个 type 逐个真的喂给 collectScriptSources，
+ * 验证分类行为本身没有跟着漂移（R-6 修复，轮 K 外审，2026-09-11：本段改前这里写
+ * "喂给 collectScriptSources/loadData"，但用例 23 的两个 for 循环实际只调用了
+ * collectScriptSources，全用例没有任何一处调用 loadData——这个 "/loadData" 是过期
+ * 描述，已删除；"验证分类行为本身没有跟着漂移"这句结论本身没有变，只是执行手段
+ * 只有 collectScriptSources 这一层，不是两层）。**不能**把第一层改成"直接遍历这里导出
  * 的值，再拿它去跑第二层"——那样测试"验证"的对象和被改坏的对象是同一份，清单
  * 缩水时两层会一起缩水，永远自证通过，是 H1"两套判据互不知道对方存在"在测试层面
  * 的翻版（上一版这段注释把这件事写反了：写着"不是在测试里另起一份硬编码副本"，
@@ -873,7 +994,7 @@ function loadData(raw, html = true) {
 module.exports = {
   loadData, declaration, NAMES, META_DECLARATION_RE, extractScriptContents,
   collectScriptSources, collectScriptEntries, findAllTopLevelDeclarations,
-  scriptTypeAttr, parseStartTagAttributes,
+  nameToDeclarationText, scriptTypeAttr, parseStartTagAttributes,
   JS_MIME_TYPES: Object.freeze([...JS_MIME_TYPES]),
   KNOWN_NON_JS_SCRIPT_TYPES: Object.freeze([...KNOWN_NON_JS_SCRIPT_TYPES])
 };

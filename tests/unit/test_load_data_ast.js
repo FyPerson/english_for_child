@@ -15,6 +15,10 @@
  * findAllTopLevelDeclarations / declaration 的 AST 重写）。
  */
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const { execFileSync } = require('node:child_process');
 const {
   loadData, declaration, collectScriptSources, collectScriptEntries, findAllTopLevelDeclarations,
   JS_MIME_TYPES, KNOWN_NON_JS_SCRIPT_TYPES, scriptTypeAttr, parseStartTagAttributes
@@ -256,9 +260,15 @@ function wrapScript(body) {
   // M-1 修复（2026-09-11）：acorn 的报错不带作用域深度信息，这条路径不知道重复
   // 到底发生在顶层还是嵌套作用域，应标记 scopeUnknown=true——与用例 4（跨 script，
   // 作用域确定是顶层，scopeUnknown=false）显式区分开。这条用例同时也是 M-1 的
-  // 对照组：同一 script 内真顶层 META + 真顶层重复 RESERVED，即使 hasInlineMeta
+  // 对照组：同一 script 内真顶层 META + 真顶层重复 RESERVED。
+  // R-6 修复（轮 K 外审，2026-09-11，更正过期描述）：本段原来写"即使 hasInlineMeta
   // 捕获了 duplicate-declaration，也必须靠 META_DECLARATION_RE 探测到 META 存在，
-  // 继续走到严格通道如实抛出，不能被误吞成 legacy-html-fallback-rejected。
+  // 继续走到严格通道如实抛出"——这条描述已经过时：hasInlineMeta 现在（见用例
+  // 22/③、hasInlineMeta 头注释）不再对 duplicate-declaration 做任何"缺 META 优先"
+  // 消歧，也不再引用 META_DECLARATION_RE 做任何旁证，duplicate-declaration 无条件
+  // 直接向上传播，不需要（也不会）先去探测 META 是否存在。本用例真正验证的是这条
+  // 无条件传播本身：即使这份文档确实有顶层 META，同一 script 内的重复声明依然如实
+  // 抛出 duplicate-declaration，不会被误吞成 legacy-html-fallback-rejected。
   assert.equal(caught.scopeUnknown, true,
     `5：同一 script 内的重复声明不知道作用域深度，应标记 scopeUnknown=true，实际：${caught.scopeUnknown}`);
   // L-4 修复（预筛 low，2026-09-11）：这条路径的 declarationName 直接取自 acorn 报错
@@ -1247,6 +1257,182 @@ function wrapScript(body) {
     `32b：真正的换行仍应终止注释延伸，不应被 Unicode 空白放宽误伤，实际：${JSON.stringify(text2)}`);
 
   console.log('PASS load_data_ast（32/L-3：extendPastTrailingSameLineComments 放宽为 Unicode 空白类后，NBSP 分隔的行尾注释被正确保留，真正的换行仍然正确终止延伸）');
+}
+
+// ============================================================================
+// 33. R-1（HIGH·轮 K 外审判定为本次 U1 引入的回归，2026-09-11）：export_data.js
+//    改前没有同步 loadData() 自己的 H-2 多声明去重——一条语句声明多个 NAME 时
+//    （`const META={...}, RESERVED=[...];`），declaration(raw,'META') 与
+//    declaration(raw,'RESERVED') 各自返回整条语句文本，被同一条语句重复推入导出
+//    文件的 chunks 两次，导出文件因此含两条相同的 const 语句、无法被 loadData()
+//    再次解析。外审明确指出现有测试集完全没有覆盖过导出器本身（用例 13 只检查
+//    loadData，即使导出路径一直损坏也会通过）。这里补一条端到端往返回归：真的
+//    跑一遍 export_data.js CLI（子进程，与真实调用方 tools/extract_data_layer.py
+//    的用法一致），再用 loadData() 加载导出结果，比对数据与原始输入一致。
+//
+// 破坏验证：把 export_data.js 里 nameToDeclarationText 的调用换回改前的
+// `const value=declaration(raw,name); if(value) chunks.push(value);`（不做跨
+// NAME 去重），33 前提断言（"const META = ..., RESERVED = ...;" 只应出现 1 次）
+// 会从 1 次变 2 次，随后 loadData(exported,false) 会抛出未包装的 SyntaxError
+// （"Identifier 'META' has already been declared"），两处均从 PASS 变
+// AssertionError（复制文件副本验证，未使用 git checkout/stash）。
+// ============================================================================
+{
+  const declLine = "const META = {\"week\":1}, RESERVED = ['a','b','c'];";
+  const body = [declLine, OTHER_NAMES_BODY].join('\n');
+  const html = wrapScript(body);
+
+  const tmpDir = os.tmpdir();
+  const pid = process.pid;
+  const targetPath = path.join(tmpDir, 'test_export_data_target_' + pid + '.html');
+  const outPath = path.join(tmpDir, 'test_export_data_out_' + pid + '.js');
+  fs.writeFileSync(targetPath, html, 'utf8');
+  try {
+    const exportScript = path.join(__dirname, '..', '..', 'tools', 'validation', 'export_data.js');
+    execFileSync('node', [exportScript, targetPath, outPath], { encoding: 'utf8' });
+
+    const exported = fs.readFileSync(outPath, 'utf8');
+    // 33 前提：改前的 bug 会让 exported 里出现两次同一条 const 语句——这里先直接
+    // 检查导出文本本身不重复，给出比"loadData 能不能解析"更直接的证据。
+    const occurrences = exported.split(declLine).length - 1;
+    assert.equal(occurrences, 1,
+      `33 前提：导出文件里 "${declLine}" 这条语句应恰好出现 1 次，实际 ${occurrences} 次——导出内容：${JSON.stringify(exported)}`);
+
+    let caught = null;
+    let reloaded = null;
+    try { reloaded = loadData(exported, false); } catch (e) { caught = e; }
+    assert.equal(caught, null,
+      `33：导出结果应能被 loadData 正常再次解析（数据层 JS 入口形态，html=false），不应报错，实际抛出：${caught && caught.constructor && caught.constructor.name}: ${caught && caught.message}`);
+    assert.equal(reloaded.META && reloaded.META.week, 1, '33：往返后 META 应与原始输入一致');
+    assert.deepEqual([...reloaded.RESERVED], ['a', 'b', 'c'], '33：往返后 RESERVED 应与原始输入一致（未被同一条语句的重复推入破坏）');
+  } finally {
+    fs.unlinkSync(targetPath);
+    fs.unlinkSync(outPath);
+  }
+
+  console.log('PASS load_data_ast（33/R-1：export_data.js CLI 往返回归——一条语句声明多个 NAME 时不再被重复推入 chunks，导出结果能被 loadData 正常再次解析且数据与原始输入一致）');
+}
+
+// ============================================================================
+// 34. R-2（MEDIUM·按 HIGH 优先级对待，轮 K 外审，2026-09-11）：属性/标签扫描必须
+//    用 HTML 规范的 ASCII 空白集合（TAB/LF/FF/CR/SPACE），不能用 JS 正则的 `\s`
+//    ——`\s` 额外匹配 NBSP（U+00A0）等 Unicode 空白，真实浏览器不把 NBSP 当属性
+//    分隔符。外审反例：
+//      <script data-x="v" type="application/json">const RESERVED=['real'];</script>
+//    这里两个属性之间是 NBSP，不是普通空格——真实浏览器认为这里根本不存在一个
+//    独立的 "type" 属性，整段标签内容就是普通 JS 会被执行；改前用 `\s` 扫描会把
+//    NBSP 误判成分隔符，凭空"切"出一个本不存在的 type="application/json"，命中
+//    KNOWN_NON_JS_SCRIPT_TYPES，这份真实 JS 来源因此被整段静默漏读（若文档另有
+//    正常 META，loadData 会成功返回但漏掉这个 <script> 里的 RESERVED，不报错——
+//    方向是漏读，不是本文件其它地方论证过的"更容易产生一次可见拒绝的安全"）。
+//
+// 破坏验证：把 parseStartTagAttributes 里的 `[\t\n\f\r ]`/`[\t\n\f\r =\/]` 改回
+// `\s`/`[\s=\/]`，34a 的 attrs[1].name 会从一个含 NBSP 的怪异名字变回纯 'type'，
+// 34b 的 sources.length 会从 1 变 0、box.RESERVED 会变成 undefined，三处断言均从
+// PASS 变 AssertionError（复制文件副本验证，未使用 git checkout/stash）。
+// ============================================================================
+{
+  // 34a：直接单测 parseStartTagAttributes——NBSP 不应被当成属性分隔符，"type" 会
+  // 与前面的 NBSP 粘成一个不存在于任何已知属性名的怪异名字，不应该被识别成独立的
+  // "type" 属性。
+  const attrs = parseStartTagAttributes(' data-x="v" type="application/json"');
+  assert.equal(attrs.length, 2,
+    `34a：NBSP 不应被当成分隔符，应仍只切出 2 个"属性"（data-x 与被 NBSP 粘住的怪异名字），实际：${JSON.stringify(attrs)}`);
+  assert.equal(attrs[0].name, 'data-x', `34a：第一个属性名应为 data-x，实际：${JSON.stringify(attrs)}`);
+  assert.notEqual(attrs[1].name, 'type',
+    `34a：NBSP 后的 "type" 不应被识别成独立的 type 属性名（真实浏览器不认 NBSP 为分隔符），实际属性名：${JSON.stringify(attrs[1].name)}`);
+  assert(attrs.every(a => a.name !== 'type'),
+    `34a：全部属性里都不应该存在一个名字恰好是 "type" 的条目，实际：${JSON.stringify(attrs)}`);
+
+  // 34b：端到端——含 NBSP 的 <script> 应被当成真实 JS 来源收下并正常加载，不应被
+  // 误判成 application/json 而静默跳过、漏读其中的 RESERVED。
+  const html = '<!doctype html><html><body>' +
+    '<script data-x="v" type="application/json">const META = {"week":1};const RESERVED=[\'real\'];</script>' +
+    '</body></html>';
+  const sources = collectScriptSources(html, true);
+  assert.equal(sources.length, 1,
+    `34b：含 NBSP 的 <script> 不应被误判为 application/json 而跳过，应作为 JS 来源收下，实际收下 ${sources.length} 条`);
+  const box = loadData(html, true);
+  assert.equal(box.META && box.META.week, 1, '34b：META 应能正常加载');
+  assert.deepEqual([...box.RESERVED], ['real'],
+    `34b：NBSP 不应导致 RESERVED 被静默漏读，实际：${JSON.stringify(box.RESERVED)}`);
+
+  console.log('PASS load_data_ast（34/R-2：属性/标签扫描改用 HTML 规范的 ASCII 空白集合后，NBSP 不再被误判成属性分隔符——不会凭空切出一个不存在的 type 属性，真实 JS 来源不再被静默漏读）');
+}
+
+// ============================================================================
+// 35. R-3（MEDIUM，轮 K 外审，2026-09-11）：declaration() 在 direct.status===
+//    'absent'（raw 本身作为一份独立脚本解析成功、只是没有这个顶层声明）时必须
+//    立即返回 ''，不能继续尝试把 raw 当 HTML 用正则扫描——外审反例：
+//      const template = "<script>const RESERVED=['fake'];</script>";
+//    这是一份能成功解析的纯 JS（顶层只有 template 一个声明），但 raw 本身含有
+//    一段"看起来像 <script> 标签"的文本（藏在字符串字面量*内容*里）。改前的实现
+//    只在 sources.length===0 分支里检查 direct.status==='absent'，而这份输入的
+//    collectScriptSources(raw,true) 会用正则从字符串内容里"提取"出一个虚假来源
+//    （sources.length===1，不是 0），那条 absent 短路完全没有机会被执行到，后面
+//    的 for 循环会真的解析这份假来源，把假的 RESERVED 声明当真返回——这条旁路不
+//    经过 legacyTextDeclaration，现有用例 17、21 都没覆盖。模板字符串是同一类
+//    问题的另一种写法，一并覆盖。
+//
+// 破坏验证：把 declaration() 里新提前的 `if (direct.status === 'absent')
+// return '';` 挪回原位置（只留在 sources.length===0 分支内），35a/35b 会从返回
+// '' 变成返回假来源里的 "const RESERVED=['fake'];"，断言从 PASS 变
+// AssertionError（复制文件副本验证，未使用 git checkout/stash）。
+// ============================================================================
+{
+  // 35a：纯 JS 字符串字面量里藏着一段假 <script> 标签文本。
+  const source1 = "const template = \"<script>const RESERVED=['fake'];</script>\";";
+  const text1 = declaration(source1, 'RESERVED');
+  assert.equal(text1, '',
+    `35a：RESERVED 只出现在字符串字面量*内容*里的假 <script> 标签内，declaration() 应返回 ''，不应该把这段假声明当真返回，实际：${JSON.stringify(text1)}`);
+
+  // 35b：模板字符串同理，是同一类问题的另一种写法。
+  const source2 = "const template = `<script>const RESERVED=['fake'];</script>`;";
+  const text2 = declaration(source2, 'RESERVED');
+  assert.equal(text2, '',
+    `35b：模板字符串里的假 <script> 标签同理不应被当真，declaration() 应返回 ''，实际：${JSON.stringify(text2)}`);
+
+  console.log('PASS load_data_ast（35/R-3：direct.status===\'absent\' 时 declaration() 立即短路返回 \'\'，不再尝试把 raw 当 HTML 扫描——字符串/模板字符串字面量内容里的假 <script> 标签不再被误当真实声明来源）');
+}
+
+// ==============================================================================
+// 36. R-5（LOW，轮 K 外审，2026-09-11）：extendPastTrailingSameLineComments 的间隙
+//    判据改前只显式排除了回车与换行这两个字符，但 U+2028（行分隔符）
+//    与 U+2029（段分隔符）同样是 ECMA-262 定义的真正行终止符，与回车/
+//    换行同等地位，却仍然会被改前的判据当成"普通空白"放过——
+//    声明语句与紧随其后的注释之间如果只隔着 U+2028，本该被当成
+//    "下一行"的独立注释会被错误并入声明的切片。声明与 SOUNDS 赋值
+//    两条路径共用同一个 extendPastTrailingSameLineComments 实现
+//    （见 js_ast.js 用例 28 的背景），这里各自补一条边界测试。
+//
+// 破坏验证：把 js_ast.js 里的判据改回去掉对这两个码点的排除（36a/36c 会从
+// "注释不被并入"变成"注释被并入"，断言从 PASS 变 AssertionError
+// （复制文件副本验证，未使用 git checkout/stash）。
+// ==============================================================================
+{
+  // 36a：声明路径——U+2028 之后的注释不应被并入 RESERVED 的抽取文本。
+  const bodyDecl = "const RESERVED=['a'];" + "\u2028" + "/* 独立注释，只隔着 U+2028 */";
+  const htmlDecl = wrapScript(bodyDecl);
+  const textDecl = declaration(htmlDecl, 'RESERVED');
+  assert.equal(textDecl, "const RESERVED=['a'];",
+    `36a：U+2028 之后的注释不应被并入声明的抽取文本，实际：${JSON.stringify(textDecl)}`);
+
+  // 36b：U+2029 同理。
+  const bodyDecl2 = "const RESERVED=['a'];" + "\u2029" + "/* 独立注释，只隔着 U+2029 */";
+  const htmlDecl2 = wrapScript(bodyDecl2);
+  const textDecl2 = declaration(htmlDecl2, 'RESERVED');
+  assert.equal(textDecl2, "const RESERVED=['a'];",
+    `36b：U+2029 之后的注释同样不应被并入声明的抽取文本，实际：${JSON.stringify(textDecl2)}`);
+
+  // 36c：SOUNDS 赋值路径——两条路径共用同一个 extendPastTrailingSameLineComments
+  // 实现，这里独立覆盖，不依赖声明路径已经测过就默认它也对。
+  const bodySounds = "const SOUNDS = {}; SOUNDS.a = {x:1};" + "\u2028" + "/* 独立注释，只隔着 U+2028 */";
+  const assignsSounds = findTopLevelSoundsAssignments(bodySounds);
+  assert.equal(assignsSounds.length, 1, '36c 前提：应找到 1 条顶层 SOUNDS 赋值');
+  assert.equal(assignsSounds[0].text, 'SOUNDS.a = {x:1};',
+    `36c：SOUNDS 赋值路径下，U+2028 之后的注释同样不应被并入抽取文本，实际：${JSON.stringify(assignsSounds[0].text)}`);
+
+  console.log('PASS load_data_ast（36/R-5：extendPastTrailingSameLineComments 的间隙判据同时排除 U+2028/U+2029 后，这两个真正的 JS 行终止符不再被误当"同一行的空白"——声明与 SOUNDS 赋值两条路径均已覆盖）');
 }
 
 console.log('PASS load_data_ast：全部用例通过');

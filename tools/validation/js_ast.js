@@ -150,12 +150,24 @@ function parseScriptCollectingComments(text, opts) {
  * `^[^\S\r\n]*$`（"非换行的空白字符"，`\S` 的取反天然覆盖 Unicode 空白类，只**排除**
  * `\r`/`\n` 这两个必须继续要求"同一行"语义的字符）——现役 `frontend/src`、`tools`
  * 全量 grep 零命中这类字符（今天不改变任何现役输出），但中文注释环境下并非不可想象，
- * 提前把判据补齐比等它在某次真实数据里复现更省事。 */
+ * 提前把判据补齐比等它在某次真实数据里复现更省事。
+ *
+ * R-5 修复（轮 K 外审 LOW，2026-09-11）：`^[^\S\r\n]*$` 用 `\S` 取反来覆盖 Unicode
+ * 空白类，但 ECMAScript 的 `\s`（`\S` 取反后自然继承的语义）本身就把 U+2028（行
+ * 分隔符 LINE SEPARATOR）与 U+2029（段分隔符 PARAGRAPH SEPARATOR）算作"空白"的
+ * 一部分——这两个码点同时**也是** JavaScript 语法里真正的行终止符（ECMA-262
+ * LineTerminator 产生式明确包含它们，与 `\r`/`\n` 同等地位），但上面的判据只显式
+ * 排除了 `\r`/`\n`，没有排除它们。`const RESERVED=['a']; /* 独立注释 *\/`
+ * 因此会被误判成"中间只有空白"，把下一行的独立注释错误地并入 RESERVED 的声明
+ * 切片，与本函数"只延伸同一行紧随其后的注释"这条契约不符（U+2028 分隔的两部分
+ * 本该被当成不同行）。修法：在排除集合里用 \u2028/\u2029 转义显式加上这两个码点，
+ * 与 \r/\n 同等对待——声明与 SOUNDS 赋值两条路径共用同一个 extendPastTrailingSameLineComments
+ * 实现，这里改一处两条路径同时生效。 */
 function extendPastTrailingSameLineComments(text, end, comments) {
   let current = end;
   for (const c of comments) {
     if (c.start < current) continue;
-    if (!/^[^\S\r\n]*$/.test(text.slice(current, c.start))) break;
+    if (!/^[^\S\r\n\u2028\u2029]*$/.test(text.slice(current, c.start))) break;
     current = c.end;
   }
   return current;
